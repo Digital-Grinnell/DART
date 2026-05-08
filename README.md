@@ -1,0 +1,367 @@
+# 🏢 &nbsp; FLAT - Flet Layout Application Template
+
+FLAT is a production-ready template for building desktop applications with [Flet](https://flet.dev). Built on the proven UI architecture from OHM (Oral History Manager), it provides a professional starting point with essential features like persistent settings, logging, function management, and help documentation.
+
+## Features
+
+### Core Template Features
+- **Persistent Settings**: Automatic saving/loading of window position, directories, and user preferences
+- **Professional Logging**: Timestamped log files in `~/FLAT-data/logfiles/` with real-time display
+- **Function Management**: Icon-enhanced dropdown with usage tracking and workflow ordering
+- **Help Mode**: Built-in markdown help viewer for each function with copy-to-clipboard
+- **Smart Directory Management**: Collapsible directories section to maximize screen space
+- **File Selection**: Dedicated file picker with persistence (separate from directories)
+- **Status & Log Output**: Professional status display with copy/paste and log management
+- **Proven UI Layout**: Based on OHM's battle-tested interface design
+
+### Example Functions Included
+- **Function 1** 📁: List all files in a directory
+- **Function 2** 📊: Count files by extension type
+- **Function 3** 💻: Display system information
+
+These examples demonstrate the function pattern and can be replaced with your own functionality.
+
+## Quick Start
+
+### Running from Source
+
+1. **Clone or copy this template**
+   ```bash
+   cd /path/to/your/projects
+   cp -r FLAT my-new-app
+   cd my-new-app
+   ```
+
+2. **Run the application**
+   ```bash
+   # macOS/Linux
+   ./run.sh
+   
+   # Windows
+   run.bat
+   ```
+
+The run scripts automatically:
+- Create a Python virtual environment
+- Install dependencies
+- Launch the application
+
+## Requirements
+
+- **Python 3.8+**
+- **Flet 0.25.2** (installed automatically by run scripts)
+
+No other dependencies required for the base template.
+
+## Project Structure
+
+```
+FLAT/
+├── app.py                      # Main application (715 lines - streamlined!)
+├── run.sh                      # macOS/Linux launcher
+├── run.bat                     # Windows launcher
+├── build_dmg.sh               # macOS installer builder
+├── build_windows_zip.sh       # Windows package builder
+├── python_requirements.txt     # Python dependencies
+├── .gitignore                  # Git exclusions
+├── LICENSE                     # MIT License
+├── CHANGELOG.md               # Version history
+├── QUICKSTART.md              # Quick reference guide
+├── FUNCTION_1_LIST_FILES.md   # Help docs for Function 1
+├── FUNCTION_2_COUNT_FILES.md  # Help docs for Function 2
+├── FUNCTION_3_SYSTEM_INFO.md  # Help docs for Function 3
+└── README.md                   # This file
+```
+
+### Runtime Files
+When you run the application, these are created automatically:
+```
+~/FLAT-data/
+├── logfiles/                   # Application logs
+│   └── flat_YYYYMMDD_HHMMSS.log
+└── persistent.json             # Saved settings and state
+```
+
+## Customizing FLAT for Your Application
+
+### 1. Rename the Application
+
+Update these items throughout the codebase:
+- `page.title` in `app.py`
+- Data directory name (`FLAT-data` → `YourApp-data`)
+- Window title and header text
+- Script headers in `run.sh` and `run.bat`
+- README title and descriptions
+
+### 2. Add Your Own Functions
+
+To add a new function, follow the OHM-proven pattern:
+
+**a) Create the function handler in `app.py`:**
+
+```python
+def on_function_4_your_feature(e):
+    """Function 4: Your custom feature description."""
+    storage.record_function_usage("Function 4")
+    
+    # Access current directory if needed
+    if not current_directory or not current_directory.exists():
+        update_status("Error: Please select an input directory first", is_error=True)
+        return
+    
+    # Your implementation here
+    # ... do work ...
+    
+    update_status("Your feature completed successfully")
+    add_log_message("Function 4 completed")
+    logger.info("Function 4: Completed")
+```
+
+**b) Add to the active_functions list:**
+
+```python
+active_functions = [
+    "function_1_list_files",
+    "function_2_count_files",
+    "function_3_system_info",
+    "function_4_your_feature",  # Add this
+]
+```
+
+**c) Register in the functions dictionary:**
+
+```python
+functions = {
+    # ... existing functions ...
+    "function_4_your_feature": {
+        "label": "4: Your Custom Feature",
+        "icon": "🎯",  # Pick an emoji icon
+        "handler": on_function_4_your_feature,
+        "help_file": "FUNCTION_4_YOUR_FEATURE.md"
+    },
+}
+```
+
+**d) Create help documentation:**
+
+Create `FUNCTION_4_YOUR_FEATURE.md` with markdown documentation. The template automatically:
+- Shows help in a dialog when Help Mode is enabled
+- Provides copy-to-clipboard functionality
+- Displays the function's icon and label
+
+### 3. Add Dependencies
+
+If your functions need additional Python packages:
+
+1. Add them to `python_requirements.txt`:
+   ```
+   flet==0.25.2
+   flet-desktop==0.25.2
+   your-package>=1.0.0
+   ```
+
+2. Import them in `app.py`:
+   ```python
+   try:
+       import your_package
+       YOUR_PACKAGE_AVAILABLE = True
+   except ImportError:
+       YOUR_PACKAGE_AVAILABLE = False
+   ```
+
+3. Check availability before use:
+   ```python
+   if not YOUR_PACKAGE_AVAILABLE:
+       show_status("Error: your-package not installed", is_error=True)
+       return
+   ```
+
+### 4. Modify UI Layout
+
+The layout is defined in the `page.add()` section at the bottom of `app.py`. The structure uses Flet containers and rows:
+
+```python
+page.add(
+    ft.Container(
+        content=ft.Column([
+            # Your UI components here
+        ]),
+        padding=30,
+    )
+)
+```
+
+Add your own UI elements:
+- `ft.TextField()` - Text input fields
+- `ft.Dropdown()` - Dropdown menus
+- `ft.Checkbox()` - Checkboxes
+- `ft.ElevatedButton()` - Buttons
+- `ft.Text()` - Labels and text
+- `ft.Row()` and `ft.Column()` - Layout containers
+
+See [Flet documentation](https://flet.dev/docs/) for all available controls.
+
+### 5. Persistent Settings
+
+To save additional settings:
+
+```python
+# Save a custom setting
+storage.set_ui_state("my_custom_field", "value")
+
+# Load a custom setting
+value = storage.get_ui_state("my_custom_field", default="default_value")
+```
+
+All settings are automatically saved to `~/FLAT-data/persistent.json`.
+
+### 6. Remove Example Functions
+
+Once you've built your own functions, clean up the examples:
+
+1. Delete function handlers from `app.py`: `on_function_1_list_files`, `on_function_2_count_files`, `on_function_3_system_info`
+2. Delete help files: `FUNCTION_1_LIST_FILES.md`, `FUNCTION_2_COUNT_FILES.md`, `FUNCTION_3_SYSTEM_INFO.md`
+3. Remove entries from `active_functions` list and `functions` dictionary
+4. Update the title and description to match your application
+
+## UI Architecture
+
+FLAT uses OHM's proven layout structure:
+
+- **Collapsible Directories Section**: Saves vertical space once directories are set
+- **File Selection**: Always visible for quick file changes between operations
+- **Functions Dropdown**: Icon-enhanced with emoji indicators
+- **Status Output**: Multi-line with copy-to-clipboard
+- **Log Output**: Timestamped entries with copy and clear functionality
+- **Help Mode**: Toggle to view function documentation instead of executing
+
+This layout has been refined through real-world use in production applications.
+
+## Building Standalone Packages
+
+### macOS DMG
+
+Create a distributable DMG file:
+
+```bash
+bash build_dmg.sh 1.0
+```
+
+This creates `YourApp_v1.0.dmg` with:
+- Self-contained app bundle
+- Automatic dependency installation on first launch
+- No code signing (users must right-click → Open on first launch)
+
+### Windows ZIP
+
+Create a distributable ZIP package:
+
+```bash
+bash build_windows_zip.sh 1.0
+```
+
+This creates `YourApp_v1.0_Windows.zip` with:
+- All source files
+- `run.bat` launcher
+- Automatic dependency installation on first launch
+
+Recipients need Python 3 installed (one-time setup).
+
+## Logging
+
+All application activity is logged to:
+```
+~/FLAT-data/logfiles/flat_YYYYMMDD_HHMMSS.log
+```
+
+Use the logger in your functions:
+```python
+logger.info("Information message")
+logger.warning("Warning message")
+logger.error("Error message")
+logger.debug("Debug message")
+```
+
+Console output shows only errors; all levels are written to log files.
+
+## Help Documentation
+
+Help files use GitHub Flavored Markdown and support:
+- Headers (`#`, `##`, `###`)
+- Lists (ordered and unordered)
+- Code blocks with syntax highlighting
+- Tables
+- Links
+- **Bold** and *italic* text
+
+Create help documentation for each function to guide users.
+
+## Examples of Apps Built with This Template
+
+- **OHM - Oral History Manager**: Audio processing workflow for digital archives
+- *(Add your own app here!)*
+
+## Tips for Development
+
+### Testing Your Changes
+
+After modifying `app.py`, just rerun:
+```bash
+./run.sh  # or run.bat on Windows
+```
+
+The virtual environment and dependencies are cached, so subsequent runs are fast.
+
+### Debugging
+
+- Check log files in `~/FLAT-data/logfiles/` for errors
+- Console shows error-level messages immediately
+- Use `logger.debug()` for detailed troubleshooting
+
+### Version Control
+
+Initialize a git repository for your new app:
+```bash
+git init
+git add .
+git commit -m "Initial commit based on FLAT template"
+```
+
+The included `.gitignore` excludes:
+- Virtual environments (`.venv/`)
+- Python cache (`__pycache__/`)
+- Log files
+- Build artifacts
+
+## Flet Resources
+
+- **Documentation**: https://flet.dev/docs/
+- **Controls Gallery**: https://flet.dev/docs/controls
+- **GitHub**: https://github.com/flet-dev/flet
+- **Discord**: https://discord.gg/dzWXP8SHG8
+
+## License
+
+MIT License - See [LICENSE](LICENSE) or [LICENSE.md](LICENSE.md) for full details.
+
+Copyright (c) 2026 Digital.Grinnell / FLAT Contributors
+
+Free to use, modify, and distribute. Attribution appreciated but not required.
+
+## Contributing
+
+Contributions are welcome! Please feel free to:
+- Report bugs or issues
+- Suggest new features or improvements
+- Submit pull requests
+- Share applications you've built with FLAT
+
+## About
+
+FLAT was created by extracting and generalizing the proven UI framework from OHM (Oral History Manager). It provides a professional starting point for Flet desktop applications, eliminating the need to reinvent common patterns like settings persistence, logging, function management, and help systems.
+
+The template's architecture has been refined through real-world production use, ensuring reliability and maintainability.
+
+**Repository**: https://github.com/Digital-Grinnell/FLAT
+
+Built with ❤️ using [Flet](https://flet.dev) by the Digital.Grinnell team.
