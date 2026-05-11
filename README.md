@@ -26,7 +26,7 @@ DART provides a comprehensive platform for digital asset management workflows:
 
 ### Workflow Functions
 - **Function 0** ⚙️: App Settings with encrypted sensitive fields
-- **Function 1** 📁: List all files in a folder
+- **Function 1** 🎯: Analyze digital assets and generate object IDs from filenames
 - **Function 2** 📊: Count files by extension type
 - **Function 3** 💻: Display system information
 
@@ -79,7 +79,7 @@ DART/
 ├── CHANGELOG.md               # Version history
 ├── QUICKSTART.md              # Quick reference guide
 ├── FUNCTION_0_APP_SETTINGS.md # Help docs for Function 0
-├── FUNCTION_1_LIST_FILES.md   # Help docs for Function 1
+├── FUNCTION_1_ANALYZE_ASSETS.md  # Help docs for Function 1
 ├── FUNCTION_2_COUNT_FILES.md  # Help docs for Function 2
 ├── FUNCTION_3_SYSTEM_INFO.md  # Help docs for Function 3
 └── README.md                   # This file
@@ -233,7 +233,7 @@ All settings are automatically saved to `~/DART-data/persistent.json`.
 Once you've built your own functions, clean up the examples:
 
 1. Delete function handlers from `app.py`: `on_function_1_list_files`, `on_function_2_count_files`, `on_function_3_system_info`
-2. Delete help files: `FUNCTION_1_LIST_FILES.md`, `FUNCTION_2_COUNT_FILES.md`, `FUNCTION_3_SYSTEM_INFO.md`
+2. Delete help files: `FUNCTION_1_ANALYZE_ASSETS.md`, `FUNCTION_2_COUNT_FILES.md`, `FUNCTION_3_SYSTEM_INFO.md`
 3. Remove entries from `active_functions` list and `functions` dictionary
 4. Update the title and description to match your application
 

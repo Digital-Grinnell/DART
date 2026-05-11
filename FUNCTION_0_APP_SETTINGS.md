@@ -11,6 +11,8 @@ The encryption key is stored separately in `~/.DART-data/encryption_key` with re
 ## Current Settings
 - **auto_save_enabled**: When `true`, enables automatic saving of output from functions. **[BOOLEAN]**
 - **auto_save_format**: Default output format for autosave files (e.g., `txt`, `csv`, `json`, etc.)
+- **group_compound_objects**: When `true`, groups similar filenames as compound objects in asset analysis. **[BOOLEAN]**
+- **csv_structure_file**: Path to a CSV file that defines the expected column structure for exports
 - **api_key**: Your API key for external services. **[ENCRYPTED]**
 - **api_secret**: Your API secret for external services. **[ENCRYPTED]**
 - **password**: General password field for application use. **[ENCRYPTED]**
@@ -29,7 +31,7 @@ The encryption key is stored separately in `~/.DART-data/encryption_key` with re
 - Location: Inside the selected working/output folder
 
 ## Accepted Boolean Values
-For `auto_save_enabled`, you can enter:
+For `auto_save_enabled` and `group_compound_objects`, you can enter:
 - true/false
 - yes/no
 - 1/0
@@ -39,6 +41,8 @@ For `auto_save_enabled`, you can enter:
 - Settings are specific to each working/output folder
 - The settings file is created automatically with defaults if it doesn't exist
 - Sensitive fields (marked **[ENCRYPTED]**) are stored encrypted in the JSON file
+- `group_compound_objects` controls whether Function 1 groups similar filenames as compound objects
+- `csv_structure_file` should be a full path to a CSV file that defines expected columns for exports
 - You can customize the sensitive fields list and default settings in `app.py`
 
 ## Example Settings File (stored encrypted)
@@ -46,6 +50,8 @@ For `auto_save_enabled`, you can enter:
 {
   "auto_save_enabled": false,
   "auto_save_format": "txt",
+  "group_compound_objects": true,
+  "csv_structure_file": "/path/to/structure.csv",
   "api_key": "gAAAAABk...[encrypted]",
   "api_secret": "gAAAAABk...[encrypted]",
   "password": "gAAAAABk...[encrypted]"

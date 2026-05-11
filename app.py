@@ -53,6 +53,8 @@ APP_SETTINGS_FILENAME = "dart_settings.json"
 DEFAULT_APP_SETTINGS = {
     "auto_save_enabled": False,
     "auto_save_format": "txt",
+    "group_compound_objects": False,
+    "csv_structure_file": "",
     "api_key": "",
     "api_secret": "",
     "password": "",
@@ -381,6 +383,18 @@ def main(page: ft.Page):
             hint_text="txt, csv, json, etc.",
             width=320,
         )
+        group_compound_field = ft.TextField(
+            label="group_compound_objects",
+            value=str(settings.get("group_compound_objects", False)).lower(),
+            hint_text="true or false - group similar filenames as compound objects",
+            width=320,
+        )
+        csv_structure_field = ft.TextField(
+            label="csv_structure_file",
+            value=str(settings.get("csv_structure_file", "")),
+            hint_text="Path to CSV file defining expected column structure",
+            width=320,
+        )
         api_key_field = ft.TextField(
             label="api_key",
             value=str(settings.get("api_key", "")),
@@ -423,10 +437,20 @@ def main(page: ft.Page):
                     is_error=True,
                 )
                 return
+            
+            parsed_group_compound = parse_bool_text(group_compound_field.value)
+            if parsed_group_compound is None:
+                update_status(
+                    "Error: group_compound_objects must be true/false (or yes/no, 1/0)",
+                    is_error=True,
+                )
+                return
 
             new_settings = {
                 "auto_save_enabled": parsed_auto_save,
                 "auto_save_format": (auto_save_format_field.value or "").strip() or "txt",
+                "group_compound_objects": parsed_group_compound,
+                "csv_structure_file": (csv_structure_field.value or "").strip(),
                 "api_key": (api_key_field.value or "").strip(),
                 "api_secret": (api_secret_field.value or "").strip(),
                 "password": (password_field.value or "").strip(),
@@ -455,6 +479,9 @@ def main(page: ft.Page):
                         ft.Container(height=8),
                         auto_save_field,
                         auto_save_format_field,
+                        group_compound_field,
+                        csv_structure_field,
+                        ft.Container(height=8),
                         ft.Text(
                             "Sensitive fields (encrypted in file):",
                             size=12,
@@ -485,18 +512,124 @@ def main(page: ft.Page):
         page.update()
 
     def on_function_1_list_files(e):
-        """Function 1: List all files in input directory."""
+        """Function 1: Analyze digital assets and generate object IDs."""
         storage.record_function_usage("Function 1")
 
         if not current_directory or not current_directory.exists():
             update_status("Error: Please select an input folder first", is_error=True)
             return
 
-        files = list(current_directory.glob("*"))
-        file_list = [f.name for f in files if f.is_file()]
+        # Load settings to check compound object grouping
+        working_dir = output_dir_field.value
+        group_compound = False
+        if working_dir:
+            settings, _ = load_app_settings(working_dir)
+            group_compound = settings.get("group_compound_objects", False)
 
-        result_text = f"Found {len(file_list)} file(s) in {current_directory.name}:\n\n"
-        result_text += "\n".join(f"• {name}" for name in sorted(file_list)) if file_list else "(No files found)"
+        # Digital asset file extensions
+        asset_extensions = {
+            '.jpg', '.jpeg', '.png', '.gif', '.tif', '.tiff', '.bmp', '.webp',  # Images
+            '.pdf',  # PDFs
+            '.mp4', '.mov', '.avi', '.mkv', '.wmv', '.flv', '.webm',  # Video
+            '.mp3', '.wav', '.flac', '.aac', '.ogg', '.m4a', '.wma',  # Audio
+            '.zip', '.tar', '.gz', '.7z', '.rar', '.bz2',  # Archives
+        }
+
+        # Scan for digital asset files
+        files = []
+        for file_path in current_directory.glob("*"):
+            if file_path.is_file() and file_path.suffix.lower() in asset_extensions:
+                files.append(file_path.name)
+
+        if not files:
+            update_status("No digital asset files found in folder", is_error=True)
+            return
+
+        files.sort()
+
+        # Generate object IDs
+        def derive_objectid(filename: str) -> tuple[str, str]:
+            """Derive a 3-5 character objectid from filename and extract numeric suffix."""
+            import re
+            # Remove extension
+            name_no_ext = Path(filename).stem
+            # Split into base and numeric parts
+            match = re.match(r'^([a-zA-Z_-]+?)(\d+)?$', name_no_ext)
+            if match:
+                base, num = match.groups()
+                # Take first 3-5 chars of base
+                objectid = base[:5] if len(base) >= 5 else base[:3].ljust(3, 'x')
+                return objectid.lower(), num or ""
+            else:
+                # Fallback: take first 3-5 alphanumeric chars
+                clean = re.sub(r'[^a-zA-Z0-9]', '', name_no_ext)
+                objectid = clean[:5] if len(clean) >= 5 else clean[:3].ljust(3, 'x')
+                return objectid.lower(), ""
+
+        # Build object list
+        objects = []
+        if group_compound:
+            # Group files with similar base names
+            from collections import defaultdict
+            groups = defaultdict(list)
+            for filename in files:
+                objectid, num = derive_objectid(filename)
+                groups[objectid].append((filename, num))
+            
+            # Create compound objects
+            for objectid, file_list in sorted(groups.items()):
+                if len(file_list) > 1:
+                    # Multiple files with same base = compound object
+                    for filename, num in sorted(file_list, key=lambda x: x[1]):
+                        full_objectid = f"{objectid}-{num}" if num else objectid
+                        objects.append({
+                            "objectid": full_objectid,
+                            "filename": filename,
+                            "compound": True,
+                            "group": objectid
+                        })
+                else:
+                    # Single file
+                    filename, num = file_list[0]
+                    full_objectid = f"{objectid}-{num}" if num else objectid
+                    objects.append({
+                        "objectid": full_objectid,
+                        "filename": filename,
+                        "compound": False,
+                        "group": None
+                    })
+        else:
+            # No grouping - each file gets unique objectid
+            for filename in files:
+                objectid, num = derive_objectid(filename)
+                full_objectid = f"{objectid}-{num}" if num else objectid
+                objects.append({
+                    "objectid": full_objectid,
+                    "filename": filename,
+                    "compound": False,
+                    "group": None
+                })
+
+        # Build result text
+        result_lines = [f"Found {len(files)} digital asset file(s) in {current_directory.name}"]
+        result_lines.append(f"Compound object grouping: {'ENABLED' if group_compound else 'DISABLED'}")
+        result_lines.append("")
+        
+        if group_compound:
+            # Show grouped
+            current_group = None
+            for obj in objects:
+                if obj['compound'] and obj['group'] != current_group:
+                    current_group = obj['group']
+                    result_lines.append(f"\nCompound Object [{current_group}]:")
+                prefix = "  " if obj['compound'] else ""
+                result_lines.append(f"{prefix}• {obj['objectid']} → {obj['filename']}")
+        else:
+            # Show flat list
+            for obj in objects:
+                result_lines.append(f"• {obj['objectid']} → {obj['filename']}")
+
+        result_text = "\n".join(result_lines)
 
         def close_dialog(e):
             dialog.open = False
@@ -504,11 +637,11 @@ def main(page: ft.Page):
 
         dialog = ft.AlertDialog(
             modal=True,
-            title=ft.Text("Function 1: List Files"),
+            title=ft.Text("Function 1: Analyze Digital Assets", weight=ft.FontWeight.BOLD),
             content=ft.Container(
                 content=ft.Text(result_text, selectable=True),
-                width=600,
-                height=400,
+                width=700,
+                height=500,
             ),
             actions=[ft.TextButton("Close", on_click=close_dialog)],
         )
@@ -517,8 +650,8 @@ def main(page: ft.Page):
         dialog.open = True
         page.update()
 
-        update_status(f"Listed {len(file_list)} file(s)")
-        logger.info(f"Function 1: Listed {len(file_list)} files from {current_directory}")
+        update_status(f"Analyzed {len(files)} file(s), generated {len(objects)} object ID(s)")
+        logger.info(f"Function 1: Analyzed {len(files)} files, generated {len(objects)} object IDs")
 
     def on_function_2_count_files(e):
         """Function 2: Count files by extension."""
@@ -618,10 +751,10 @@ def main(page: ft.Page):
             "help_file": "FUNCTION_0_APP_SETTINGS.md"
         },
         "function_1_list_files": {
-            "label": "1: List Files",
-            "icon": "📁",
+            "label": "1: Analyze Digital Assets & Generate Object IDs",
+            "icon": "🎯",
             "handler": on_function_1_list_files,
-            "help_file": "FUNCTION_1_LIST_FILES.md"
+            "help_file": "FUNCTION_1_ANALYZE_ASSETS.md"
         },
         "function_2_count_files": {
             "label": "2: Count Files by Extension",

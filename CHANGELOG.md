@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.0] - 2026-05-11
+
+### Added
+- **Function 0 Enhancements**: Added two new settings fields
+  - `group_compound_objects`: Boolean to enable grouping of similar filenames as compound objects
+  - `csv_structure_file`: Path to CSV file defining expected column structure for exports
+- **Function 1 Redesign**: Completely redesigned as "Analyze Digital Assets & Generate Object IDs"
+  - Scans folders for digital asset files (images, PDFs, video, audio, archives)
+  - Generates 3-5 character object IDs from filenames
+  - Extracts and appends numeric portions for unique identifiers
+  - Optional compound object grouping based on similar filenames
+  - Supports 20+ file format extensions across multiple media types
+
+### Changed
+- Updated Function 1 icon from 📁 to 🎯 (dart target) to reflect asset analysis focus
+- Function 1 now respects `group_compound_objects` setting from Function 0
+- Enhanced result display with grouped compound objects when enabled
+- Updated all user-facing text to use "folder" instead of "directory"
+
+### Documentation
+- Completely rewrote FUNCTION_1_ANALYZE_ASSETS.md with comprehensive usage guide
+- Updated FUNCTION_0_APP_SETTINGS.md with new settings descriptions
+- Added examples for object ID generation and compound object grouping
+
+---
+
 ## [1.0.0] - 2026-05-04
 
 ### Initial Release
@@ -47,7 +73,8 @@ DART (Digital Asset Routing and Transformation) is a production-ready desktop ap
   - Automatic dropdown population
 
 #### Example Functions
-- **Function 1** 📁: List all files in a folder
+- **Function 0** ⚙️: App Settings with encrypted credentials
+- **Function 1** 🎯: Analyze digital assets and generate object IDs
 - **Function 2** 📊: Count files by extension type with statistics
 - **Function 3** 💻: Display system information
 - Each includes professional help documentation in markdown
@@ -120,7 +147,7 @@ https://github.com/Digital-Grinnell/DART
   - Flet resources and tips
 
 - Function-specific help documentation:
-  - `FUNCTION_1_LIST_FILES.md`
+  - `FUNCTION_1_ANALYZE_ASSETS.md`
   - `FUNCTION_2_COUNT_FILES.md`
   - `FUNCTION_3_SYSTEM_INFO.md`
 
