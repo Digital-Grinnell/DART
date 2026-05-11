@@ -13,6 +13,8 @@ import platform
 import socket
 from datetime import datetime
 from pathlib import Path
+from typing import Optional, Tuple
+from cryptography.fernet import Fernet, InvalidToken
 
 # Configure logging
 DATA_DIR = Path.home() / "DART-data"
@@ -39,6 +41,22 @@ logging.getLogger("flet_desktop").setLevel(logging.WARNING)
 
 # Persistent storage file
 PERSISTENCE_FILE = DATA_DIR / "persistent.json"
+
+# Encryption key file
+ENCRYPTION_KEY_FILE = DATA_DIR / "encryption_key"
+
+# Sensitive fields that should be encrypted in settings
+SENSITIVE_FIELDS = ["api_key", "api_secret", "password"]
+
+# App settings filename and defaults
+APP_SETTINGS_FILENAME = "dart_settings.json"
+DEFAULT_APP_SETTINGS = {
+    "auto_save_enabled": False,
+    "auto_save_format": "txt",
+    "api_key": "",
+    "api_secret": "",
+    "password": "",
+}
 
 
 class PersistentStorage:
@@ -97,6 +115,141 @@ class PersistentStorage:
             self.data["function_usage"][function_name].get("count", 0) + 1
         )
         self.save()
+
+
+def get_or_create_encryption_key() -> bytes:
+    """
+    Get or create the encryption key from ~/.DART-data/encryption_key.
+    Returns the Fernet key as bytes.
+    """
+    if ENCRYPTION_KEY_FILE.exists():
+        try:
+            with open(ENCRYPTION_KEY_FILE, "rb") as f:
+                key = f.read()
+            # Verify it's a valid Fernet key
+            Fernet(key)
+            return key
+        except Exception as e:
+            logger.warning(f"Invalid encryption key file, regenerating: {str(e)}")
+    
+    # Generate a new key
+    key = Fernet.generate_key()
+    try:
+        with open(ENCRYPTION_KEY_FILE, "wb") as f:
+            f.write(key)
+        # Restrict permissions to owner only
+        os.chmod(ENCRYPTION_KEY_FILE, 0o600)
+    except Exception as e:
+        logger.error(f"Could not save encryption key: {str(e)}")
+    
+    return key
+
+
+def encrypt_sensitive_settings(settings: dict) -> dict:
+    """
+    Encrypt sensitive fields in settings dictionary.
+    Returns a new dictionary with encrypted values.
+    """
+    try:
+        key = get_or_create_encryption_key()
+        cipher = Fernet(key)
+        encrypted = dict(settings)
+        
+        for field in SENSITIVE_FIELDS:
+            if field in encrypted and encrypted[field]:
+                plaintext = str(encrypted[field])
+                ciphertext = cipher.encrypt(plaintext.encode()).decode()
+                encrypted[field] = ciphertext
+        
+        return encrypted
+    except Exception as e:
+        logger.error(f"Could not encrypt settings: {str(e)}")
+        return settings
+
+
+def decrypt_sensitive_settings(settings: dict) -> dict:
+    """
+    Decrypt sensitive fields in settings dictionary.
+    Returns a new dictionary with decrypted values.
+    Gracefully handles already-decrypted values and encryption errors.
+    """
+    try:
+        key = get_or_create_encryption_key()
+        cipher = Fernet(key)
+        decrypted = dict(settings)
+        
+        for field in SENSITIVE_FIELDS:
+            if field in decrypted and decrypted[field]:
+                ciphertext = decrypted[field]
+                try:
+                    # Try to decrypt; if it fails, assume it's already plaintext
+                    plaintext = cipher.decrypt(ciphertext.encode()).decode()
+                    decrypted[field] = plaintext
+                except (InvalidToken, ValueError):
+                    # Already plaintext or corrupted; leave as-is
+                    pass
+        
+        return decrypted
+    except Exception as e:
+        logger.error(f"Could not decrypt settings: {str(e)}")
+        return settings
+
+
+def get_app_settings_path(working_dir: str) -> Path:
+    """Return the settings file path for a working directory."""
+    return Path(working_dir) / APP_SETTINGS_FILENAME
+
+
+def ensure_app_settings_file(working_dir: str) -> Path:
+    """Create the app settings file with defaults if it does not exist."""
+    settings_path = get_app_settings_path(working_dir)
+    os.makedirs(settings_path.parent, exist_ok=True)
+    if not settings_path.exists():
+        with open(settings_path, "w", encoding="utf-8") as f:
+            json.dump(DEFAULT_APP_SETTINGS, f, indent=2, ensure_ascii=False)
+    return settings_path
+
+
+def load_app_settings(working_dir: str) -> Tuple[dict, str]:
+    """Load app settings from the working directory settings file."""
+    try:
+        settings_path = ensure_app_settings_file(working_dir)
+        with open(settings_path, "r", encoding="utf-8") as f:
+            loaded = json.load(f)
+        # Decrypt sensitive fields
+        loaded = decrypt_sensitive_settings(loaded)
+        settings = dict(DEFAULT_APP_SETTINGS)
+        settings.update(loaded)
+        return settings, ""
+    except Exception as e:
+        logger.error(f"Could not load app settings: {str(e)}")
+        return dict(DEFAULT_APP_SETTINGS), f"Error loading app settings: {str(e)}"
+
+
+def save_app_settings(working_dir: str, settings: dict) -> Tuple[bool, str]:
+    """Save app settings to the working directory settings file.
+    Sensitive fields are encrypted before saving.
+    """
+    try:
+        settings_path = ensure_app_settings_file(working_dir)
+        # Encrypt sensitive fields before saving
+        settings_to_save = encrypt_sensitive_settings(settings)
+        with open(settings_path, "w", encoding="utf-8") as f:
+            json.dump(settings_to_save, f, indent=2, ensure_ascii=False)
+        return True, str(settings_path)
+    except Exception as e:
+        logger.error(f"Could not save app settings: {str(e)}")
+        return False, f"Error saving app settings: {str(e)}"
+
+
+def parse_bool_text(value: str) -> Optional[bool]:
+    """Parse user-entered boolean text. Returns None if invalid."""
+    lowered = (value or "").strip().lower()
+    if lowered in ["true", "1", "yes", "y", "on"]:
+        return True
+    if lowered in ["false", "0", "no", "n", "off"]:
+        return False
+    return None
 
 
 def load_help_document(filename: str) -> str:
@@ -198,6 +351,138 @@ def main(page: ft.Page):
     page.overlay.extend([input_dir_picker, output_dir_picker, file_picker])
 
     # ------------------------------------------------------------------ function implementations
+
+    def on_function_0_app_settings(e):
+        """Function 0: Open and edit app settings in working directory."""
+        storage.record_function_usage("Function 0")
+
+        working_dir = output_dir_field.value
+        if not working_dir:
+            update_status("Error: Please select a Working/Output Directory first", is_error=True)
+            return
+
+        settings, load_error = load_app_settings(working_dir)
+        if load_error:
+            update_status(load_error, is_error=True)
+            return
+
+        settings_path = get_app_settings_path(working_dir)
+        
+        # Create form fields
+        auto_save_field = ft.TextField(
+            label="auto_save_enabled",
+            value=str(settings.get("auto_save_enabled", False)).lower(),
+            hint_text="true or false",
+            width=320,
+        )
+        auto_save_format_field = ft.TextField(
+            label="auto_save_format",
+            value=str(settings.get("auto_save_format", "txt")).lower(),
+            hint_text="txt, csv, json, etc.",
+            width=320,
+        )
+        api_key_field = ft.TextField(
+            label="api_key",
+            value=str(settings.get("api_key", "")),
+            hint_text="API key (encrypted)",
+            width=320,
+        )
+        api_secret_field = ft.TextField(
+            label="api_secret",
+            value=str(settings.get("api_secret", "")),
+            hint_text="API secret (encrypted)",
+            password=True,
+            can_reveal_password=True,
+            width=320,
+        )
+        password_field = ft.TextField(
+            label="password",
+            value=str(settings.get("password", "")),
+            hint_text="Password (encrypted)",
+            password=True,
+            can_reveal_password=True,
+            width=320,
+        )
+
+        settings_path_text = ft.Text(
+            f"Settings file: {settings_path}",
+            size=12,
+            color=ft.Colors.GREY_700,
+            selectable=True,
+        )
+
+        def close_dialog(evt):
+            settings_dialog.open = False
+            page.update()
+
+        def save_settings_click(evt):
+            parsed_auto_save = parse_bool_text(auto_save_field.value)
+            if parsed_auto_save is None:
+                update_status(
+                    "Error: auto_save_enabled must be true/false (or yes/no, 1/0)",
+                    is_error=True,
+                )
+                return
+
+            new_settings = {
+                "auto_save_enabled": parsed_auto_save,
+                "auto_save_format": (auto_save_format_field.value or "").strip() or "txt",
+                "api_key": (api_key_field.value or "").strip(),
+                "api_secret": (api_secret_field.value or "").strip(),
+                "password": (password_field.value or "").strip(),
+            }
+            ok, save_result = save_app_settings(working_dir, new_settings)
+            if not ok:
+                update_status(save_result, is_error=True)
+                return
+
+            add_log_message(f"Settings saved: {save_result}")
+            update_status("Application settings updated")
+            settings_dialog.open = False
+            page.update()
+
+        settings_dialog = ft.AlertDialog(
+            modal=True,
+            title=ft.Text("Function 0: App Settings", weight=ft.FontWeight.BOLD),
+            content=ft.Container(
+                content=ft.Column(
+                    controls=[
+                        ft.Text(
+                            "Edit app settings and save them to the working directory.",
+                            size=13,
+                        ),
+                        settings_path_text,
+                        ft.Container(height=8),
+                        auto_save_field,
+                        auto_save_format_field,
+                        ft.Text(
+                            "Sensitive fields (encrypted in file):",
+                            size=12,
+                            weight=ft.FontWeight.BOLD,
+                        ),
+                        api_key_field,
+                        ft.Row(
+                            controls=[
+                                api_secret_field,
+                                password_field,
+                            ]
+                        ),
+                    ],
+                    tight=True,
+                    scroll=ft.ScrollMode.AUTO,
+                ),
+                width=700,
+                height=400,
+            ),
+            actions=[
+                ft.TextButton("Save", on_click=save_settings_click),
+                ft.TextButton("Cancel", on_click=close_dialog),
+            ],
+        )
+
+        page.overlay.append(settings_dialog)
+        settings_dialog.open = True
+        page.update()
 
     def on_function_1_list_files(e):
         """Function 1: List all files in input directory."""
@@ -319,12 +604,19 @@ def main(page: ft.Page):
     # ------------------------------------------------------------------ function management
 
     active_functions = [
+        "function_0_app_settings",
         "function_1_list_files",
         "function_2_count_files",
         "function_3_system_info",
     ]
 
     functions = {
+        "function_0_app_settings": {
+            "label": "0: App Settings",
+            "icon": "⚙️",
+            "handler": on_function_0_app_settings,
+            "help_file": "FUNCTION_0_APP_SETTINGS.md"
+        },
         "function_1_list_files": {
             "label": "1: List Files",
             "icon": "📁",
@@ -521,7 +813,7 @@ def main(page: ft.Page):
             controls=[
                 # ---- Title
                 ft.Row([
-                    ft.Icon(ft.Icons.APARTMENT, size=28, color=ft.Colors.BLUE_700),
+                    ft.Text("🎯", size=32),
                     ft.Text(
                         "DART — Digital Asset Routing and Transformation",
                         size=24,
@@ -529,7 +821,7 @@ def main(page: ft.Page):
                     ),
                 ], spacing=10),
                 ft.Text(
-                    "A template application with persistent settings, logging, and function management",
+                    "Process digital assets from directories or CSV manifests to create derivatives and transformations",
                     size=13,
                     color=ft.Colors.GREY_700,
                     italic=True,

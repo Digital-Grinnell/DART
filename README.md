@@ -1,10 +1,20 @@
 # � &nbsp; DART - Digital Asset Routing and Transformation
 
-**DART** (Digital Asset Routing and Transformation) is a production-ready desktop application built with [Flet](https://flet.dev). Based on the proven UI architecture from OHM (Oral History Manager), it provides a professional platform with essential features like persistent settings, logging, function management, and help documentation.
+**DART** (Digital Asset Routing and Transformation) is a professional desktop application built with [Flet](https://flet.dev) for processing digital asset workflows. Select a 'truth' set directory of digital asset files or a CSV file listing assets, then apply powerful functions to create derivatives, modify metadata, and route assets through your transformation pipeline.
+
+## Purpose
+
+DART provides a comprehensive platform for digital asset management workflows:
+- **Select source assets** from a directory (truth set) or CSV manifest
+- **Process and transform** digital assets through multiple workflow phases
+- **Generate derivatives** in various formats and sizes
+- **Modify and update** CSV metadata files
+- **Route assets** to output directories with customizable organization
+- **Track progress** with detailed logging and status reporting
 
 ## Features
 
-### Core Template Features
+### Core Platform Features
 - **Persistent Settings**: Automatic saving/loading of window position, directories, and user preferences
 - **Professional Logging**: Timestamped log files in `~/DART-data/logfiles/` with real-time display
 - **Function Management**: Icon-enhanced dropdown with usage tracking and workflow ordering
@@ -12,14 +22,15 @@
 - **Smart Directory Management**: Collapsible directories section to maximize screen space
 - **File Selection**: Dedicated file picker with persistence (separate from directories)
 - **Status & Log Output**: Professional status display with copy/paste and log management
-- **Proven UI Layout**: Based on OHM's battle-tested interface design
+- **Secure Settings**: Encrypted storage for API keys and credentials
 
-### Example Functions Included
+### Workflow Functions
+- **Function 0** ⚙️: App Settings with encrypted sensitive fields
 - **Function 1** 📁: List all files in a directory
 - **Function 2** 📊: Count files by extension type
 - **Function 3** 💻: Display system information
 
-These examples demonstrate the function pattern and can be replaced with your own functionality.
+*Additional asset processing functions are added as needed for your specific workflow.*
 
 ## Quick Start
 
@@ -57,7 +68,7 @@ No other dependencies required for the base template.
 
 ```
 DART/
-├── app.py                      # Main application (715 lines - streamlined!)
+├── app.py                      # Main application
 ├── run.sh                      # macOS/Linux launcher
 ├── run.bat                     # Windows launcher
 ├── build_dmg.sh               # macOS installer builder
@@ -67,6 +78,7 @@ DART/
 ├── LICENSE                     # MIT License
 ├── CHANGELOG.md               # Version history
 ├── QUICKSTART.md              # Quick reference guide
+├── FUNCTION_0_APP_SETTINGS.md # Help docs for Function 0
 ├── FUNCTION_1_LIST_FILES.md   # Help docs for Function 1
 ├── FUNCTION_2_COUNT_FILES.md  # Help docs for Function 2
 ├── FUNCTION_3_SYSTEM_INFO.md  # Help docs for Function 3
@@ -79,7 +91,8 @@ When you run the application, these are created automatically:
 ~/DART-data/
 ├── logfiles/                   # Application logs
 │   └── dart_YYYYMMDD_HHMMSS.log
-└── persistent.json             # Saved settings and state
+├── persistent.json             # Saved settings and state
+└── encryption_key              # Encryption key for sensitive settings
 ```
 
 ## Customizing DART for Your Application

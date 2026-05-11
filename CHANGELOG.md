@@ -17,7 +17,7 @@ DART (Digital Asset Routing and Transformation) is a production-ready desktop ap
 
 #### UI Architecture (Based on OHM)
 - **Professional Layout** with proven vertical spacing and organization
-- **Apartment Icon** (🏢) in header using Flet Icons
+- **Dart Target Icon** (🎯) in header using Flet Icons
 - **Collapsible Directories Section** to maximize screen space once directories are set
 - **File Selection Section** always visible for quick file changes between operations
 - **Status Output** with copy-to-clipboard button
