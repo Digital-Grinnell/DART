@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# build_windows_zip.sh — Build a Windows distributable ZIP for FLAT.
+# build_windows_zip.sh — Build a Windows distributable ZIP for DART.
 #
 # Usage:
 #   bash build_windows_zip.sh          # version defaults to 1.0
 #   bash build_windows_zip.sh 1.2      # explicit version
 #
-# Output: FLAT_v<version>_Windows.zip in the project root
+# Output: DART_v<version>_Windows.zip in the project root
 #
 # Recipients need: Windows 10/11, Python 3 (from python.org).
 # No code-signing is performed.
@@ -13,8 +13,8 @@
 set -euo pipefail
 
 VERSION="${1:-1.0}"
-APP_NAME="FLAT"
-DISPLAY_NAME="FLAT — Flet Layout Application Template"
+APP_NAME="DART"
+DISPLAY_NAME="DART — Digital Asset Routing and Transformation"
 ZIP_NAME="${APP_NAME}_v${VERSION}_Windows.zip"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ZIP_OUT="$SCRIPT_DIR/$ZIP_NAME"
@@ -64,13 +64,13 @@ echo "   • Python 3:  https://www.python.org/downloads/"
 echo "     ⚠️  During install, check \"Add Python to PATH\""
 echo
 echo " Installation:"
-echo "   1. Extract FLAT_v${VERSION}_Windows.zip to a convenient folder"
+echo "   1. Extract DART_v${VERSION}_Windows.zip to a convenient folder"
 echo "   2. Open the extracted ${APP_NAME}_v${VERSION} folder"
 echo
 echo " First launch:"
 echo "   • Double-click run.bat"
 echo "   • A console window opens and installs dependencies automatically"
 echo "     (first run only — may take a few minutes)"
-echo "   • The FLAT window opens when setup is complete"
-echo "   • Leave the console window open while using FLAT"
+echo "   • The DART window opens when setup is complete"
+echo "   • Leave the console window open while using DART"
 echo "────────────────────────────────────────────────"

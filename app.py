@@ -1,7 +1,7 @@
 """
-FLAT - Flet Layout Application Template
-A template Flet desktop application with persistent settings, logging,
-function management, and help documentation system based on OHM's proven UI.
+DART - Digital Asset Routing and Transformation
+A Flet desktop application for digital asset management with persistent settings,
+logging, function management, and help documentation based on OHM's proven UI.
 """
 
 import flet as ft
@@ -15,9 +15,9 @@ from datetime import datetime
 from pathlib import Path
 
 # Configure logging
-DATA_DIR = Path.home() / "FLAT-data"
+DATA_DIR = Path.home() / "DART-data"
 os.makedirs(DATA_DIR / "logfiles", exist_ok=True)
-log_filename = DATA_DIR / "logfiles" / f"flat_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+log_filename = DATA_DIR / "logfiles" / f"dart_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
 
 file_handler = logging.FileHandler(log_filename)
 file_handler.setLevel(logging.DEBUG)
@@ -113,14 +113,14 @@ def load_help_document(filename: str) -> str:
 
 
 def main(page: ft.Page):
-    page.title = "FLAT - Flet Layout Application Template"
+    page.title = "DART - Digital Asset Routing and Transformation"
     page.padding = 20
     page.window.width = 1050
     page.window.height = 900
     page.scroll = ft.ScrollMode.AUTO
 
     storage = PersistentStorage()
-    logger.info("FLAT application started")
+    logger.info("DART application started")
 
     # ------------------------------------------------------------------ helpers
 
@@ -523,7 +523,7 @@ def main(page: ft.Page):
                 ft.Row([
                     ft.Icon(ft.Icons.APARTMENT, size=28, color=ft.Colors.BLUE_700),
                     ft.Text(
-                        "FLAT — Flet Layout Application Template",
+                        "DART — Digital Asset Routing and Transformation",
                         size=24,
                         weight=ft.FontWeight.BOLD,
                     ),
@@ -707,7 +707,7 @@ def main(page: ft.Page):
     page.update()
 
     logger.info("UI initialised successfully")
-    add_log_message("FLAT application ready. Select a function to begin.")
+    add_log_message("DART application ready. Select a function to begin.")
 
 
 if __name__ == "__main__":

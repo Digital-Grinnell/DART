@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# FLAT - Flet Layout Application Template - Quick Launch Script
+# DART - Digital Asset Routing and Transformation - Quick Launch Script
 # Sets up a Python virtual environment and launches the Flet app.
 
 set -e  # Exit on error
@@ -7,7 +7,7 @@ set -e  # Exit on error
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-echo "=== FLAT — Flet Layout Application Template ==="
+echo "=== DART — Digital Asset Routing and Transformation ==="
 echo
 
 PYTHON_CMD="python3"
@@ -34,6 +34,6 @@ echo "✓ Dependencies installed"
 echo
 
 # Launch the app
-echo "Launching FLAT..."
+echo "Launching DART..."
 echo
 .venv/bin/python app.py

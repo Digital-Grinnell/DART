@@ -1,5 +1,5 @@
 @echo off
-REM FLAT - Flet Layout Application Template - Windows Launch Script
+REM DART - Digital Asset Routing and Transformation - Windows Launch Script
 REM Sets up a Python virtual environment and launches the Flet app.
 REM
 REM Prerequisites (one-time, if not already installed):
@@ -8,7 +8,7 @@ REM   Python 3:  https://www.python.org/downloads/
 setlocal EnableDelayedExpansion
 cd /d "%~dp0"
 
-echo === FLAT - Flet Layout Application Template ===
+echo === DART - Digital Asset Routing and Transformation ===
 echo.
 
 REM Verify Python is available
@@ -53,14 +53,14 @@ echo [OK] Dependencies installed
 echo.
 
 REM Launch the app
-echo Launching FLAT...
+echo Launching DART...
 echo.
 python app.py
 
 REM Keep window open if the app exits with an error
 if errorlevel 1 (
     echo.
-    echo FLAT exited with an error. See messages above.
+    echo DART exited with an error. See messages above.
     pause
 )
 

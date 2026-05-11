@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# build_dmg.sh — Build a macOS distributable DMG for FLAT.
+# build_dmg.sh — Build a macOS distributable DMG for DART.
 #
 # Usage:
 #   bash build_dmg.sh          # version defaults to 1.0
 #   bash build_dmg.sh 1.2      # explicit version
 #
-# Output: FLAT_v<version>.dmg in the project root
+# Output: DART_v<version>.dmg in the project root
 #
 # Recipients need: macOS 12+, Python 3
 # No code-signing is performed; recipients bypass Gatekeeper with right-click → Open.
@@ -13,9 +13,9 @@
 set -euo pipefail
 
 VERSION="${1:-1.0}"
-APP_NAME="FLAT"
-BUNDLE_ID="com.template.flat"
-DISPLAY_NAME="FLAT — Flet Layout Application Template"
+APP_NAME="DART"
+BUNDLE_ID="com.digitalgrinnell.dart"
+DISPLAY_NAME="DART — Digital Asset Routing and Transformation"
 DMG_NAME="${APP_NAME}_v${VERSION}.dmg"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DMG_OUT="$SCRIPT_DIR/$DMG_NAME"
@@ -64,7 +64,7 @@ cat > "$CONTENTS/Info.plist" << PLIST
 </plist>
 PLIST
 
-# ── 2. Launcher script (Contents/MacOS/FLAT) ───────────────────────────────
+# ── 2. Launcher script (Contents/MacOS/DART) ─────────────────────────────────
 # Opens a Terminal window that runs run.sh from inside the bundle.
 # The Terminal window remains visible so users can see setup progress and errors.
 cat > "$MACOS_DIR/$APP_NAME" << 'LAUNCHER'
@@ -120,16 +120,16 @@ echo "   • Python 3:  https://python.org/downloads  (or via Homebrew: brew ins
 echo
 echo " Installation:"
 echo "   1. Open $DMG_NAME"
-echo "   2. Drag FLAT.app to your Applications folder (or any convenient location)"
+echo "   2. Drag DART.app to your Applications folder (or any convenient location)"
 echo "   3. Eject the DMG"
 echo
 echo " First launch (Gatekeeper — unsigned app):"
-echo "   • Right-click FLAT.app → Open → click Open in the dialog"
+echo "   • Right-click DART.app → Open → click Open in the dialog"
 echo "   • Subsequent launches can use a normal double-click"
 echo
 echo " What happens on first launch:"
 echo "   • A Terminal window opens and sets up a Python virtual environment"
 echo "   • Dependencies install automatically (may take a few minutes)"
-echo "   • The FLAT window opens when setup is complete"
+echo "   • The DART window opens when setup is complete"
 echo "   • The Terminal window can be left open or minimised while using the app"
 echo "────────────────────────────────────────────────"

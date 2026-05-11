@@ -26,7 +26,7 @@ The function displays:
 - **Machine**: Hardware architecture (e.g., x86_64, arm64)
 - **Python**: Python interpreter version
 - **User**: Current username
-- **Data Directory**: Location where FLAT stores logs and settings
+- **Data Directory**: Location where DART stores logs and settings
 
 ## Example Output
 ```
@@ -37,7 +37,7 @@ System Information:
 • Machine: arm64
 • Python: 3.11.5
 • User: jsmith
-• Data Directory: /Users/jsmith/FLAT-data
+• Data Directory: /Users/jsmith/DART-data
 ```
 
 ## Notes

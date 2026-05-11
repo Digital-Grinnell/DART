@@ -1,6 +1,6 @@
 # MIT License
 
-Copyright (c) 2026 Digital.Grinnell / FLAT Contributors
+Copyright (c) 2026 Digital.Grinnell / DART Contributors
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -22,15 +22,15 @@ SOFTWARE.
 
 ---
 
-## About This Template
+## About This Application
 
-FLAT (Flet Layout Application Template) is based on the UI architecture developed for OHM (Oral History Manager). The template extracts and generalizes the proven patterns from OHM while removing application-specific functionality.
+DART (Digital Asset Routing and Transformation) is based on the UI architecture developed for OHM (Oral History Manager). The application provides a robust platform for digital asset management workflows.
 
 ### Attribution
 
-While not legally required under the MIT License, we appreciate attribution when you build applications using this template. Consider mentioning:
+While not legally required under the MIT License, we appreciate attribution when you build upon or reference this application. Consider mentioning:
 
-> "Built with FLAT - Flet Layout Application Template"
-> https://github.com/Digital-Grinnell/FLAT
+> "Built with DART - Digital Asset Routing and Transformation"
+> https://github.com/Digital-Grinnell/DART
 
 This helps others discover the template and contributes to the open-source community.

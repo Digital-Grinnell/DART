@@ -1,6 +1,6 @@
-# FLAT Changelog
+# DART Changelog
 
-All notable changes to the FLAT (Flet Layout Application Template) project are documented in this file.
+All notable changes to the DART (Digital Asset Routing and Transformation) project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Initial Release
 
-FLAT is a production-ready template for building desktop applications with Flet. It was created by extracting and generalizing the proven UI framework from OHM (Oral History Manager), resulting in a clean 715-line template that maintains all of OHM's battle-tested features while removing application-specific functionality.
+DART (Digital Asset Routing and Transformation) is a production-ready desktop application built with Flet. It was created by extracting and generalizing the proven UI framework from OHM (Oral History Manager), resulting in a clean, robust platform that maintains all of OHM's battle-tested features while providing flexibility for digital asset management workflows.
 
 ### Features
 
@@ -30,10 +30,10 @@ FLAT is a production-ready template for building desktop applications with Flet.
   - Automatic save/restore of window position
   - Directory and file selections persisted across sessions
   - Function usage tracking with timestamps and counts
-  - Stored in `~/FLAT-data/persistent.json`
+  - Stored in `~/DART-data/persistent.json`
 
 - **Logging System**
-  - Timestamped log files in `~/FLAT-data/logfiles/`
+  - Timestamped log files in `~/DART-data/logfiles/`
   - Real-time log display in UI with prepended entries
   - Separate file and console handlers
   - Configurable log levels
@@ -80,7 +80,7 @@ FLAT is a production-ready template for building desktop applications with Flet.
 - Cross-platform: macOS, Windows, Linux
 
 ### Credits
-FLAT's UI architecture is based on the patterns developed for OHM (Oral History Manager) by Mark McFate for Digital.Grinnell. The template represents the distillation of real-world application development experience into a reusable foundation.
+DART's UI architecture is based on the patterns developed for OHM (Oral History Manager) by Mark McFate for Digital.Grinnell. The application represents the distillation of real-world application development experience into a robust platform for digital asset management.
 
 ---
 
@@ -107,7 +107,7 @@ Contributions are welcome! Please feel free to submit pull requests or open issu
 
 ## Repository
 
-https://github.com/Digital-Grinnell/FLAT
+https://github.com/Digital-Grinnell/DART
 
 ### Documentation
 
@@ -135,17 +135,17 @@ https://github.com/Digital-Grinnell/FLAT
 
 ## Future Development
 
-FLAT is a starting template. When you create your own application from FLAT:
+DART provides a robust platform for digital asset management. When you customize or extend DART:
 
-1. Update the changelog with your app's version history
-2. Replace example functions with your own
-3. Customize the UI to match your needs
-4. Add any additional dependencies required
+1. Update the changelog with your version history
+2. Customize functions for your specific workflows
+3. Adjust the UI to match your requirements
+4. Add any additional dependencies needed
 
 ---
 
 ## Credits
 
-FLAT was derived from the OHM (Oral History Manager) project, which demonstrated effective patterns for Flet desktop applications including persistent settings, logging, function management, and help documentation.
+DART was derived from the OHM (Oral History Manager) project, which demonstrated effective patterns for Flet desktop applications including persistent settings, logging, function management, and help documentation.
 
 Built with [Flet](https://flet.dev) - a Python framework for building desktop applications.

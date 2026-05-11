@@ -1,7 +1,7 @@
 """
-FLAT - Flet Layout Application Template
-A template Flet desktop application with persistent settings, logging,
-function management, and help documentation system.
+DART - Digital Asset Routing and Transformation
+A Flet desktop application for digital asset management with persistent settings,
+logging, function management, and help documentation system.
 """
 
 import flet as ft
@@ -46,9 +46,9 @@ except ImportError:
     PDF_AVAILABLE = False
 
 # Configure logging
-DATA_DIR = Path.home() / "FLAT-data"
+DATA_DIR = Path.home() / "DART-data"
 os.makedirs(DATA_DIR / "logfiles", exist_ok=True)
-log_filename = DATA_DIR / "logfiles" / f"flat_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+log_filename = DATA_DIR / "logfiles" / f"dart_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
 
 file_handler = logging.FileHandler(log_filename)
 file_handler.setLevel(logging.DEBUG)
@@ -218,14 +218,14 @@ def convert_wav_to_mp3(
 
 
 def main(page: ft.Page):
-    page.title = "FLAT - Flet Layout Application Template"
+    page.title = "DART - Digital Asset Routing and Transformation"
     page.padding = 20
     page.window.width = 1050
     page.window.height = 950
     page.scroll = ft.ScrollMode.AUTO
 
     storage = PersistentStorage()
-    logger.info("FLAT application started")
+    logger.info("DART application started")
 
     # ------------------------------------------------------------------ helpers
 
@@ -2992,7 +2992,7 @@ For each audio file:
                 ft.Row([
                     ft.Icon(ft.Icons.APARTMENT, size=28, color=ft.Colors.BLUE_700),
                     ft.Text(
-                        "FLAT — Flet Layout Application Template",
+                        "DART — Digital Asset Routing and Transformation",
                         size=24,
                         weight=ft.FontWeight.BOLD,
                     ),
