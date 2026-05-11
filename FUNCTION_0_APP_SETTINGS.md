@@ -1,7 +1,7 @@
 # Function 0: App Settings
 
 ## Purpose
-Open the application settings file in the selected working/output directory and edit values using popup text input fields.
+Open the application settings file in the selected working/output folder and edit values using popup text input fields.
 
 ## Security Note
 **Sensitive fields are encrypted** (`api_key`, `api_secret`, `password`). You enter and see them as plain text in the editor, but they are automatically encrypted when saved to `dart_settings.json`. This makes it safe to commit your settings file to version control (GitHub, etc.) without exposing credentials.
@@ -16,17 +16,17 @@ The encryption key is stored separately in `~/.DART-data/encryption_key` with re
 - **password**: General password field for application use. **[ENCRYPTED]**
 
 ## Requirements
-- A **Working/Output Directory** must be selected first.
+- A **Working/Output Folder** must be selected first.
 
 ## Usage
-1. Set **Working/Output Directory**.
+1. Set **Working/Output Folder**.
 2. Select **0: App Settings** from the function list.
 3. Edit values in the text input fields.
 4. Click **Save**.
 
 ## Settings File
 - File name: `dart_settings.json`
-- Location: Inside the selected working/output directory
+- Location: Inside the selected working/output folder
 
 ## Accepted Boolean Values
 For `auto_save_enabled`, you can enter:
@@ -36,7 +36,7 @@ For `auto_save_enabled`, you can enter:
 - on/off
 
 ## Notes
-- Settings are specific to each working/output directory
+- Settings are specific to each working/output folder
 - The settings file is created automatically with defaults if it doesn't exist
 - Sensitive fields (marked **[ENCRYPTED]**) are stored encrypted in the JSON file
 - You can customize the sensitive fields list and default settings in `app.py`

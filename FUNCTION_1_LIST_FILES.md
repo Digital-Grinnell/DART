@@ -1,20 +1,20 @@
 # Function 1: List Files
 
 ## Purpose
-List all files in the selected input directory with their names.
+List all files in the selected input folder with their names.
 
 ## When to Use
-Use this function when you want to see what files exist in a directory without opening a file manager.
+Use this function when you want to see what files exist in a folder without opening a file manager.
 
 ## Requirements
-- Input directory must be selected
+- Input folder must be selected
 
 ## Usage
 
-1. Select an input directory using the **Browse...** button
+1. Select an input folder using the **Browse...** button
 2. Select **Function 1: Example Function - List Files** from the dropdown
 3. Click **Execute Function**
-4. A dialog will display all files found in the directory
+4. A dialog will display all files found in the folder
 
 ## Output
 The function displays:

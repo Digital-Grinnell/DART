@@ -8,7 +8,7 @@ Use this function when you want to:
 - Check system configuration
 - Verify Python version
 - Identify the current user and hostname
-- Find the data directory location
+- Find the data folder location
 
 ## Requirements
 - None (this function has no dependencies on directories or files)
@@ -26,7 +26,7 @@ The function displays:
 - **Machine**: Hardware architecture (e.g., x86_64, arm64)
 - **Python**: Python interpreter version
 - **User**: Current username
-- **Data Directory**: Location where DART stores logs and settings
+- **Data Folder**: Location where DART stores logs and settings
 
 ## Example Output
 ```
@@ -37,11 +37,11 @@ System Information:
 • Machine: arm64
 • Python: 3.11.5
 • User: jsmith
-• Data Directory: /Users/jsmith/DART-data
+• Data Folder: /Users/jsmith/DART-data
 ```
 
 ## Notes
 - This function demonstrates gathering system information using Python's standard library
 - No external dependencies required
 - Useful for troubleshooting or support requests
-- Data directory is where logs and persistent.json are stored
+- Data folder is where logs and persistent.json are stored

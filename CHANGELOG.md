@@ -47,7 +47,7 @@ DART (Digital Asset Routing and Transformation) is a production-ready desktop ap
   - Automatic dropdown population
 
 #### Example Functions
-- **Function 1** 📁: List all files in a directory
+- **Function 1** 📁: List all files in a folder
 - **Function 2** 📊: Count files by extension type with statistics
 - **Function 3** 💻: Display system information
 - Each includes professional help documentation in markdown

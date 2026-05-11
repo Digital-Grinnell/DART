@@ -1,11 +1,11 @@
 # � &nbsp; DART - Digital Asset Routing and Transformation
 
-**DART** (Digital Asset Routing and Transformation) is a professional desktop application built with [Flet](https://flet.dev) for processing digital asset workflows. Select a 'truth' set directory of digital asset files or a CSV file listing assets, then apply powerful functions to create derivatives, modify metadata, and route assets through your transformation pipeline.
+**DART** (Digital Asset Routing and Transformation) is a professional desktop application built with [Flet](https://flet.dev) for processing digital asset workflows. Select a 'truth' set folder of digital asset files or a CSV file listing assets, then apply powerful functions to create derivatives, modify metadata, and route assets through your transformation pipeline.
 
 ## Purpose
 
 DART provides a comprehensive platform for digital asset management workflows:
-- **Select source assets** from a directory (truth set) or CSV manifest
+- **Select source assets** from a folder (truth set) or CSV manifest
 - **Process and transform** digital assets through multiple workflow phases
 - **Generate derivatives** in various formats and sizes
 - **Modify and update** CSV metadata files
@@ -19,14 +19,14 @@ DART provides a comprehensive platform for digital asset management workflows:
 - **Professional Logging**: Timestamped log files in `~/DART-data/logfiles/` with real-time display
 - **Function Management**: Icon-enhanced dropdown with usage tracking and workflow ordering
 - **Help Mode**: Built-in markdown help viewer for each function with copy-to-clipboard
-- **Smart Directory Management**: Collapsible directories section to maximize screen space
+- **Smart Folder Management**: Collapsible folders section to maximize screen space
 - **File Selection**: Dedicated file picker with persistence (separate from directories)
 - **Status & Log Output**: Professional status display with copy/paste and log management
 - **Secure Settings**: Encrypted storage for API keys and credentials
 
 ### Workflow Functions
 - **Function 0** ⚙️: App Settings with encrypted sensitive fields
-- **Function 1** 📁: List all files in a directory
+- **Function 1** 📁: List all files in a folder
 - **Function 2** 📊: Count files by extension type
 - **Function 3** 💻: Display system information
 
@@ -119,7 +119,7 @@ def on_function_4_your_feature(e):
     
     # Access current directory if needed
     if not current_directory or not current_directory.exists():
-        update_status("Error: Please select an input directory first", is_error=True)
+        update_status("Error: Please select an input folder first", is_error=True)
         return
     
     # Your implementation here

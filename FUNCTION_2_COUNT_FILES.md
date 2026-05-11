@@ -1,20 +1,20 @@
 # Function 2: Count Files by Extension
 
 ## Purpose
-Analyze the input directory and count files grouped by their file extension.
+Analyze the input folder and count files grouped by their file extension.
 
 ## When to Use
 Use this function when you want to:
-- Get an overview of file types in a directory
+- Get an overview of file types in a folder
 - Identify the most common file types
 - Verify file organization
 
 ## Requirements
-- Input directory must be selected
+- Input folder must be selected
 
 ## Usage
 
-1. Select an input directory using the **Browse...** button
+1. Select an input folder using the **Browse...** button
 2. Select **Function 2: Example Function - Count Files** from the dropdown
 3. Click **Execute Function**
 4. A dialog will display file counts organized by extension

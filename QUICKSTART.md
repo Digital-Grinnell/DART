@@ -45,7 +45,7 @@ This will:
 ### 1. Test the Example Functions
 
 The app includes three example functions:
-- **Function 1**: Lists files in a directory
+- **Function 1**: Lists files in a folder
 - **Function 2**: Counts files by extension
 - **Function 3**: Shows system information
 

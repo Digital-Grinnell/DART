@@ -326,14 +326,14 @@ def main(page: ft.Page):
             current_directory = Path(e.path)
             input_dir_field.value = str(current_directory)
             storage.set_ui_state("last_input_dir", str(current_directory))
-            update_status(f"Input directory set: {current_directory.name}")
+            update_status(f"Input folder set: {current_directory.name}")
             page.update()
 
     def on_output_dir_result(e: ft.FilePickerResultEvent):
         if e.path:
             output_dir_field.value = e.path
             storage.set_ui_state("last_output_dir", e.path)
-            update_status(f"Output directory set: {Path(e.path).name}")
+            update_status(f"Output folder set: {Path(e.path).name}")
             page.update()
 
     def on_file_result(e: ft.FilePickerResultEvent):
@@ -358,7 +358,7 @@ def main(page: ft.Page):
 
         working_dir = output_dir_field.value
         if not working_dir:
-            update_status("Error: Please select a Working/Output Directory first", is_error=True)
+            update_status("Error: Please select a Working/Output Folder first", is_error=True)
             return
 
         settings, load_error = load_app_settings(working_dir)
@@ -448,7 +448,7 @@ def main(page: ft.Page):
                 content=ft.Column(
                     controls=[
                         ft.Text(
-                            "Edit app settings and save them to the working directory.",
+                            "Edit app settings and save them to the working folder.",
                             size=13,
                         ),
                         settings_path_text,
@@ -489,7 +489,7 @@ def main(page: ft.Page):
         storage.record_function_usage("Function 1")
 
         if not current_directory or not current_directory.exists():
-            update_status("Error: Please select an input directory first", is_error=True)
+            update_status("Error: Please select an input folder first", is_error=True)
             return
 
         files = list(current_directory.glob("*"))
@@ -525,7 +525,7 @@ def main(page: ft.Page):
         storage.record_function_usage("Function 2")
 
         if not current_directory or not current_directory.exists():
-            update_status("Error: Please select an input directory first", is_error=True)
+            update_status("Error: Please select an input folder first", is_error=True)
             return
 
         ext_counts = {}
@@ -574,7 +574,7 @@ def main(page: ft.Page):
             f"Machine: {platform.machine()}",
             f"Python: {platform.python_version()}",
             f"User: {getpass.getuser()}",
-            f"Data Directory: {DATA_DIR}",
+            f"Data Folder: {DATA_DIR}",
         ]
 
         result_text = "System Information:\n\n" + "\n".join(f"• {line}" for line in info_lines)
@@ -724,14 +724,14 @@ def main(page: ft.Page):
     # ------------------------------------------------------------------ UI fields
 
     input_dir_field = ft.TextField(
-        label="Input Directory",
+        label="Input Folder",
         value=storage.get_ui_state("last_input_dir"),
         read_only=True,
         expand=True,
     )
 
     output_dir_field = ft.TextField(
-        label="Working/Output Directory",
+        label="Working/Output Folder",
         value=storage.get_ui_state("last_output_dir"),
         read_only=True,
         expand=True,
@@ -771,7 +771,7 @@ def main(page: ft.Page):
 
     dirs_toggle_button = ft.IconButton(
         icon=ft.Icons.EXPAND_LESS,
-        tooltip="Collapse/Expand directories section",
+        tooltip="Collapse/Expand folders section",
         on_click=toggle_dirs,
     )
 
@@ -784,7 +784,7 @@ def main(page: ft.Page):
                         "Browse...",
                         icon=ft.Icons.FOLDER_OPEN,
                         on_click=lambda _: input_dir_picker.get_directory_path(
-                            dialog_title="Select Input Directory"
+                            dialog_title="Select Input Folder"
                         ),
                     ),
                 ],
@@ -797,7 +797,7 @@ def main(page: ft.Page):
                         "Browse...",
                         icon=ft.Icons.FOLDER_OPEN,
                         on_click=lambda _: output_dir_picker.get_directory_path(
-                            dialog_title="Select Working/Output Directory"
+                            dialog_title="Select Working/Output Folder"
                         ),
                     ),
                 ],
@@ -821,21 +821,21 @@ def main(page: ft.Page):
                     ),
                 ], spacing=10),
                 ft.Text(
-                    "Process digital assets from directories or CSV manifests to create derivatives and transformations",
+                    "Process digital assets from folders or CSV manifests to create derivatives and transformations",
                     size=13,
                     color=ft.Colors.GREY_700,
                     italic=True,
                 ),
                 ft.Divider(height=5),
 
-                # ---- Directories section (collapsible)
+                # ---- Folders section (collapsible)
                 ft.Container(
                     content=ft.Column(
                         controls=[
                             ft.Row(
                                 controls=[
                                     ft.Text(
-                                        "Directories",
+                                        "Folders",
                                         size=18,
                                         weight=ft.FontWeight.BOLD,
                                     ),
