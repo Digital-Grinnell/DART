@@ -19,8 +19,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Smart display: Shows single file path or count with first 3 filenames
   - Storage: Maintains both `last_file` (single) and `last_files` (comma-separated) for compatibility
   - Helper function: `get_selected_files()` returns list of all selected files as Path objects
+- **Debug Logging for Function 1**: Comprehensive debug output tracking inputs, processing, and outputs
+  - Logs input folder, settings, file scanning, object ID derivation, grouping logic, and final results
+  - All debug messages prefixed with `[DEBUG]` for easy identification
 
 ### Changed
+- **Log File Location**: Moved from `~/DART-data/logfiles/` to `./logfiles/` (project directory)
+  - Easier access for debugging and testing
+  - Keeps logs with the project for better organization
+  - Already excluded in `.gitignore`
 - **Folder Naming Consistency**: Updated all references to use plural forms
   - "Input Folder" → "Inputs Folder"
   - "Output Folder" → "Outputs Folder"
@@ -41,6 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated FUNCTION_1_ANALYZE_ASSETS.md with plural terminology
 - Updated FUNCTION_2_COUNT_FILES.md with plural terminology
 - Enhanced notes section explaining file picker behavior based on settings
+- Updated README.md with new log file location (`./logfiles/`)
 
 ---
 

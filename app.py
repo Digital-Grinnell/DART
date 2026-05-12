@@ -18,8 +18,9 @@ from cryptography.fernet import Fernet, InvalidToken
 
 # Configure logging
 DATA_DIR = Path.home() / "DART-data"
-os.makedirs(DATA_DIR / "logfiles", exist_ok=True)
-log_filename = DATA_DIR / "logfiles" / f"dart_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+LOG_DIR = Path.cwd() / "logfiles"
+os.makedirs(LOG_DIR, exist_ok=True)
+log_filename = LOG_DIR / f"dart_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
 
 file_handler = logging.FileHandler(log_filename)
 file_handler.setLevel(logging.DEBUG)
@@ -582,12 +583,21 @@ def main(page: ft.Page):
             update_status("Error: Please select an inputs folder first", is_error=True)
             return
 
+        # DEBUG: Log input folder
+        add_log_message(f"[DEBUG] Function 1 - Inputs Folder: {current_directory}")
+        logger.info(f"[DEBUG] Function 1 processing folder: {current_directory}")
+
         # Load settings to check compound object grouping
         working_dir = output_dir_field.value
         group_compound = False
         if working_dir:
             settings, _ = load_app_settings(working_dir)
             group_compound = settings.get("group_compound_objects", False)
+        
+        # DEBUG: Log settings
+        add_log_message(f"[DEBUG] Working/Outputs Folder: {working_dir or 'Not set'}")
+        add_log_message(f"[DEBUG] Compound grouping: {group_compound}")
+        logger.info(f"[DEBUG] Working folder: {working_dir}, Compound grouping: {group_compound}")
 
         # Digital asset file extensions
         asset_extensions = {
@@ -604,8 +614,13 @@ def main(page: ft.Page):
             if file_path.is_file() and file_path.suffix.lower() in asset_extensions:
                 files.append(file_path.name)
 
+        # DEBUG: Log files found
+        add_log_message(f"[DEBUG] Found {len(files)} asset files matching extensions")
+        logger.info(f"[DEBUG] Files found: {files}")
+        
         if not files:
             update_status("No digital asset files found in folder", is_error=True)
+            add_log_message("[DEBUG] No files found - exiting Function 1")
             return
 
         files.sort()
@@ -616,20 +631,29 @@ def main(page: ft.Page):
             import re
             # Remove extension
             name_no_ext = Path(filename).stem
+            
+            # DEBUG: Log processing
+            logger.info(f"[DEBUG] Processing '{filename}' -> stem: '{name_no_ext}'")
+            
             # Split into base and numeric parts
             match = re.match(r'^([a-zA-Z_-]+?)(\d+)?$', name_no_ext)
             if match:
                 base, num = match.groups()
                 # Take first 3-5 chars of base
                 objectid = base[:5] if len(base) >= 5 else base[:3].ljust(3, 'x')
-                return objectid.lower(), num or ""
+                result = (objectid.lower(), num or "")
+                logger.info(f"[DEBUG]   Regex match: base='{base}', num='{num}' -> objectid='{result[0]}', num='{result[1]}'")
+                return result
             else:
                 # Fallback: take first 3-5 alphanumeric chars
                 clean = re.sub(r'[^a-zA-Z0-9]', '', name_no_ext)
                 objectid = clean[:5] if len(clean) >= 5 else clean[:3].ljust(3, 'x')
-                return objectid.lower(), ""
+                result = (objectid.lower(), "")
+                logger.info(f"[DEBUG]   No regex match, fallback: clean='{clean}' -> objectid='{result[0]}'")
+                return result
 
         # Build object list
+        add_log_message(f"[DEBUG] Building objects list (grouping={'ON' if group_compound else 'OFF'})")
         objects = []
         if group_compound:
             # Group files with similar base names
@@ -639,10 +663,15 @@ def main(page: ft.Page):
                 objectid, num = derive_objectid(filename)
                 groups[objectid].append((filename, num))
             
+            # DEBUG: Log groups
+            logger.info(f"[DEBUG] Created {len(groups)} groups: {dict(groups)}")
+            add_log_message(f"[DEBUG] Created {len(groups)} object groups")
+            
             # Create compound objects
             for objectid, file_list in sorted(groups.items()):
                 if len(file_list) > 1:
                     # Multiple files with same base = compound object
+                    logger.info(f"[DEBUG] Group '{objectid}' has {len(file_list)} files - marking as compound")
                     for filename, num in sorted(file_list, key=lambda x: x[1]):
                         full_objectid = f"{objectid}-{num}" if num else objectid
                         objects.append({
@@ -651,6 +680,7 @@ def main(page: ft.Page):
                             "compound": True,
                             "group": objectid
                         })
+                        logger.info(f"[DEBUG]   Added: {full_objectid} → {filename} (compound)")
                 else:
                     # Single file
                     filename, num = file_list[0]
@@ -661,8 +691,10 @@ def main(page: ft.Page):
                         "compound": False,
                         "group": None
                     })
+                    logger.info(f"[DEBUG]   Added: {full_objectid} → {filename} (single)")
         else:
             # No grouping - each file gets unique objectid
+            logger.info("[DEBUG] No grouping - creating flat list")
             for filename in files:
                 objectid, num = derive_objectid(filename)
                 full_objectid = f"{objectid}-{num}" if num else objectid
@@ -672,8 +704,12 @@ def main(page: ft.Page):
                     "compound": False,
                     "group": None
                 })
+                logger.info(f"[DEBUG] Added: {full_objectid} → {filename}")
 
         # Build result text
+        add_log_message(f"[DEBUG] Generated {len(objects)} total objects from {len(files)} files")
+        logger.info(f"[DEBUG] Final objects list: {objects}")
+        
         result_lines = [f"Found {len(files)} digital asset file(s) in {current_directory.name}"]
         result_lines.append(f"Compound object grouping: {'ENABLED' if group_compound else 'DISABLED'}")
         result_lines.append("")

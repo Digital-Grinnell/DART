@@ -16,7 +16,7 @@ DART provides a comprehensive platform for digital asset management workflows:
 
 ### Core Platform Features
 - **Persistent Settings**: Automatic saving/loading of window position, directories, and user preferences
-- **Professional Logging**: Timestamped log files in `~/DART-data/logfiles/` with real-time display
+- **Professional Logging**: Timestamped log files in `./logfiles/` (project directory) with real-time display
 - **Function Management**: Icon-enhanced dropdown with usage tracking and workflow ordering
 - **Help Mode**: Built-in markdown help viewer for each function with copy-to-clipboard
 - **Smart Folder Management**: Collapsible folders section to maximize screen space
@@ -89,10 +89,11 @@ DART/
 When you run the application, these are created automatically:
 ```
 ~/DART-data/
-├── logfiles/                   # Application logs
-│   └── dart_YYYYMMDD_HHMMSS.log
 ├── persistent.json             # Saved settings and state
 └── encryption_key              # Encryption key for sensitive settings
+
+./logfiles/                     # Application logs (in project directory)
+└── dart_YYYYMMDD_HHMMSS.log
 ```
 
 ## Customizing DART for Your Application
@@ -284,8 +285,10 @@ Recipients need Python 3 installed (one-time setup).
 
 All application activity is logged to:
 ```
-~/DART-data/logfiles/dart_YYYYMMDD_HHMMSS.log
+./logfiles/dart_YYYYMMDD_HHMMSS.log
 ```
+
+Log files are stored in the project directory for easy access and debugging.
 
 Use the logger in your functions:
 ```python
@@ -327,7 +330,7 @@ The virtual environment and dependencies are cached, so subsequent runs are fast
 
 ### Debugging
 
-- Check log files in `~/DART-data/logfiles/` for errors
+- Check log files in `./logfiles/` for errors
 - Console shows error-level messages immediately
 - Use `logger.debug()` for detailed troubleshooting
 
