@@ -70,12 +70,19 @@ Version 1.2.0 represents a major architectural upgrade focused on adopting Digit
 - **Function 1 Uniqueness Validation**: Automatic detection and reporting of duplicate identifiers
   - Validates all generated identifiers are unique
   - Shows detailed error dialog if duplicates detected (extremely rare with epoch-based IDs)
+- **Function 1 Enhanced Pattern Matching**: Third pass algorithm improved with trailing separator normalization
+  - Automatically strips trailing spaces, underscores, and hyphens from extracted base names
+  - Handles double spaces and inconsistent trailing separators
+  - Example: "Traditions and Encounters - " and "Traditions and Encounters" now normalize to same base
+  - Ensures more reliable grouping for files with spacing variations
 
 ### Changed
-- **Log File Location**: Moved from `~/DART-data/logfiles/` to `./logfiles/` (project directory)
-  - Easier access for debugging and testing
-  - Keeps logs with the project for better organization
-  - Already excluded in `.gitignore`
+- **Log File Location**: Dynamically created in `{working_folder}/logfiles/`
+  - Logs are now stored in the working/outputs folder for better organization
+  - Creates `logfiles` subdirectory within your working folder
+  - Initial startup uses `~/DART-data/logfiles/` until working folder is set
+  - Automatically switches to working folder logs when folder is selected
+  - Keeps logs with the project data they relate to
 - **Folder Naming Consistency**: Updated all references to use plural forms
   - "Input Folder" → "Inputs Folder"
   - "Output Folder" → "Outputs Folder"
@@ -136,15 +143,20 @@ Version 1.2.0 represents a major architectural upgrade focused on adopting Digit
   - More logical than file-based tracking (compound has no single file)
   - Folder path provides stable, persistent reference point
   - Same folder + text base = same compound ID across runs
-- **Intelligent Pattern Analysis**: Two-pass grouping algorithm finds what filenames have in common
+- **Intelligent Pattern Analysis**: Three-pass grouping algorithm finds what filenames have in common
   - **Pass 1**: Extract prefixes from numbered files: `re.match(r'^(.+?)[\s_\-]*(\d+)$', stem)`
     - Handles leading numbers: "100 Nights-1" → prefix "100 nights", seq 1
-  - **Pass 2**: Match unnumbered files against known prefixes
+  - **Pass 2**: Match unnumbered files against known numbered prefixes
     - Checks if unnumbered filename starts with any numbered prefix
     - Uses longest matching prefix (most specific)
     - Validates separator after prefix (space, underscore, hyphen)
     - "Wit Poster" starts with "wit" → matched
     - "AnnaChristie-F14-Program" starts with "annachristie-f14" → matched
+  - **Pass 3**: Find common patterns among remaining unnumbered files
+    - Extracts common base by removing last word after separator: `re.match(r'^(.+?)[\s_\-]+\w+$', stem)`
+    - Groups files sharing the same base (2+ files, 3+ char base)
+    - "Traditions and Encounters - Poster" → base "traditions and encounters"
+    - "Traditions and Encounters_Program" → base "traditions and encounters" → grouped!
   - Weighted matching: requires 3+ character prefix for grouping
   - Case-insensitive comparison
   - No hardcoded suffix list - adapts to actual file patterns

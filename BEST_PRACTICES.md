@@ -14,7 +14,7 @@ This guide helps you get the best results from DART's intelligent compound objec
 
 ## How Compound Grouping Works
 
-DART's compound grouping uses a **two-pass intelligent algorithm**:
+DART's compound grouping uses a **three-pass intelligent algorithm**:
 
 ### Pass 1: Learn Patterns from Numbered Files
 The app first looks for files with trailing sequence numbers and extracts their base prefix:
@@ -22,20 +22,22 @@ The app first looks for files with trailing sequence numbers and extracts their 
 - `100 Nights-15.jpg` → learns prefix **"100 nights"**
 - `AnnaChristie-F14-23.pdf` → learns prefix **"annachristie-f14"**
 
-### Pass 2: Match Related Files
+### Pass 2: Match Related Files Against Numbered Prefixes
 For files without trailing numbers, the app checks if they **start with** any known prefix:
 - `Wit Poster.jpg` starts with "wit" → **matched!**
 - `100 Nights - Cover.pdf` starts with "100 nights" → **matched!**
 - `AnnaChristie-F14-Program.pdf` starts with "annachristie-f14" → **matched!**
 
+### Pass 3: Find Common Patterns Among Remaining Files
+For files that didn't match any numbered prefix, the app looks for common base patterns:
+- `Traditions and Encounters - Poster.pdf` → extracts base **"traditions and encounters"**
+- `Traditions and Encounters_Program.pdf` → extracts base **"traditions and encounters"**
+- Both share the same base (3+ chars) → **grouped together!**
+
+This works by removing the last word after a separator (space, underscore, hyphen) and checking if other files share that base.
+
 ### Key Insight
-**The app groups files based on what they have in common, not by removing specific suffixes.**
-
-If you have files like:
-- `Traditions and Encounters Poster.pdf`
-- `Traditions and Encounters Program.pdf`
-
-They become **standalone objects** because there are no numbered files to establish the "traditions and encounters" prefix pattern.
+**The app now groups files based on what they have in common, even without numbered files!**
 
 ---
 
@@ -157,34 +159,25 @@ Wit Program.pdf
 
 **Your Files:**
 ```
-Traditions and Encounters Poster.pdf
-Traditions and Encounters Program.pdf
-```
-
-**Result:** ⚠️ Two standalone objects
-- No numbered files to establish the base prefix
-- Files differ in their full text ("...poster" vs "...program")
-- Algorithm doesn't know they're related
-
-**Solution Options:**
-
-**Option A: Add a numbered file**
-```
-Traditions and Encounters 01.pdf  ← Establishes base prefix
-Traditions and Encounters Poster.pdf
-Traditions and Encounters Program.pdf
-```
-Result: ✅ All three grouped in compound
-
-**Option B: Use clearer separators**
-```
 Traditions and Encounters - Poster.pdf
-Traditions and Encounters - Program.pdf
+Traditions and Encounters_Program.pdf
 ```
-Still won't group without a numbered file, but clearer structure for future additions.
 
-**Option C: Accept as separate**
-If these truly are standalone promotional materials, it may be appropriate for them to be separate objects.
+**Result:** ✅ Grouped in one compound!
+- Pass 3 extracts common base "traditions and encounters" from both files
+- Both files grouped together even without numbered files
+- Requires: separator before last word (space, underscore, or hyphen)
+- Algorithm automatically normalizes trailing separators and extra spaces
+
+**Previous Behavior:** These would have been standalone objects.
+
+**Even Better with a numbered file:**
+```
+Traditions and Encounters 01.pdf  ← Establishes base prefix in Pass 1
+Traditions and Encounters - Poster.pdf
+Traditions and Encounters_Program.pdf
+```
+Result: ✅ All three grouped (Pass 1 establishes pattern)
 
 ---
 
@@ -259,6 +252,8 @@ exhibit_2013_poster.jpg
 2. ✅ Do all related files start with the exact same text (case-insensitive)?
 3. ✅ Is the common prefix at least 3 characters long?
 4. ✅ Are separators consistent across all files?
+
+**Note:** DART automatically handles trailing separators and double spaces, so "Project -  Poster" and "Project_Program" will correctly group together.
 
 **Solutions:**
 - Add a numbered file (even just `ProjectName 01.pdf`)

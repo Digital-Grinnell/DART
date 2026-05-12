@@ -22,9 +22,13 @@ from common_dg_utilities.dg_utils import generate_unique_id
 
 # Configure logging
 DATA_DIR = Path.home() / "DART-data"
-LOG_DIR = Path.cwd() / "logfiles"
-os.makedirs(LOG_DIR, exist_ok=True)
-log_filename = LOG_DIR / f"dart_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+# LOG_DIR will be set dynamically based on working directory
+# For now, use a temporary location until working dir is known
+TEMP_LOG_DIR = DATA_DIR / "logfiles"
+os.makedirs(TEMP_LOG_DIR, exist_ok=True)
+
+# Create initial logger that will be reconfigured when working dir is known
+log_filename = TEMP_LOG_DIR / f"dart_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
 
 file_handler = logging.FileHandler(log_filename)
 file_handler.setLevel(logging.DEBUG)
@@ -43,6 +47,35 @@ logger = logging.getLogger(__name__)
 logging.getLogger("flet").setLevel(logging.WARNING)
 logging.getLogger("flet_core").setLevel(logging.WARNING)
 logging.getLogger("flet_desktop").setLevel(logging.WARNING)
+
+def setup_working_dir_logging(working_dir: str):
+    """Reconfigure logging to use the working directory for log files."""
+    global file_handler, log_filename
+    
+    if not working_dir:
+        return
+    
+    log_dir = Path(working_dir) / "logfiles"
+    os.makedirs(log_dir, exist_ok=True)
+    
+    new_log_filename = log_dir / f"dart_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+    
+    # Close old handler
+    file_handler.close()
+    logger.removeHandler(file_handler)
+    
+    # Create new handler for working directory
+    new_file_handler = logging.FileHandler(new_log_filename)
+    new_file_handler.setLevel(logging.DEBUG)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    new_file_handler.setFormatter(formatter)
+    
+    logger.addHandler(new_file_handler)
+    file_handler = new_file_handler
+    log_filename = new_log_filename
+    
+    logger.info(f"Logging reconfigured to use working directory: {log_dir}")
+    return str(new_log_filename)
 
 # Persistent storage file
 PERSISTENCE_FILE = DATA_DIR / "persistent.json"
@@ -284,6 +317,11 @@ def main(page: ft.Page):
 
     storage = PersistentStorage()
     logger.info("DART application started")
+    
+    # Setup logging in working directory if it exists
+    working_dir = storage.get_ui_state("last_output_dir")
+    if working_dir:
+        setup_working_dir_logging(working_dir)
 
     # ------------------------------------------------------------------ helpers
 
@@ -344,6 +382,10 @@ def main(page: ft.Page):
             output_dir_field.value = e.path
             storage.set_ui_state("last_output_dir", e.path)
             update_status(f"Outputs folder set: {Path(e.path).name}")
+            
+            # Reconfigure logging to use the working directory
+            setup_working_dir_logging(e.path)
+            
             page.update()
 
     def on_file_result(e: ft.FilePickerResultEvent):
@@ -749,9 +791,60 @@ def main(page: ft.Page):
                         pf['prefix'] = best_match
                         logger.info(f"[PREFIX MATCH] '{pf['filename']}' matched prefix '{best_match}' (common with numbered files)")
                     else:
-                        # No match - use full stem as its own prefix
+                        # No match - use full stem as its own prefix (may be refined in pass 3)
                         pf['prefix'] = stem_lower
                         logger.info(f"[PREFIX MATCH] '{pf['filename']}' → no match, using full stem: '{stem_lower}'")
+            
+            # THIRD PASS: Find common prefixes among remaining unnumbered files
+            # Collect files that didn't match any numbered prefix
+            unmatched = [pf for pf in parsed_files if pf['number'] is None and pf['prefix'] not in numbered_prefixes]
+            
+            logger.info(f"[THIRD PASS] Total parsed files: {len(parsed_files)}")
+            logger.info(f"[THIRD PASS] Unnumbered files: {len([pf for pf in parsed_files if pf['number'] is None])}")
+            logger.info(f"[THIRD PASS] Numbered prefixes known: {sorted(numbered_prefixes)}")
+            logger.info(f"[THIRD PASS] Unmatched files (for Pass 3): {len(unmatched)}")
+            add_log_message(f"[THIRD PASS] Checking {len(unmatched)} unmatched unnumbered files for common patterns")
+            
+            if len(unmatched) >= 2:
+                logger.info(f"[COMMON PREFIX SEARCH] Analyzing {len(unmatched)} unmatched files for common patterns")
+                add_log_message(f"[COMMON PREFIX SEARCH] Analyzing {len(unmatched)} unmatched files")
+                
+                # List all unmatched files for debugging
+                for pf in unmatched:
+                    logger.info(f"[COMMON PREFIX SEARCH] Unmatched file: '{pf['filename']}' with prefix: '{pf['prefix']}'")
+                
+                # Build a map of potential base prefixes
+                potential_bases = {}
+                for pf in unmatched:
+                    stem = pf['prefix']
+                    # Try to extract base by removing last word after separator
+                    # Use GREEDY match (.+) to get everything up to LAST separator+word
+                    # "traditions and encounters poster" → "traditions and encounters"
+                    # "traditions and encounters program" → "traditions and encounters"
+                    match = re.match(r'^(.+)[\s_\-]+\w+$', stem)
+                    if match:
+                        # Strip whitespace AND trailing separators to normalize
+                        potential_base = match.group(1).strip().rstrip(' _-')
+                        logger.info(f"[COMMON PREFIX] '{pf['filename']}' (stem: '{stem}') → potential base: '{potential_base}'")
+                        if len(potential_base) >= 3:
+                            if potential_base not in potential_bases:
+                                potential_bases[potential_base] = []
+                            potential_bases[potential_base].append(pf)
+                    else:
+                        logger.info(f"[COMMON PREFIX] '{pf['filename']}' (stem: '{stem}') → NO MATCH for base extraction regex")
+                
+                logger.info(f"[COMMON PREFIX] Found {len(potential_bases)} potential base(s): {list(potential_bases.keys())}")
+                
+                # Apply common base to files that share it (2+ files with same base)
+                for base, files in potential_bases.items():
+                    if len(files) >= 2:
+                        msg = f"[COMMON PREFIX] Found {len(files)} files sharing base: '{base}'"
+                        logger.info(msg)
+                        add_log_message(msg)
+                        for pf in files:
+                            old_prefix = pf['prefix']
+                            pf['prefix'] = base
+                            logger.info(f"[COMMON PREFIX] '{pf['filename']}' → prefix changed from '{old_prefix}' to '{base}'")
             
             # Group by prefix (must be 3+ characters for grouping)
             prefix_groups = {}

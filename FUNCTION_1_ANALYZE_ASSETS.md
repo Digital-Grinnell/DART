@@ -54,7 +54,7 @@ A **compound object** is a logical grouping of related digital assets. The compo
 ### How Grouping Works
 When `group_compound_objects` is enabled in Function 0:
 
-1. **Intelligent Pattern Analysis**: Files are analyzed in two passes to find common patterns:
+1. **Intelligent Pattern Analysis**: Files are analyzed in three passes to find common patterns:
    
    **First Pass - Extract Base Patterns:**
    - Files with trailing numbers: extract everything before last number as prefix
@@ -62,12 +62,19 @@ When `group_compound_objects` is enabled in Function 0:
    - `Wit 042.JPG` → prefix: "wit", sequence: 42
    - `AnnaChristie-F14-23.pdf` → prefix: "annachristie-f14", sequence: 23
    
-   **Second Pass - Match Unnumbered Files:**
-   - For files without trailing numbers, check if they start with any known prefix
+   **Second Pass - Match Against Numbered Files:**
+   - For files without trailing numbers, check if they start with any known prefix from Pass 1
    - Uses longest matching prefix (most specific match)
    - `Wit Poster.jpg` starts with "wit" → uses prefix "wit"
    - `AnnaChristie-F14-Poster.pdf` starts with "annachristie-f14" → uses that prefix
-   - `Traditions and Encounters Program.pdf` → no numbered files, uses full stem
+   
+   **Third Pass - Find Common Patterns Among Remaining Files:**
+   - For unnumbered files that didn't match any numbered prefix
+   - Extracts common base by removing last word after separator
+   - `Traditions and Encounters - Poster.pdf` → base: "traditions and encounters"
+   - `Traditions and Encounters_Program.pdf` → base: "traditions and encounters"
+   - Automatically normalizes trailing separators and extra spaces for accurate matching
+   - If 2+ files share the same base (3+ chars), they're grouped together
    
    **Matching Rules:**
    - Prefixes must be 3+ characters to qualify for grouping (weighted matching)

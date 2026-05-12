@@ -18,7 +18,7 @@ DART provides a comprehensive platform for digital asset management workflows:
 - **Persistent Settings**: Automatic saving/loading of window position, directories, and user preferences
 - **Persistent File Selection**: Selected files are remembered across app restarts - no need to re-select
 - **Permanent ID Assignment**: Files receive unique `dg_<epoch>` identifiers that never change once assigned
-- **Professional Logging**: Timestamped log files in `./logfiles/` (project directory) with real-time display
+- **Professional Logging**: Timestamped log files in `{working_folder}/logfiles/` with real-time display
 - **Function Management**: Icon-enhanced dropdown with usage tracking and workflow ordering
 - **Help Mode**: Built-in markdown help viewer for each function with copy-to-clipboard
 - **Smart Folder Management**: Collapsible folders section to maximize screen space
@@ -96,8 +96,13 @@ When you run the application, these are created automatically:
 ├── persistent.json             # Saved settings and state
 └── encryption_key              # Encryption key for sensitive settings
 
-./logfiles/                     # Application logs (in project directory)
-└── dart_YYYYMMDD_HHMMSS.log
+{working_folder}/
+├── dart_settings.json          # Per-folder app settings (in working/outputs folder)
+└── logfiles/                   # Application logs (in working/outputs folder)
+    └── dart_YYYYMMDD_HHMMSS.log
+```
+
+**Note:** Log files are created in your working/outputs folder (set in the UI) to keep logs organized with the project data they relate to. On initial startup before a working folder is set, logs temporarily go to `~/DART-data/logfiles/`.
 ```
 
 ## Customizing DART for Your Application
@@ -289,10 +294,10 @@ Recipients need Python 3 installed (one-time setup).
 
 All application activity is logged to:
 ```
-./logfiles/dart_YYYYMMDD_HHMMSS.log
+{working_folder}/logfiles/dart_YYYYMMDD_HHMMSS.log
 ```
 
-Log files are stored in the project directory for easy access and debugging.
+Log files are stored in your working/outputs folder (set in the UI) to keep logs organized with the project data they relate to. On initial startup before a working folder is set, logs temporarily go to `~/DART-data/logfiles/`.
 
 Use the logger in your functions:
 ```python
@@ -334,7 +339,7 @@ The virtual environment and dependencies are cached, so subsequent runs are fast
 
 ### Debugging
 
-- Check log files in `./logfiles/` for errors
+- Check log files in `{working_folder}/logfiles/` for errors (or `~/DART-data/logfiles/` before working folder is set)
 - Console shows error-level messages immediately
 - Use `logger.debug()` for detailed troubleshooting
 
