@@ -10,6 +10,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.2.0] - 2026-05-12
 
 ### Added
+- **Common DG Utilities Integration**: Imported shared utilities from `../common-DG-utilities`
+  - Added `common_dg_utilities` package to dependencies
+  - Enables code reuse across Digital Grinnell applications
+- **Standard DG Identifier System**: Function 1 now uses standard `dg_<epoch>` format
+  - All identifiers follow Digital Grinnell standard: `dg_<epoch_time>`
+  - Epoch-based generation ensures global uniqueness
+  - Automatic collision detection and handling (increments if duplicate found)
+  - Consistent with other Digital Grinnell applications
+- **Persistent ID Assignment**: File-to-ID mappings stored in settings
+  - Once a file receives an ID, it NEVER changes
+  - Mappings use **full file paths** as keys to prevent collisions
+  - Stored per working folder in `file_to_id_map`
+  - Running Function 1 again reuses existing IDs for known file paths
+  - Only generates new IDs for files not previously seen
+  - Shows statistics: "X new, Y reused" in results
+- **Persistent File Selection**: Selected files remembered across app restarts
+  - File picker selections stored in persistent.json
+  - On app restart, previously selected files are restored and displayed
+  - No need to re-select files each time you open the app
+  - Supports both single and multiple file selections
 - **Function 0 Enhancement**: New `use_working_folder_for_file_selection` boolean setting
   - Controls initial directory for file picker dialog
   - When `true`: Opens file picker in working/outputs folder
@@ -20,8 +40,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Storage: Maintains both `last_file` (single) and `last_files` (comma-separated) for compatibility
   - Helper function: `get_selected_files()` returns list of all selected files as Path objects
 - **Debug Logging for Function 1**: Comprehensive debug output tracking inputs, processing, and outputs
-  - Logs input folder, settings, file scanning, object ID derivation, grouping logic, and final results
+  - Logs input sources, identifier generation, and validation
   - All debug messages prefixed with `[DEBUG]` for easy identification
+- **Function 1 Enhancement**: Now processes selected files from Files Selection
+  - If files are selected, analyzes only those files (ignores Inputs Folder)
+  - Falls back to scanning Inputs Folder if no files are selected
+  - Allows precise control over which files to analyze
+- **Function 1 Uniqueness Validation**: Automatic detection and reporting of duplicate identifiers
+  - Validates all generated identifiers are unique
+  - Shows detailed error dialog if duplicates detected (extremely rare with epoch-based IDs)
 
 ### Changed
 - **Log File Location**: Moved from `~/DART-data/logfiles/` to `./logfiles/` (project directory)
@@ -42,10 +69,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Falls back to inputs folder when setting is false and inputs folder is available
   - Improved user workflow by reducing navigation steps
 
+### Removed
+- **Filename-Based Object ID System**: Replaced with standard DG identifiers
+  - Previous system derived IDs from filenames (e.g., "wit-001" from "Wit 001.JPG")
+  - New system uses epoch-based identifiers (e.g., "dg_1736712345")
+  - Eliminates complexity from filename parsing and pattern matching
+  - Note: Compound object grouping feature retained for future use with modifications
+
 ### Documentation
+- Updated FUNCTION_1_ANALYZE_ASSETS.md for standard DG identifiers
+  - Documented new `dg_<epoch>` format and benefits
+  - Removed filename-based object ID generation rules
+  - Simplified examples to show epoch-based ID assignment
+  - Compound grouping documentation will be updated when modifications are implemented
 - Updated FUNCTION_0_APP_SETTINGS.md with new `use_working_folder_for_file_selection` setting
 - Revised all function documentation to use plural folder naming (Inputs/Outputs)
-- Updated FUNCTION_1_ANALYZE_ASSETS.md with plural terminology
 - Updated FUNCTION_2_COUNT_FILES.md with plural terminology
 - Enhanced notes section explaining file picker behavior based on settings
 - Updated README.md with new log file location (`./logfiles/`)

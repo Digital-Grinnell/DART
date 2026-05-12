@@ -18,6 +18,8 @@ The encryption key is stored separately in `~/.DART-data/encryption_key` with re
 - **api_secret**: Your API secret for external services. **[ENCRYPTED]**
 - **password**: General password field for application use. **[ENCRYPTED]**
 
+**Note**: The settings file also contains an internal `file_to_id_map` field that stores permanent file-to-identifier mappings using **full file paths** as keys. This is managed automatically by Function 1 and ensures that once a file receives a `dg_<epoch>` identifier, it never changes. Using full paths prevents collisions between files with the same name in different directories.
+
 ## Requirements
 - A **Working/Outputs Folder** must be selected first.
 

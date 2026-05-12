@@ -16,6 +16,9 @@ from pathlib import Path
 from typing import Optional, Tuple
 from cryptography.fernet import Fernet, InvalidToken
 
+# Import common DG utilities
+from common_dg_utilities.dg_utils import generate_unique_id
+
 # Configure logging
 DATA_DIR = Path.home() / "DART-data"
 LOG_DIR = Path.cwd() / "logfiles"
@@ -60,6 +63,7 @@ DEFAULT_APP_SETTINGS = {
     "api_key": "",
     "api_secret": "",
     "password": "",
+    "file_to_id_map": {},  # Maps full file paths to assigned dg_<epoch> IDs
 }
 
 
@@ -85,6 +89,7 @@ class PersistentStorage:
                 "last_input_dir": "",
                 "last_output_dir": "",
                 "last_file": "",
+                "last_files": "",
                 "window_left": None,
                 "window_top": None,
             },
@@ -434,7 +439,7 @@ def main(page: ft.Page):
         group_compound_field = ft.TextField(
             label="group_compound_objects",
             value=str(settings.get("group_compound_objects", False)).lower(),
-            hint_text="true or false - group similar filenames as compound objects",
+            hint_text="true or false - group similar assets as compound objects",
             width=320,
         )
         use_working_folder_field = ft.TextField(
@@ -576,16 +581,8 @@ def main(page: ft.Page):
         page.update()
 
     def on_function_1_list_files(e):
-        """Function 1: Analyze digital assets and generate object IDs."""
+        """Function 1: Analyze digital assets and generate standard DG identifiers."""
         storage.record_function_usage("Function 1")
-
-        if not current_directory or not current_directory.exists():
-            update_status("Error: Please select an inputs folder first", is_error=True)
-            return
-
-        # DEBUG: Log input folder
-        add_log_message(f"[DEBUG] Function 1 - Inputs Folder: {current_directory}")
-        logger.info(f"[DEBUG] Function 1 processing folder: {current_directory}")
 
         # Load settings to check compound object grouping
         working_dir = output_dir_field.value
@@ -608,11 +605,31 @@ def main(page: ft.Page):
             '.zip', '.tar', '.gz', '.7z', '.rar', '.bz2',  # Archives
         }
 
-        # Scan for digital asset files
+        # Get files to process - either selected files or scan inputs folder
+        selected_files = get_selected_files()
         files = []
-        for file_path in current_directory.glob("*"):
-            if file_path.is_file() and file_path.suffix.lower() in asset_extensions:
-                files.append(file_path.name)
+        source_description = ""
+        
+        if selected_files:
+            # Use selected files
+            add_log_message(f"[DEBUG] Using {len(selected_files)} selected file(s)")
+            logger.info(f"[DEBUG] Selected files: {selected_files}")
+            for file_path in selected_files:
+                if file_path.is_file() and file_path.suffix.lower() in asset_extensions:
+                    files.append(str(file_path))  # Store full path
+            source_description = "from selected files"
+        else:
+            # Fall back to scanning inputs folder
+            if not current_directory or not current_directory.exists():
+                update_status("Error: Please select files or an inputs folder first", is_error=True)
+                return
+            
+            add_log_message(f"[DEBUG] No files selected - scanning Inputs Folder: {current_directory}")
+            logger.info(f"[DEBUG] Scanning folder: {current_directory}")
+            for file_path in current_directory.glob("*"):
+                if file_path.is_file() and file_path.suffix.lower() in asset_extensions:
+                    files.append(str(file_path))  # Store full path
+            source_description = f"in {current_directory.name}"
 
         # DEBUG: Log files found
         add_log_message(f"[DEBUG] Found {len(files)} asset files matching extensions")
@@ -625,108 +642,112 @@ def main(page: ft.Page):
 
         files.sort()
 
-        # Generate object IDs
-        def derive_objectid(filename: str) -> tuple[str, str]:
-            """Derive a 3-5 character objectid from filename and extract numeric suffix."""
-            import re
-            # Remove extension
-            name_no_ext = Path(filename).stem
-            
-            # DEBUG: Log processing
-            logger.info(f"[DEBUG] Processing '{filename}' -> stem: '{name_no_ext}'")
-            
-            # Split into base and numeric parts
-            match = re.match(r'^([a-zA-Z_-]+?)(\d+)?$', name_no_ext)
-            if match:
-                base, num = match.groups()
-                # Take first 3-5 chars of base
-                objectid = base[:5] if len(base) >= 5 else base[:3].ljust(3, 'x')
-                result = (objectid.lower(), num or "")
-                logger.info(f"[DEBUG]   Regex match: base='{base}', num='{num}' -> objectid='{result[0]}', num='{result[1]}'")
-                return result
-            else:
-                # Fallback: take first 3-5 alphanumeric chars
-                clean = re.sub(r'[^a-zA-Z0-9]', '', name_no_ext)
-                objectid = clean[:5] if len(clean) >= 5 else clean[:3].ljust(3, 'x')
-                result = (objectid.lower(), "")
-                logger.info(f"[DEBUG]   No regex match, fallback: clean='{clean}' -> objectid='{result[0]}'")
-                return result
+        # Load existing file-to-ID mappings
+        file_to_id_map = {}
+        if working_dir:
+            settings, _ = load_app_settings(working_dir)
+            file_to_id_map = settings.get("file_to_id_map", {})
+            add_log_message(f"[DEBUG] Loaded {len(file_to_id_map)} existing file-to-ID mappings")
+            logger.info(f"[DEBUG] Existing mappings: {file_to_id_map}")
 
-        # Build object list
-        add_log_message(f"[DEBUG] Building objects list (grouping={'ON' if group_compound else 'OFF'})")
+        # Generate or retrieve standard DG identifiers for each file
+        add_log_message(f"[DEBUG] Assigning standard dg_<epoch> identifiers")
+        logger.info("[DEBUG] Using standard DG identifier format: dg_<epoch_time>")
+        
         objects = []
-        if group_compound:
-            # Group files with similar base names
-            from collections import defaultdict
-            groups = defaultdict(list)
-            for filename in files:
-                objectid, num = derive_objectid(filename)
-                groups[objectid].append((filename, num))
+        new_mappings = 0
+        reused_mappings = 0
+        
+        for file_path_str in files:
+            # Check if this file already has an assigned ID (using full path as key)
+            if file_path_str in file_to_id_map:
+                # Reuse existing ID - never change once assigned!
+                unique_id = file_to_id_map[file_path_str]
+                reused_mappings += 1
+                logger.info(f"[DEBUG] Reusing existing: {unique_id} → {file_path_str}")
+            else:
+                # Generate new unique DG identifier
+                unique_id = generate_unique_id(page)
+                file_to_id_map[file_path_str] = unique_id
+                new_mappings += 1
+                logger.info(f"[DEBUG] Generated new: {unique_id} → {file_path_str}")
             
-            # DEBUG: Log groups
-            logger.info(f"[DEBUG] Created {len(groups)} groups: {dict(groups)}")
-            add_log_message(f"[DEBUG] Created {len(groups)} object groups")
-            
-            # Create compound objects
-            for objectid, file_list in sorted(groups.items()):
-                if len(file_list) > 1:
-                    # Multiple files with same base = compound object
-                    logger.info(f"[DEBUG] Group '{objectid}' has {len(file_list)} files - marking as compound")
-                    for filename, num in sorted(file_list, key=lambda x: x[1]):
-                        full_objectid = f"{objectid}-{num}" if num else objectid
-                        objects.append({
-                            "objectid": full_objectid,
-                            "filename": filename,
-                            "compound": True,
-                            "group": objectid
-                        })
-                        logger.info(f"[DEBUG]   Added: {full_objectid} → {filename} (compound)")
-                else:
-                    # Single file
-                    filename, num = file_list[0]
-                    full_objectid = f"{objectid}-{num}" if num else objectid
-                    objects.append({
-                        "objectid": full_objectid,
-                        "filename": filename,
-                        "compound": False,
-                        "group": None
-                    })
-                    logger.info(f"[DEBUG]   Added: {full_objectid} → {filename} (single)")
-        else:
-            # No grouping - each file gets unique objectid
-            logger.info("[DEBUG] No grouping - creating flat list")
-            for filename in files:
-                objectid, num = derive_objectid(filename)
-                full_objectid = f"{objectid}-{num}" if num else objectid
-                objects.append({
-                    "objectid": full_objectid,
-                    "filename": filename,
-                    "compound": False,
-                    "group": None
-                })
-                logger.info(f"[DEBUG] Added: {full_objectid} → {filename}")
+            # Store both full path and display name
+            objects.append({
+                "objectid": unique_id,
+                "filepath": file_path_str,
+                "filename": Path(file_path_str).name,
+            })
 
+        add_log_message(f"[DEBUG] IDs assigned: {new_mappings} new, {reused_mappings} reused")
+        logger.info(f"[DEBUG] Total mappings in cache: {len(file_to_id_map)}")
+        
+        # Save updated file-to-ID mappings
+        if working_dir and new_mappings > 0:
+            settings["file_to_id_map"] = file_to_id_map
+            ok, save_result = save_app_settings(working_dir, settings)
+            if ok:
+                add_log_message(f"[DEBUG] Saved {len(file_to_id_map)} file-to-ID mappings to settings")
+                logger.info(f"[DEBUG] Settings saved: {save_result}")
+            else:
+                logger.error(f"[DEBUG] Failed to save mappings: {save_result}")
+                add_log_message(f"[DEBUG] Warning: Could not save ID mappings - {save_result}")
+
+
+        # Validate uniqueness of object IDs (should always be unique with epoch-based IDs)
+        objectid_counts = {}
+        for obj in objects:
+            oid = obj["objectid"]
+            objectid_counts[oid] = objectid_counts.get(oid, 0) + 1
+        
+        duplicates = {oid: count for oid, count in objectid_counts.items() if count > 1}
+        if duplicates:
+            error_msg = f"ERROR: Duplicate object IDs found: {duplicates}"
+            add_log_message(f"[DEBUG] {error_msg}")
+            logger.error(f"[DEBUG] {error_msg}")
+            logger.error(f"[DEBUG] Objects with duplicates: {[obj for obj in objects if obj['objectid'] in duplicates]}")
+            update_status("Error: Duplicate object IDs detected - check log for details", is_error=True)
+            
+            # Show error dialog with details
+            dup_details = []
+            for oid in sorted(duplicates.keys()):
+                files_with_oid = [obj["filename"] for obj in objects if obj["objectid"] == oid]
+                dup_details.append(f"• {oid} appears {duplicates[oid]} times:")
+                for fname in files_with_oid:
+                    dup_details.append(f"    - {fname}")
+            
+            def close_error(e):
+                error_dialog.open = False
+                page.update()
+            
+            error_dialog = ft.AlertDialog(
+                modal=True,
+                title=ft.Text("Error: Duplicate Object IDs", weight=ft.FontWeight.BOLD, color=ft.Colors.RED),
+                content=ft.Container(
+                    content=ft.Text("\n".join(dup_details), selectable=True),
+                    width=700,
+                    height=400,
+                ),
+                actions=[ft.TextButton("Close", on_click=close_error)],
+            )
+            page.overlay.append(error_dialog)
+            error_dialog.open = True
+            page.update()
+            return
+        
         # Build result text
-        add_log_message(f"[DEBUG] Generated {len(objects)} total objects from {len(files)} files")
+        add_log_message(f"[DEBUG] Generated {len(objects)} UNIQUE objects from {len(files)} files")
+        logger.info(f"[DEBUG] Uniqueness validated: All {len(objects)} object IDs are unique")
         logger.info(f"[DEBUG] Final objects list: {objects}")
         
-        result_lines = [f"Found {len(files)} digital asset file(s) in {current_directory.name}"]
+        result_lines = [f"Found {len(files)} digital asset file(s) {source_description}"]
+        result_lines.append(f"Identifiers: {new_mappings} new, {reused_mappings} reused (IDs never change once assigned)")
         result_lines.append(f"Compound object grouping: {'ENABLED' if group_compound else 'DISABLED'}")
         result_lines.append("")
         
-        if group_compound:
-            # Show grouped
-            current_group = None
-            for obj in objects:
-                if obj['compound'] and obj['group'] != current_group:
-                    current_group = obj['group']
-                    result_lines.append(f"\nCompound Object [{current_group}]:")
-                prefix = "  " if obj['compound'] else ""
-                result_lines.append(f"{prefix}• {obj['objectid']} → {obj['filename']}")
-        else:
-            # Show flat list
-            for obj in objects:
-                result_lines.append(f"• {obj['objectid']} → {obj['filename']}")
+        # Show list of identifiers (grouping logic will be modified soon)
+        for obj in objects:
+            result_lines.append(f"• {obj['objectid']} → {obj['filename']} ({obj['filepath']})")
 
         result_text = "\n".join(result_lines)
 
@@ -749,8 +770,8 @@ def main(page: ft.Page):
         dialog.open = True
         page.update()
 
-        update_status(f"Analyzed {len(files)} file(s), generated {len(objects)} object ID(s)")
-        logger.info(f"Function 1: Analyzed {len(files)} files, generated {len(objects)} object IDs")
+        update_status(f"Analyzed {len(files)} file(s), generated {len(objects)} unique object ID(s)")
+        logger.info(f"Function 1: Analyzed {len(files)} files, generated {len(objects)} unique object IDs")
 
     def on_function_2_count_files(e):
         """Function 2: Count files by extension."""
@@ -969,9 +990,22 @@ def main(page: ft.Page):
         expand=True,
     )
 
+    # Initialize file field with persisted selection
+    def get_initial_file_display():
+        last_files = storage.get_ui_state("last_files")
+        if last_files:
+            file_paths = last_files.split(",")
+            if len(file_paths) == 1:
+                return file_paths[0]
+            else:
+                file_names = [Path(f).name for f in file_paths]
+                return f"{len(file_paths)} files: {', '.join(file_names[:3])}{'...' if len(file_names) > 3 else ''}"
+        else:
+            return storage.get_ui_state("last_file")
+    
     file_field = ft.TextField(
         label="Select Files",
-        value=storage.get_ui_state("last_file"),
+        value=get_initial_file_display(),
         read_only=True,
         expand=True,
     )

@@ -16,6 +16,8 @@ DART provides a comprehensive platform for digital asset management workflows:
 
 ### Core Platform Features
 - **Persistent Settings**: Automatic saving/loading of window position, directories, and user preferences
+- **Persistent File Selection**: Selected files are remembered across app restarts - no need to re-select
+- **Permanent ID Assignment**: Files receive unique `dg_<epoch>` identifiers that never change once assigned
 - **Professional Logging**: Timestamped log files in `./logfiles/` (project directory) with real-time display
 - **Function Management**: Icon-enhanced dropdown with usage tracking and workflow ordering
 - **Help Mode**: Built-in markdown help viewer for each function with copy-to-clipboard
@@ -26,7 +28,7 @@ DART provides a comprehensive platform for digital asset management workflows:
 
 ### Workflow Functions
 - **Function 0** ⚙️: App Settings with encrypted sensitive fields
-- **Function 1** 🎯: Analyze digital assets and generate object IDs from filenames
+- **Function 1** 🎯: Analyze digital assets and generate standard DG identifiers (dg_<epoch>)
 - **Function 2** 📊: Count files by extension type
 - **Function 3** 💻: Display system information
 

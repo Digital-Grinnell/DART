@@ -1,3 +1,4 @@
 flet==0.25.2
 flet-desktop==0.25.2
 cryptography>=41.0.0
+-e ../common-DG-utilities
