@@ -11,6 +11,7 @@ import logging
 import json
 import platform
 import socket
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Tuple
