@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.0] - 2026-05-12
+
+### Added
+- **Function 0 Enhancement**: New `use_working_folder_for_file_selection` boolean setting
+  - Controls initial directory for file picker dialog
+  - When `true`: Opens file picker in working/outputs folder
+  - When `false`: Opens file picker in inputs folder (overrides Flet default behavior)
+  - Default value: `false`
+- **Multiple File Selection**: File picker now supports selecting multiple files simultaneously
+  - Smart display: Shows single file path or count with first 3 filenames
+  - Storage: Maintains both `last_file` (single) and `last_files` (comma-separated) for compatibility
+  - Helper function: `get_selected_files()` returns list of all selected files as Path objects
+
+### Changed
+- **Folder Naming Consistency**: Updated all references to use plural forms
+  - "Input Folder" → "Inputs Folder"
+  - "Output Folder" → "Outputs Folder"
+  - "Working/Output Folder" → "Working/Outputs Folder"
+  - Applied to UI labels, dialog titles, status messages, and error messages
+- **File Selection Terminology**: Updated to plural forms
+  - "File Selection" → "Files Selection"
+  - "Select File" → "Select Files"
+  - Dialog title: "Select File" → "Select Files"
+- **File Picker Behavior**: Enhanced with smart directory selection
+  - Respects `use_working_folder_for_file_selection` setting
+  - Falls back to inputs folder when setting is false and inputs folder is available
+  - Improved user workflow by reducing navigation steps
+
+### Documentation
+- Updated FUNCTION_0_APP_SETTINGS.md with new `use_working_folder_for_file_selection` setting
+- Revised all function documentation to use plural folder naming (Inputs/Outputs)
+- Updated FUNCTION_1_ANALYZE_ASSETS.md with plural terminology
+- Updated FUNCTION_2_COUNT_FILES.md with plural terminology
+- Enhanced notes section explaining file picker behavior based on settings
+
+---
+
 ## [1.1.0] - 2026-05-11
 
 ### Added

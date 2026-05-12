@@ -1,7 +1,7 @@
 # Function 0: App Settings
 
 ## Purpose
-Open the application settings file in the selected working/output folder and edit values using popup text input fields.
+Open the application settings file in the selected working/outputs folder and edit values using popup text input fields.
 
 ## Security Note
 **Sensitive fields are encrypted** (`api_key`, `api_secret`, `password`). You enter and see them as plain text in the editor, but they are automatically encrypted when saved to `dart_settings.json`. This makes it safe to commit your settings file to version control (GitHub, etc.) without exposing credentials.
@@ -12,36 +12,38 @@ The encryption key is stored separately in `~/.DART-data/encryption_key` with re
 - **auto_save_enabled**: When `true`, enables automatic saving of output from functions. **[BOOLEAN]**
 - **auto_save_format**: Default output format for autosave files (e.g., `txt`, `csv`, `json`, etc.)
 - **group_compound_objects**: When `true`, groups similar filenames as compound objects in asset analysis. **[BOOLEAN]**
+- **use_working_folder_for_file_selection**: When `true`, the File Selector opens in the working/outputs folder. When `false`, it opens in the inputs folder. **[BOOLEAN]**
 - **csv_structure_file**: Path to a CSV file that defines the expected column structure for exports
 - **api_key**: Your API key for external services. **[ENCRYPTED]**
 - **api_secret**: Your API secret for external services. **[ENCRYPTED]**
 - **password**: General password field for application use. **[ENCRYPTED]**
 
 ## Requirements
-- A **Working/Output Folder** must be selected first.
+- A **Working/Outputs Folder** must be selected first.
 
 ## Usage
-1. Set **Working/Output Folder**.
+1. Set **Working/Outputs Folder**.
 2. Select **0: App Settings** from the function list.
 3. Edit values in the text input fields.
 4. Click **Save**.
 
 ## Settings File
 - File name: `dart_settings.json`
-- Location: Inside the selected working/output folder
+- Location: Inside the selected working/outputs folder
 
 ## Accepted Boolean Values
-For `auto_save_enabled` and `group_compound_objects`, you can enter:
+For `auto_save_enabled`, `group_compound_objects`, and `use_working_folder_for_file_selection`, you can enter:
 - true/false
 - yes/no
 - 1/0
 - on/off
 
 ## Notes
-- Settings are specific to each working/output folder
+- Settings are specific to each working/outputs folder
 - The settings file is created automatically with defaults if it doesn't exist
 - Sensitive fields (marked **[ENCRYPTED]**) are stored encrypted in the JSON file
 - `group_compound_objects` controls whether Function 1 groups similar filenames as compound objects
+- `use_working_folder_for_file_selection` controls where the File Selector dialog opens (working/outputs folder when true, inputs folder when false)
 - `csv_structure_file` should be a full path to a CSV file that defines expected columns for exports
 - You can customize the sensitive fields list and default settings in `app.py`
 

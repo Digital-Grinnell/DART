@@ -18,8 +18,8 @@ Use this function to:
 - **Archives**: ZIP, TAR, GZ, 7Z, RAR, BZ2
 
 ## Requirements
-- Input folder must be selected
-- Working/Output folder must be selected (to load settings)
+- Inputs folder must be selected
+- Working/Outputs folder must be selected (to load settings)
 
 ## Settings
 This function respects the `group_compound_objects` setting from Function 0:
@@ -45,8 +45,8 @@ This function respects the `group_compound_objects` setting from Function 0:
 
 ## Usage
 
-1. Select an input folder using the **Browse...** button (contains your digital assets)
-2. Select a working/output folder (to load settings)
+1. Select an inputs folder using the **Browse...** button (contains your digital assets)
+2. Select a working/outputs folder (to load settings)
 3. Configure `group_compound_objects` in Function 0 if needed
 4. Select **Function 1: Analyze Digital Assets & Generate Object IDs** from the dropdown
 5. Click **Execute Function**

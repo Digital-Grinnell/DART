@@ -54,6 +54,7 @@ DEFAULT_APP_SETTINGS = {
     "auto_save_enabled": False,
     "auto_save_format": "txt",
     "group_compound_objects": False,
+    "use_working_folder_for_file_selection": False,
     "csv_structure_file": "",
     "api_key": "",
     "api_secret": "",
@@ -328,22 +329,31 @@ def main(page: ft.Page):
             current_directory = Path(e.path)
             input_dir_field.value = str(current_directory)
             storage.set_ui_state("last_input_dir", str(current_directory))
-            update_status(f"Input folder set: {current_directory.name}")
+            update_status(f"Inputs folder set: {current_directory.name}")
             page.update()
 
     def on_output_dir_result(e: ft.FilePickerResultEvent):
         if e.path:
             output_dir_field.value = e.path
             storage.set_ui_state("last_output_dir", e.path)
-            update_status(f"Output folder set: {Path(e.path).name}")
+            update_status(f"Outputs folder set: {Path(e.path).name}")
             page.update()
 
     def on_file_result(e: ft.FilePickerResultEvent):
         if e.files and len(e.files) > 0:
-            file_path = e.files[0].path
-            file_field.value = file_path
-            storage.set_ui_state("last_file", file_path)
-            update_status(f"File selected: {Path(file_path).name}")
+            if len(e.files) == 1:
+                file_path = e.files[0].path
+                file_field.value = file_path
+                storage.set_ui_state("last_file", file_path)
+                update_status(f"File selected: {Path(file_path).name}")
+            else:
+                # Multiple files selected
+                file_paths = [f.path for f in e.files]
+                file_names = [Path(f).name for f in file_paths]
+                file_field.value = f"{len(file_paths)} files: {', '.join(file_names[:3])}{'...' if len(file_names) > 3 else ''}"
+                storage.set_ui_state("last_file", file_paths[0])  # Store first file for reference
+                storage.set_ui_state("last_files", ",".join(file_paths))  # Store all files
+                update_status(f"{len(file_paths)} files selected")
             page.update()
 
     input_dir_picker = ft.FilePicker(on_result=on_input_dir_result)
@@ -351,6 +361,43 @@ def main(page: ft.Page):
     file_picker = ft.FilePicker(on_result=on_file_result)
 
     page.overlay.extend([input_dir_picker, output_dir_picker, file_picker])
+
+    # ------------------------------------------------------------------ helper functions
+
+    def open_file_picker_with_settings():
+        """Open file picker, using working folder or inputs folder as initial directory based on settings."""
+        working_dir = output_dir_field.value
+        initial_dir = None
+        
+        if working_dir:
+            settings, _ = load_app_settings(working_dir)
+            use_working_folder = settings.get("use_working_folder_for_file_selection", False)
+            if use_working_folder:
+                initial_dir = working_dir
+            else:
+                # When false, use inputs folder if available
+                input_dir = input_dir_field.value
+                if input_dir:
+                    initial_dir = input_dir
+        
+        file_picker.pick_files(
+            dialog_title="Select Files",
+            allow_multiple=True,
+            initial_directory=initial_dir,
+        )
+
+    def get_selected_files():
+        """Get list of selected files from storage. Returns list of Path objects."""
+        last_files = storage.get_ui_state("last_files")
+        if last_files:
+            # Multiple files stored
+            return [Path(f) for f in last_files.split(",")]
+        else:
+            # Single file or no files
+            last_file = storage.get_ui_state("last_file")
+            if last_file:
+                return [Path(last_file)]
+            return []
 
     # ------------------------------------------------------------------ function implementations
 
@@ -360,7 +407,7 @@ def main(page: ft.Page):
 
         working_dir = output_dir_field.value
         if not working_dir:
-            update_status("Error: Please select a Working/Output Folder first", is_error=True)
+            update_status("Error: Please select a Working/Outputs Folder first", is_error=True)
             return
 
         settings, load_error = load_app_settings(working_dir)
@@ -387,6 +434,12 @@ def main(page: ft.Page):
             label="group_compound_objects",
             value=str(settings.get("group_compound_objects", False)).lower(),
             hint_text="true or false - group similar filenames as compound objects",
+            width=320,
+        )
+        use_working_folder_field = ft.TextField(
+            label="use_working_folder_for_file_selection",
+            value=str(settings.get("use_working_folder_for_file_selection", False)).lower(),
+            hint_text="true or false - use working folder as initial directory for file picker",
             width=320,
         )
         csv_structure_field = ft.TextField(
@@ -445,11 +498,20 @@ def main(page: ft.Page):
                     is_error=True,
                 )
                 return
+            
+            parsed_use_working_folder = parse_bool_text(use_working_folder_field.value)
+            if parsed_use_working_folder is None:
+                update_status(
+                    "Error: use_working_folder_for_file_selection must be true/false (or yes/no, 1/0)",
+                    is_error=True,
+                )
+                return
 
             new_settings = {
                 "auto_save_enabled": parsed_auto_save,
                 "auto_save_format": (auto_save_format_field.value or "").strip() or "txt",
                 "group_compound_objects": parsed_group_compound,
+                "use_working_folder_for_file_selection": parsed_use_working_folder,
                 "csv_structure_file": (csv_structure_field.value or "").strip(),
                 "api_key": (api_key_field.value or "").strip(),
                 "api_secret": (api_secret_field.value or "").strip(),
@@ -480,6 +542,7 @@ def main(page: ft.Page):
                         auto_save_field,
                         auto_save_format_field,
                         group_compound_field,
+                        use_working_folder_field,
                         csv_structure_field,
                         ft.Container(height=8),
                         ft.Text(
@@ -516,7 +579,7 @@ def main(page: ft.Page):
         storage.record_function_usage("Function 1")
 
         if not current_directory or not current_directory.exists():
-            update_status("Error: Please select an input folder first", is_error=True)
+            update_status("Error: Please select an inputs folder first", is_error=True)
             return
 
         # Load settings to check compound object grouping
@@ -658,7 +721,7 @@ def main(page: ft.Page):
         storage.record_function_usage("Function 2")
 
         if not current_directory or not current_directory.exists():
-            update_status("Error: Please select an input folder first", is_error=True)
+            update_status("Error: Please select an inputs folder first", is_error=True)
             return
 
         ext_counts = {}
@@ -857,21 +920,21 @@ def main(page: ft.Page):
     # ------------------------------------------------------------------ UI fields
 
     input_dir_field = ft.TextField(
-        label="Input Folder",
+        label="Inputs Folder",
         value=storage.get_ui_state("last_input_dir"),
         read_only=True,
         expand=True,
     )
 
     output_dir_field = ft.TextField(
-        label="Working/Output Folder",
+        label="Working/Outputs Folder",
         value=storage.get_ui_state("last_output_dir"),
         read_only=True,
         expand=True,
     )
 
     file_field = ft.TextField(
-        label="Select File",
+        label="Select Files",
         value=storage.get_ui_state("last_file"),
         read_only=True,
         expand=True,
@@ -917,7 +980,7 @@ def main(page: ft.Page):
                         "Browse...",
                         icon=ft.Icons.FOLDER_OPEN,
                         on_click=lambda _: input_dir_picker.get_directory_path(
-                            dialog_title="Select Input Folder"
+                            dialog_title="Select Inputs Folder"
                         ),
                     ),
                 ],
@@ -930,7 +993,7 @@ def main(page: ft.Page):
                         "Browse...",
                         icon=ft.Icons.FOLDER_OPEN,
                         on_click=lambda _: output_dir_picker.get_directory_path(
-                            dialog_title="Select Working/Output Folder"
+                            dialog_title="Select Working/Outputs Folder"
                         ),
                     ),
                 ],
@@ -984,12 +1047,12 @@ def main(page: ft.Page):
 
                 ft.Divider(height=5),
 
-                # ---- File Selection
+                # ---- Files Selection
                 ft.Container(
                     content=ft.Column(
                         controls=[
                             ft.Text(
-                                "File Selection",
+                                "Files Selection",
                                 size=18,
                                 weight=ft.FontWeight.BOLD,
                             ),
@@ -999,10 +1062,7 @@ def main(page: ft.Page):
                                     ft.ElevatedButton(
                                         "Browse...",
                                         icon=ft.Icons.FILE_OPEN,
-                                        on_click=lambda _: file_picker.pick_files(
-                                            dialog_title="Select File",
-                                            allow_multiple=False,
-                                        ),
+                                        on_click=lambda _: open_file_picker_with_settings(),
                                     ),
                                 ],
                             ),
