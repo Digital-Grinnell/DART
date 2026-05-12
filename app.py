@@ -991,8 +991,8 @@ def main(page: ft.Page):
                 obj["parentid"] = None
                 obj["type"] = "single"
         
-        # Save updated file-to-ID mappings
-        if working_dir and new_mappings > 0:
+        # Save updated file-to-ID mappings (save whenever files were processed)
+        if working_dir and (new_mappings > 0 or reused_mappings > 0):
             settings["file_to_id_map"] = file_to_id_map
             ok, save_result = save_app_settings(working_dir, settings)
             if ok:
