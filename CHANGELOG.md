@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.2.0] - 2026-05-12
 
+### Summary
+Version 1.2.0 represents a major architectural upgrade focused on adopting Digital Grinnell standards and enhancing data persistence:
+
+**Key Highlights:**
+- Integrated with `common-DG-utilities` shared library for ecosystem consistency
+- Replaced custom filename-based IDs with standard `dg_<epoch>` format
+- Implemented permanent file-to-ID mappings (IDs never change once assigned)
+- Added persistent file selection across app restarts
+- Enhanced with full file path tracking to prevent collisions
+- Maintained compound object grouping capability for future enhancements
+
 ### Added
 - **Common DG Utilities Integration**: Imported shared utilities from `../common-DG-utilities`
   - Added `common_dg_utilities` package to dependencies
@@ -87,6 +98,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated FUNCTION_2_COUNT_FILES.md with plural terminology
 - Enhanced notes section explaining file picker behavior based on settings
 - Updated README.md with new log file location (`./logfiles/`)
+- Updated QUICKSTART.md to reflect current function list and dependencies
+
+### Technical Details
+**Standard DG Identifier Implementation:**
+- Imported `generate_unique_id()` from `common_dg_utilities.dg_utils`
+- IDs generated as `dg_<epoch_time>` where epoch is Unix timestamp (seconds since 1970)
+- Uniqueness enforced via `page.session.generated_ids` set
+- Automatic collision handling increments epoch if duplicate detected (rare)
+
+**Persistent ID Mapping:**
+- Mappings stored in `dart_settings.json` per working folder
+- Dictionary structure: `{"/full/path/to/file.jpg": "dg_1736712345"}`
+- Full file paths used as keys to prevent collisions
+- Loaded at start of Function 1, saved after new IDs generated
+- Object data structure enhanced: `{objectid, filepath, filename}`
+
+**Persistent File Selection:**
+- Added `last_files` field to persistent.json `ui_state`
+- Comma-separated list of full file paths
+- Restored on app startup with smart display logic
+- Helper function `get_initial_file_display()` formats display text
+- Maintains backward compatibility with single-file `last_file` field
+
+**Dependencies:**
+- Added `common-DG-utilities` as editable package: `-e ../common-DG-utilities`
+- Requires sibling directory structure: `GitHub/common-DG-utilities/` and `GitHub/DART/`
 
 ---
 

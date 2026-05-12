@@ -37,17 +37,18 @@ cd /Users/mcfatem/GitHub/DART
 
 This will:
 1. Create a Python virtual environment
-2. Install Flet
+2. Install Flet and common-DG-utilities
 3. Launch the application
 
 ## Next Steps
 
 ### 1. Test the Example Functions
 
-The app includes three example functions:
-- **Function 1**: Lists files in a folder
-- **Function 2**: Counts files by extension
-- **Function 3**: Shows system information
+The app includes four functions:
+- **Function 0**: App Settings (configure behavior, encryption-enabled)
+- **Function 1**: Analyze Digital Assets & Generate Standard DG Identifiers
+- **Function 2**: Count files by extension
+- **Function 3**: Display system information
 
 Enable "Help Mode" to view the documentation for each function.
 
