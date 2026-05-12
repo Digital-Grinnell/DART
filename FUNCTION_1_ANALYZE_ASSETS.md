@@ -20,6 +20,7 @@ Use this function to:
 ## Requirements
 - **Either**: Files selected using the Files Selection picker (recommended)
 - **Or**: Inputs folder must be selected (will scan entire folder)
+- **Optional**: Working/Outputs folder (to load compound grouping setting)
 
 ## How It Works
 1. **First checks** if files are selected in the Files Selection area
@@ -27,24 +28,81 @@ Use this function to:
 2. **Falls back** to scanning the Inputs Folder if no files are selected
    - Scans all files in the folder matching supported types
 3. **Generates unique identifiers** using the standard DG format: `dg_<epoch_time>`
-   - Each identifier is based on the current epoch time (seconds since 1970)
-   - Automatically increments if duplicate detected (extremely rare)
-   - Guarantees global uniqueness across all files
+   - Each file receives a permanent identifier
+   - IDs are reused if the file was previously processed
+4. **Creates compound objects** (if grouping enabled)
+   - Groups files by text similarity in filenames
+   - Numbers are used for sequencing, not grouping
+   - Each compound gets its own `dg_<epoch>` identifier
+   - Child files track their parent via `parentid` field
 
-## Standard DG Identifier Format
-All identifiers follow the standard Digital Grinnell format:
-- **Format**: `dg_<epoch_time>`
-- **Example**: `dg_1736712345`
-- **Uniqueness**: Based on Unix epoch time (seconds since January 1, 1970)
-- **Collision handling**: If duplicate detected, automatically increments
-- **Persistence**: Once assigned, IDs NEVER change
+## Compound Object Grouping
 
-### Benefits
-- **Globally unique**: Can be used across multiple systems and databases
-- **Time-based**: Inherently sortable by creation time
-- **Simple**: No dependency on filename structure or patterns
-- **Standard**: Consistent with other Digital Grinnell applications
-- **Permanent**: File-to-ID mappings are stored and reused on subsequent runs
+### What Are Compound Objects?
+A **compound object** is a logical grouping of related digital assets. The compound itself doesn't represent a single file, but rather the folder containing multiple child assets that belong together.
+
+**Examples:**
+- Multi-page documents scanned as separate images
+- Photo sequences (e.g., panorama parts)
+- Multi-file recordings (video + audio tracks)
+
+**Key Characteristics:**
+- Associated with the folder path where children are located
+- Has its own unique `dg_<epoch>` identifier
+- Serves as the parent for all child assets in the group
+
+### How Grouping Works
+When `group_compound_objects` is enabled in Function 0:
+
+1. **Text-Based Grouping**: Files are grouped by the text portion of their filenames
+   - Numbers are ignored for grouping (they indicate sequence/order)
+   - Example: `photo_001.jpg`, `photo_002.jpg` → grouped by "photo"
+
+2. **Compound Object Creation**: For each group with 2+ files:
+   - A compound object is created with its own `dg_<epoch>` identifier
+   - The compound is associated with the **folder path** containing the children
+   - Compound ID is reused if the same group (folder + text base) is processed again
+   - The compound ID becomes the `parentid` for all children
+
+3. **Child Tracking**: Each child asset:
+   - Has its own unique `dg_<epoch>` identifier (objectid)
+   - Has a `parentid` field pointing to the compound object
+   - Retains its file path and other metadata
+
+4. **Standalone Objects**: Files that don't match any group:
+   - Have `parentid = None`
+   - Are displayed as standalone objects
+
+### Data Structure
+```python
+# Compound object (associated with folder path)
+{
+  "objectid": "dg_1736712345",
+  "type": "compound",
+  "text_base": "photo",
+  "child_count": 3,
+  "folder_path": "/Users/username/assets"
+}
+
+# Child objects (have files)
+{
+  "objectid": "dg_1736712346",
+  "parentid": "dg_1736712345",  # Points to compound
+  "type": "child",
+  "filepath": "/Users/username/assets/photo_001.jpg",
+  "filename": "photo_001.jpg"
+}
+```
+
+### Compound ID Persistence
+Compound IDs are tracked using a key format: `{folder_path}::COMPOUND::{text_base}`
+
+Example: `/Users/username/assets::COMPOUND::photo`
+
+This ensures:
+- Same group in same folder always gets the same compound ID
+- Different folders can have compounds with same text base (different IDs)
+- Compound IDs persist across runs just like file IDs
 
 ### ID Assignment and Persistence
 When you run Function 1:
@@ -84,33 +142,38 @@ The function displays:
 
 ### Example Output
 ```
-Found 100 digital asset file(s) from selected files
-Identifiers: 5 new, 95 reused (IDs never change once assigned)
-Compound object grouping: DISABLED
+Found 6 digital asset file(s) from selected files
+Identifiers: 6 new, 0 reused (IDs never change once assigned)
+Compound object grouping: ENABLED
+Total: 2 compound objects, 6 file objects
 
-• dg_1736712345 → Wit 001.JPG (/Users/username/assets/Wit 001.JPG)
-• dg_1736712346 → Wit 002.JPG (/Users/username/assets/Wit 002.JPG)
-• dg_1736712347 → Wit 003.JPG (/Users/username/assets/Wit 003.JPG)
-...
-• dg_1736712444 → Wit 100.JPG (/Users/username/assets/Wit 100.JPG)
+📦 COMPOUND: dg_1736712345 ('photo' - 3 children)
+    Folder: /Users/username/assets
+    ↳ dg_1736712346 → photo_001.jpg
+    ↳ dg_1736712347 → photo_002.jpg
+    ↳ dg_1736712348 → photo_003.jpg
+
+📦 COMPOUND: dg_1736712349 ('scan' - 2 children)
+    Folder: /Users/username/documents
+    ↳ dg_1736712350 → scan_page_1.tif
+    ↳ dg_1736712351 → scan_page_2.tif
+
+📄 STANDALONE OBJECTS:
+• dg_1736712352 → poster.pdf
 ```
 
-In this example, 95 files already had assigned IDs from a previous run, and 5 new files received new IDs. The full file path is shown in parentheses for each asset.
-
-Compound Object [photo]:
-  • photo-001 → photo_001.jpg
-  • photo-002 → photo_002.jpg
-
-• docum → document.pdf
-
-Compound Object [scan]:
-  • scan-1 → scan-page1.tif
-  • scan-2 → scan-page2.tif
-```
+In this example:
+- 2 compound objects created ("photo" group in /assets, "scan" group in /documents)
+- Each compound shows its associated folder path
+- 1 standalone object (poster.pdf doesn't match any group)
+- Each compound has its own ID that serves as the parentid for its children
 
 ## Notes
 - Only files with recognized digital asset extensions are analyzed
 - Object IDs are generated automatically and cannot be manually specified
-- The algorithm handles various filename patterns (underscores, hyphens, mixed case)
-- Compound object detection looks for files with the same alphabetic prefix
+- When compound grouping is DISABLED, all files are standalone with no parentid
+- When compound grouping is ENABLED, files are analyzed for text-based grouping
+- Compound objects are associated with the folder containing their children
+- Compound IDs persist: same folder + text base always produces same compound ID
+- Children track their parent via the `parentid` field
 - Results are displayed in the dialog but not automatically saved (use other functions to export)

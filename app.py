@@ -682,6 +682,85 @@ def main(page: ft.Page):
         add_log_message(f"[DEBUG] IDs assigned: {new_mappings} new, {reused_mappings} reused")
         logger.info(f"[DEBUG] Total mappings in cache: {len(file_to_id_map)}")
         
+        # Process compound object grouping if enabled
+        compound_objects = []
+        if group_compound:
+            add_log_message(f"[DEBUG] Compound grouping ENABLED - analyzing filename patterns")
+            logger.info("[DEBUG] Starting compound object analysis")
+            
+            # Helper function to extract text base from filename (remove numbers and extension)
+            def get_text_base(filename):
+                """Extract text portion of filename for grouping (ignore numbers)."""
+                import re
+                # Get basename without extension
+                name_only = Path(filename).stem
+                # Remove all numbers and common separators, then clean up
+                text_only = re.sub(r'[\d_\-\s]+', ' ', name_only).strip()
+                # Normalize whitespace and convert to lowercase for comparison
+                text_base = ' '.join(text_only.split()).lower()
+                return text_base if text_base else name_only.lower()
+            
+            # Group files by their text base
+            groups = {}
+            for obj in objects:
+                text_base = get_text_base(obj['filename'])
+                if text_base not in groups:
+                    groups[text_base] = []
+                groups[text_base].append(obj)
+                logger.info(f"[DEBUG] Grouped '{obj['filename']}' under text base '{text_base}'")
+            
+            # Create compound objects for groups with 2+ files
+            for text_base, group_files in groups.items():
+                if len(group_files) >= 2:
+                    # Get the folder path from the first child (all children should be in same folder)
+                    folder_path = str(Path(group_files[0]['filepath']).parent)
+                    
+                    # Create a compound key: folder + text_base for mapping
+                    compound_key = f"{folder_path}::COMPOUND::{text_base}"
+                    
+                    # Check if this compound already has an assigned ID
+                    if compound_key in file_to_id_map:
+                        # Reuse existing compound ID
+                        compound_id = file_to_id_map[compound_key]
+                        add_log_message(f"[DEBUG] Reusing existing compound ID {compound_id} for '{text_base}' in {folder_path}")
+                        logger.info(f"[DEBUG] Reused compound: {compound_id} | Folder: {folder_path} | Base: '{text_base}'")
+                    else:
+                        # Generate new compound object ID
+                        compound_id = generate_unique_id(page)
+                        file_to_id_map[compound_key] = compound_id
+                        new_mappings += 1
+                        add_log_message(f"[DEBUG] Created new compound {compound_id} for '{text_base}' in {folder_path}")
+                        logger.info(f"[DEBUG] New compound: {compound_id} | Folder: {folder_path} | Base: '{text_base}'")
+                    
+                    compound_objects.append({
+                        "objectid": compound_id,
+                        "text_base": text_base,
+                        "child_count": len(group_files),
+                        "folder_path": folder_path,
+                        "type": "compound"
+                    })
+                    
+                    # Assign this compound ID as parentid to all children
+                    for child_obj in group_files:
+                        child_obj["parentid"] = compound_id
+                        child_obj["type"] = "child"
+                    
+                    logger.info(f"[DEBUG] Compound: {compound_id} | Base: '{text_base}' | Folder: {folder_path} | Children: {[f['filename'] for f in group_files]}")
+                else:
+                    # Single file - not part of a compound
+                    group_files[0]["parentid"] = None
+                    group_files[0]["type"] = "single"
+                    logger.info(f"[DEBUG] Single object (no compound): {group_files[0]['filename']}")
+            
+            add_log_message(f"[DEBUG] Compound analysis complete: {len(compound_objects)} compounds created")
+            logger.info(f"[DEBUG] Total compound objects: {len(compound_objects)}")
+        else:
+            # No compound grouping - all objects are standalone
+            add_log_message(f"[DEBUG] Compound grouping DISABLED - all objects standalone")
+            for obj in objects:
+                obj["parentid"] = None
+                obj["type"] = "single"
+        
         # Save updated file-to-ID mappings
         if working_dir and new_mappings > 0:
             settings["file_to_id_map"] = file_to_id_map
@@ -736,18 +815,56 @@ def main(page: ft.Page):
             return
         
         # Build result text
-        add_log_message(f"[DEBUG] Generated {len(objects)} UNIQUE objects from {len(files)} files")
-        logger.info(f"[DEBUG] Uniqueness validated: All {len(objects)} object IDs are unique")
+        total_objects = len(objects) + len(compound_objects)
+        add_log_message(f"[DEBUG] Generated {len(objects)} file objects + {len(compound_objects)} compound objects = {total_objects} total")
+        logger.info(f"[DEBUG] Uniqueness validated: All object IDs are unique")
         logger.info(f"[DEBUG] Final objects list: {objects}")
+        logger.info(f"[DEBUG] Compound objects: {compound_objects}")
         
         result_lines = [f"Found {len(files)} digital asset file(s) {source_description}"]
         result_lines.append(f"Identifiers: {new_mappings} new, {reused_mappings} reused (IDs never change once assigned)")
         result_lines.append(f"Compound object grouping: {'ENABLED' if group_compound else 'DISABLED'}")
+        
+        if group_compound:
+            result_lines.append(f"Total: {len(compound_objects)} compound objects, {len(objects)} file objects")
+        
         result_lines.append("")
         
-        # Show list of identifiers (grouping logic will be modified soon)
-        for obj in objects:
-            result_lines.append(f"• {obj['objectid']} → {obj['filename']} ({obj['filepath']})")
+        # Display logic based on compound grouping
+        if group_compound and compound_objects:
+            # Group children by parentid for organized display
+            children_by_parent = {}
+            standalone = []
+            
+            for obj in objects:
+                if obj.get("parentid"):
+                    parent_id = obj["parentid"]
+                    if parent_id not in children_by_parent:
+                        children_by_parent[parent_id] = []
+                    children_by_parent[parent_id].append(obj)
+                else:
+                    standalone.append(obj)
+            
+            # Display compound objects with their children
+            for compound in compound_objects:
+                result_lines.append(f"📦 COMPOUND: {compound['objectid']} ('{compound['text_base']}' - {compound['child_count']} children)")
+                result_lines.append(f"    Folder: {compound['folder_path']}")
+                
+                # Show children indented
+                if compound['objectid'] in children_by_parent:
+                    for child in children_by_parent[compound['objectid']]:
+                        result_lines.append(f"    ↳ {child['objectid']} → {child['filename']}")
+                result_lines.append("")  # Blank line between compounds
+            
+            # Display standalone objects
+            if standalone:
+                result_lines.append("📄 STANDALONE OBJECTS:")
+                for obj in standalone:
+                    result_lines.append(f"• {obj['objectid']} → {obj['filename']}")
+        else:
+            # No compound grouping - simple list
+            for obj in objects:
+                result_lines.append(f"• {obj['objectid']} → {obj['filename']}")
 
         result_text = "\n".join(result_lines)
 
@@ -770,8 +887,12 @@ def main(page: ft.Page):
         dialog.open = True
         page.update()
 
-        update_status(f"Analyzed {len(files)} file(s), generated {len(objects)} unique object ID(s)")
-        logger.info(f"Function 1: Analyzed {len(files)} files, generated {len(objects)} unique object IDs")
+        if group_compound and compound_objects:
+            update_status(f"Analyzed {len(files)} file(s): {len(compound_objects)} compounds, {len(objects)} file objects")
+            logger.info(f"Function 1: Analyzed {len(files)} files, created {len(compound_objects)} compounds + {len(objects)} file objects")
+        else:
+            update_status(f"Analyzed {len(files)} file(s), generated {len(objects)} unique object ID(s)")
+            logger.info(f"Function 1: Analyzed {len(files)} files, generated {len(objects)} unique object IDs")
 
     def on_function_2_count_files(e):
         """Function 2: Count files by extension."""

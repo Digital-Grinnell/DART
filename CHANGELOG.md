@@ -18,7 +18,7 @@ Version 1.2.0 represents a major architectural upgrade focused on adopting Digit
 - Implemented permanent file-to-ID mappings (IDs never change once assigned)
 - Added persistent file selection across app restarts
 - Enhanced with full file path tracking to prevent collisions
-- Maintained compound object grouping capability for future enhancements
+- Implemented true compound object system with parentid tracking
 
 ### Added
 - **Common DG Utilities Integration**: Imported shared utilities from `../common-DG-utilities`
@@ -50,6 +50,16 @@ Version 1.2.0 represents a major architectural upgrade focused on adopting Digit
   - Smart display: Shows single file path or count with first 3 filenames
   - Storage: Maintains both `last_file` (single) and `last_files` (comma-separated) for compatibility
   - Helper function: `get_selected_files()` returns list of all selected files as Path objects
+- **Compound Object Implementation**: Function 1 now creates true compound objects with parentid tracking
+  - Compound objects have their own `dg_<epoch>` identifiers
+  - Compound objects are associated with the **folder path** containing their children
+  - Compound IDs stored using key format: `{folder_path}::COMPOUND::{text_base}`
+  - Compound IDs persist across runs - same folder + text base = same ID
+  - Child objects track their parent via `parentid` field (not vice-versa)
+  - Text-based filename grouping (numbers ignored - used for sequencing)
+  - Groups require 2+ files to form a compound
+  - Files that don't match any group become standalone objects (`parentid = None`)
+  - Enhanced display: Shows compounds with folder path and children indented, standalone objects separately
 - **Debug Logging for Function 1**: Comprehensive debug output tracking inputs, processing, and outputs
   - Logs input sources, identifier generation, and validation
   - All debug messages prefixed with `[DEBUG]` for easy identification
@@ -120,6 +130,24 @@ Version 1.2.0 represents a major architectural upgrade focused on adopting Digit
 - Restored on app startup with smart display logic
 - Helper function `get_initial_file_display()` formats display text
 - Maintains backward compatibility with single-file `last_file` field
+
+**Compound Object Implementation:**
+- **Folder-Based Association**: Compounds are associated with the folder path containing their children
+  - More logical than file-based tracking (compound has no single file)
+  - Folder path provides stable, persistent reference point
+  - Same folder + text base = same compound ID across runs
+- Text-based grouping uses regex to extract text portion: `re.sub(r'[\d_\-\s]+', ' ', filename)`
+- Groups files by normalized text base (lowercase, whitespace normalized)
+- Helper function `get_text_base()` removes numbers and separators
+- Compound objects created for groups with 2+ files
+- Folder path extracted from first child: `Path(filepath).parent`
+- Compound key format: `{folder_path}::COMPOUND::{text_base}` for ID mapping
+- Checks for existing compound IDs before generating new ones
+- Each compound gets unique `dg_<epoch>` ID via `generate_unique_id(page)`
+- Object types: `"compound"` (has folder_path), `"child"` (has file + parentid), `"single"` (no parent)
+- Object structure: `{objectid, parentid, type, filepath, filename}` for children
+- Compound structure: `{objectid, type, text_base, child_count, folder_path}` for compounds
+- Display organizes by compound with folder path shown and children indented
 
 **Dependencies:**
 - Added `common-DG-utilities` as editable package: `-e ../common-DG-utilities`

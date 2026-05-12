@@ -20,6 +20,8 @@ The encryption key is stored separately in `~/.DART-data/encryption_key` with re
 
 **Note**: The settings file also contains an internal `file_to_id_map` field that stores permanent file-to-identifier mappings using **full file paths** as keys. This is managed automatically by Function 1 and ensures that once a file receives a `dg_<epoch>` identifier, it never changes. Using full paths prevents collisions between files with the same name in different directories.
 
+**Compound Object Mapping**: When `group_compound_objects` is enabled, the `file_to_id_map` also stores compound object IDs using the format `{folder_path}::COMPOUND::{text_base}`. This ensures compound objects in a given folder always receive the same identifier across runs. Example: `/Users/name/assets::COMPOUND::photo` maps to a specific compound ID.
+
 ## Requirements
 - A **Working/Outputs Folder** must be selected first.
 
@@ -55,12 +57,21 @@ For `auto_save_enabled`, `group_compound_objects`, and `use_working_folder_for_f
   "auto_save_enabled": false,
   "auto_save_format": "txt",
   "group_compound_objects": true,
+  "use_working_folder_for_file_selection": false,
   "csv_structure_file": "/path/to/structure.csv",
   "api_key": "gAAAAABk...[encrypted]",
   "api_secret": "gAAAAABk...[encrypted]",
-  "password": "gAAAAABk...[encrypted]"
+  "password": "gAAAAABk...[encrypted]",
+  "file_to_id_map": {
+    "/Users/name/assets/photo_001.jpg": "dg_1736712346",
+    "/Users/name/assets/photo_002.jpg": "dg_1736712347",
+    "/Users/name/assets::COMPOUND::photo": "dg_1736712345",
+    "/Users/name/docs/scan_page_1.tif": "dg_1736712350"
+  }
 }
 ```
+
+**Note**: The `file_to_id_map` stores both individual file IDs and compound object IDs. Compound entries use the special format `{folder}::COMPOUND::{text_base}`.
 
 ## Customization
 To add your own settings:

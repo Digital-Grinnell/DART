@@ -29,6 +29,8 @@ DART provides a comprehensive platform for digital asset management workflows:
 ### Workflow Functions
 - **Function 0** ⚙️: App Settings with encrypted sensitive fields
 - **Function 1** 🎯: Analyze digital assets and generate standard DG identifiers (dg_<epoch>)
+  - Creates compound objects for related file groups (optional)
+  - Permanent ID assignment with folder-based compound tracking
 - **Function 2** 📊: Count files by extension type
 - **Function 3** 💻: Display system information
 
