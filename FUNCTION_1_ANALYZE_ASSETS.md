@@ -54,22 +54,40 @@ A **compound object** is a logical grouping of related digital assets. The compo
 ### How Grouping Works
 When `group_compound_objects` is enabled in Function 0:
 
-1. **Text-Based Grouping**: Files are grouped by the text portion of their filenames
-   - Numbers are ignored for grouping (they indicate sequence/order)
-   - Example: `photo_001.jpg`, `photo_002.jpg` → grouped by "photo"
+1. **Intelligent Pattern Analysis**: Files are analyzed for common patterns:
+   - **Prefix Extraction**: Extracts leading letters before any number or separator (space, underscore, hyphen)
+   - **Weighted Matching**: Prefixes must be 3+ characters to qualify for grouping
+   - **Flexible Separators**: Handles `photo_001`, `photo 001`, `photo-001`, or `photo001`
+   - **Case-Insensitive**: `Wit`, `wit`, `WIT` are treated as identical
+   - Example: `wit 001.jpg`, `wit poster.jpg`, `wit program.pdf` → all have prefix "wit"
+   - Example: `photo_001.jpg`, `photo_002.jpg`, `photo_album.pdf` → all have prefix "photo"
 
-2. **Compound Object Creation**: For each group with 2+ files:
+2. **Sequence Detection**: For numbered files, analyzes if numbers form a sequence:
+   - Calculates average gap and maximum gap between numbers
+   - Sequential if: average gap ≤ 2.0 and max gap ≤ 5
+   - Tolerates missing numbers (e.g., 1, 2, 3, 5, 6 is still sequential - missing 4)
+   - Reports details: number range, gaps, missing values
+
+3. **Detailed Reporting**: Logs comprehensive analysis for each group:
+   - Number of files (numbered vs unnumbered)
+   - Sequence analysis (range, gaps, patterns)
+   - Grouping decision with rationale
+   - Missing numbers or irregularities
+
+4. **Compound Object Creation**: For each group with 2+ files:
    - A compound object is created with its own `dg_<epoch>` identifier
    - The compound is associated with the **folder path** containing the children
    - Compound ID is reused if the same group (folder + text base) is processed again
    - The compound ID becomes the `parentid` for all children
 
-3. **Child Tracking**: Each child asset:
+5. **Child Tracking**: Each child asset:
    - Has its own unique `dg_<epoch>` identifier (objectid)
    - Has a `parentid` field pointing to the compound object
    - Retains its file path and other metadata
 
-4. **Standalone Objects**: Files that don't match any group:
+6. **Standalone Objects**: Files that don't match any group:
+   - Prefix less than 3 characters (too short for matching)
+   - Only file with that prefix (no group formed)
    - Have `parentid = None`
    - Are displayed as standalone objects
 
@@ -113,6 +131,27 @@ When you run Function 1:
 5. Results show: "X new, Y reused" to indicate which IDs were newly generated vs. retrieved
 
 This ensures that once a file receives an identifier, running the function again will always return the same ID for that file. Using full paths prevents collisions between files with the same name in different directories.
+
+### Grouping Analysis Example
+When analyzing files with compound grouping enabled, detailed analysis is logged:
+
+```
+[GROUP ANALYSIS] Found 2 prefix groups (3+ char prefixes)
+
+[GROUP: 'wit'] 100 files (98 numbered, 2 unnumbered)
+  ✓ SEQUENTIAL pattern detected: range 1-100, avg gap 1.0, max gap 2
+  ℹ Note: 2 gap(s) in sequence (e.g., missing numbers)
+  ➤ DECISION: Creating compound (common prefix 'wit', 100 files)
+
+[GROUP: 'photo'] 3 files (2 numbered, 1 unnumbered)
+  • Mixed: 2 numbered files + 1 unnumbered file with same prefix
+  ➤ DECISION: Creating compound (common prefix 'photo', 3 files)
+```
+
+This helps you understand:
+- How files were grouped and why
+- Whether sequences are complete or have gaps
+- Which files are numbered vs descriptive (poster, program, etc.)
 
 ## Usage
 

@@ -136,9 +136,20 @@ Version 1.2.0 represents a major architectural upgrade focused on adopting Digit
   - More logical than file-based tracking (compound has no single file)
   - Folder path provides stable, persistent reference point
   - Same folder + text base = same compound ID across runs
-- Text-based grouping uses regex to extract text portion: `re.sub(r'[\d_\-\s]+', ' ', filename)`
-- Groups files by normalized text base (lowercase, whitespace normalized)
-- Helper function `get_text_base()` removes numbers and separators
+- **Intelligent Pattern Analysis**: Sophisticated grouping algorithm
+  - Extracts prefix (letters before numbers/separators): `re.match(r'^([a-zA-Z]+)[\s_\-]*(\d+)?', stem)`
+  - Weighted matching: requires 3+ character prefix for grouping
+  - Handles flexible separators: space, underscore, hyphen, or none
+  - Case-insensitive comparison
+- **Sequence Detection**: Analyzes numbered files for sequential patterns
+  - Calculates average gap and maximum gap between sorted numbers
+  - Sequential if: avg gap ≤ 2.0 and max gap ≤ 5 (tolerates missing numbers)
+  - Reports sequence details: range, gaps, missing values
+- **Detailed Reporting**: Comprehensive analysis logged for each group
+  - File counts (numbered vs unnumbered)
+  - Sequence analysis with statistics
+  - Grouping decisions with rationale
+  - Examples: "wit 001.jpg", "wit poster.jpg" → both grouped under prefix "wit"
 - Compound objects created for groups with 2+ files
 - Folder path extracted from first child: `Path(filepath).parent`
 - Compound key format: `{folder_path}::COMPOUND::{text_base}` for ID mapping

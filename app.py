@@ -688,26 +688,103 @@ def main(page: ft.Page):
             add_log_message(f"[DEBUG] Compound grouping ENABLED - analyzing filename patterns")
             logger.info("[DEBUG] Starting compound object analysis")
             
-            # Helper function to extract text base from filename (remove numbers and extension)
-            def get_text_base(filename):
-                """Extract text portion of filename for grouping (ignore numbers)."""
-                import re
-                # Get basename without extension
-                name_only = Path(filename).stem
-                # Remove all numbers and common separators, then clean up
-                text_only = re.sub(r'[\d_\-\s]+', ' ', name_only).strip()
-                # Normalize whitespace and convert to lowercase for comparison
-                text_base = ' '.join(text_only.split()).lower()
-                return text_base if text_base else name_only.lower()
-            
-            # Group files by their text base
-            groups = {}
+            # Parse all filenames to extract prefix and number components
+            parsed_files = []
             for obj in objects:
-                text_base = get_text_base(obj['filename'])
-                if text_base not in groups:
-                    groups[text_base] = []
-                groups[text_base].append(obj)
-                logger.info(f"[DEBUG] Grouped '{obj['filename']}' under text base '{text_base}'")
+                stem = Path(obj['filename']).stem
+                
+                # Extract prefix (letters) and optional number
+                # Handles separators: space, underscore, hyphen, or direct concatenation
+                match = re.match(r'^([a-zA-Z]+)[\s_\-]*(\d+)?', stem)
+                if match:
+                    prefix = match.group(1).lower()
+                    number = int(match.group(2)) if match.group(2) else None
+                    parsed_files.append({
+                        'obj': obj,
+                        'prefix': prefix,
+                        'number': number,
+                        'filename': obj['filename']
+                    })
+                    logger.info(f"[PARSE] '{obj['filename']}' → prefix: '{prefix}', number: {number}")
+                else:
+                    # No match - use full stem as prefix
+                    parsed_files.append({
+                        'obj': obj,
+                        'prefix': stem.lower(),
+                        'number': None,
+                        'filename': obj['filename']
+                    })
+                    logger.info(f"[PARSE] '{obj['filename']}' → prefix: '{stem.lower()}' (no pattern)")
+            
+            # Group by prefix (must be 3+ characters for grouping)
+            prefix_groups = {}
+            for pf in parsed_files:
+                prefix = pf['prefix']
+                # Only group if prefix is 3+ characters (weighted matching)
+                if len(prefix) >= 3:
+                    if prefix not in prefix_groups:
+                        prefix_groups[prefix] = []
+                    prefix_groups[prefix].append(pf)
+            
+            # Analyze each prefix group for patterns
+            add_log_message(f"[GROUP ANALYSIS] Found {len(prefix_groups)} prefix groups (3+ char prefixes)")
+            logger.info(f"[GROUP ANALYSIS] Analyzing {len(prefix_groups)} prefix groups")
+            
+            groups = {}
+            for prefix, items in prefix_groups.items():
+                # Extract numbers from this group
+                numbers = [item['number'] for item in items if item['number'] is not None]
+                
+                if len(items) < 2:
+                    # Single file with this prefix - don't group
+                    logger.info(f"[GROUP: '{prefix}'] Single file only - not creating compound")
+                    continue
+                
+                # Analyze numbering pattern
+                is_sequential = False
+                analysis_msg = f"[GROUP: '{prefix}'] {len(items)} files ({len(numbers)} numbered, {len(items)-len(numbers)} unnumbered)"
+                add_log_message(analysis_msg)
+                logger.info(analysis_msg)
+                
+                if len(numbers) >= 2:
+                    # Check if numbers form a sequence
+                    numbers_sorted = sorted(numbers)
+                    gaps = [numbers_sorted[i+1] - numbers_sorted[i] for i in range(len(numbers_sorted)-1)]
+                    max_gap = max(gaps)
+                    avg_gap = sum(gaps) / len(gaps)
+                    
+                    # Sequential if average gap ≤ 2 and max gap ≤ 5 (allows small missing numbers)
+                    if avg_gap <= 2.0 and max_gap <= 5:
+                        is_sequential = True
+                        msg = f"  ✓ SEQUENTIAL pattern detected: range {min(numbers)}-{max(numbers)}, avg gap {avg_gap:.1f}, max gap {max_gap}"
+                        add_log_message(msg)
+                        logger.info(msg)
+                        
+                        if max_gap > 1:
+                            missing_count = sum(1 for g in gaps if g > 1)
+                            msg = f"  ℹ Note: {missing_count} gap(s) in sequence (e.g., missing numbers)"
+                            add_log_message(msg)
+                            logger.info(msg)
+                    else:
+                        msg = f"  ✗ Not sequential: avg gap {avg_gap:.1f}, max gap {max_gap} (too irregular)"
+                        add_log_message(msg)
+                        logger.info(msg)
+                elif len(numbers) == 1:
+                    msg = f"  • Mixed: 1 numbered file + {len(items)-1} unnumbered files with same prefix"
+                    add_log_message(msg)
+                    logger.info(msg)
+                else:
+                    msg = f"  • All files unnumbered but share common prefix (3+ chars: '{prefix}')"
+                    add_log_message(msg)
+                    logger.info(msg)
+                
+                # Decision: Group if 2+ files share prefix (3+ chars)
+                msg = f"  ➤ DECISION: Creating compound (common prefix '{prefix}', {len(items)} files)"
+                add_log_message(msg)
+                logger.info(msg)
+                
+                # Store group
+                groups[prefix] = [item['obj'] for item in items]
             
             # Create compound objects for groups with 2+ files
             for text_base, group_files in groups.items():
