@@ -136,20 +136,34 @@ Version 1.2.0 represents a major architectural upgrade focused on adopting Digit
   - More logical than file-based tracking (compound has no single file)
   - Folder path provides stable, persistent reference point
   - Same folder + text base = same compound ID across runs
-- **Intelligent Pattern Analysis**: Sophisticated grouping algorithm
-  - Extracts prefix (letters before numbers/separators): `re.match(r'^([a-zA-Z]+)[\s_\-]*(\d+)?', stem)`
+- **Intelligent Pattern Analysis**: Two-pass grouping algorithm finds what filenames have in common
+  - **Pass 1**: Extract prefixes from numbered files: `re.match(r'^(.+?)[\s_\-]*(\d+)$', stem)`
+    - Handles leading numbers: "100 Nights-1" → prefix "100 nights", seq 1
+  - **Pass 2**: Match unnumbered files against known prefixes
+    - Checks if unnumbered filename starts with any numbered prefix
+    - Uses longest matching prefix (most specific)
+    - Validates separator after prefix (space, underscore, hyphen)
+    - "Wit Poster" starts with "wit" → matched
+    - "AnnaChristie-F14-Program" starts with "annachristie-f14" → matched
   - Weighted matching: requires 3+ character prefix for grouping
-  - Handles flexible separators: space, underscore, hyphen, or none
   - Case-insensitive comparison
+  - No hardcoded suffix list - adapts to actual file patterns
 - **Sequence Detection**: Analyzes numbered files for sequential patterns
   - Calculates average gap and maximum gap between sorted numbers
   - Sequential if: avg gap ≤ 2.0 and max gap ≤ 5 (tolerates missing numbers)
-  - Reports sequence details: range, gaps, missing values
+  - **Zero-Padding**: Automatically calculates padding width from max number
+  - Reports sequence details: range, gaps, missing values, padding recommendation
 - **Detailed Reporting**: Comprehensive analysis logged for each group
   - File counts (numbered vs unnumbered)
   - Sequence analysis with statistics
+  - Zero-padding recommendations
   - Grouping decisions with rationale
   - Examples: "wit 001.jpg", "wit poster.jpg" → both grouped under prefix "wit"
+  - Examples: "100 nights-1.jpg", "100 nights-20.jpg" → grouped under "100 nights"
+- **Smart Display**: Children displayed in proper sequence order
+  - Numbered files sorted by sequence, then unnumbered alphabetically
+  - Sequence numbers shown with zero-padding: `[01]`, `[02]`, `[10]`
+  - Visual confirmation of proper grouping and ordering
 - Compound objects created for groups with 2+ files
 - Folder path extracted from first child: `Path(filepath).parent`
 - Compound key format: `{folder_path}::COMPOUND::{text_base}` for ID mapping

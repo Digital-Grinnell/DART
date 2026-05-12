@@ -689,33 +689,69 @@ def main(page: ft.Page):
             add_log_message(f"[DEBUG] Compound grouping ENABLED - analyzing filename patterns")
             logger.info("[DEBUG] Starting compound object analysis")
             
-            # Parse all filenames to extract prefix and number components
+            # FIRST PASS: Parse all filenames to extract prefix and number components
             parsed_files = []
+            numbered_prefixes = set()  # Track prefixes from numbered files
+            
             for obj in objects:
                 stem = Path(obj['filename']).stem
                 
-                # Extract prefix (letters) and optional number
-                # Handles separators: space, underscore, hyphen, or direct concatenation
-                match = re.match(r'^([a-zA-Z]+)[\s_\-]*(\d+)?', stem)
+                # Extract prefix and trailing sequence number
+                # Pattern: everything before the LAST number is the prefix, last number is sequence
+                # This handles: "100 Nights-1", "photo_001", "Wit 042", "2013_photo_05", etc.
+                match = re.match(r'^(.+?)[\s_\-]*(\d+)$', stem)
                 if match:
-                    prefix = match.group(1).lower()
-                    number = int(match.group(2)) if match.group(2) else None
+                    prefix = match.group(1).strip().lower()  # Normalize: lowercase, strip whitespace
+                    number = int(match.group(2))
+                    numbered_prefixes.add(prefix)
                     parsed_files.append({
                         'obj': obj,
                         'prefix': prefix,
                         'number': number,
-                        'filename': obj['filename']
+                        'filename': obj['filename'],
+                        'raw_stem': stem
                     })
                     logger.info(f"[PARSE] '{obj['filename']}' → prefix: '{prefix}', number: {number}")
                 else:
-                    # No match - use full stem as prefix
+                    # No trailing number - defer prefix assignment
                     parsed_files.append({
                         'obj': obj,
-                        'prefix': stem.lower(),
+                        'prefix': None,  # Will be assigned in second pass
                         'number': None,
-                        'filename': obj['filename']
+                        'filename': obj['filename'],
+                        'raw_stem': stem
                     })
-                    logger.info(f"[PARSE] '{obj['filename']}' → prefix: '{stem.lower()}' (no pattern)")
+                    logger.info(f"[PARSE] '{obj['filename']}' → no trailing number (defer prefix assignment)")
+            
+            # SECOND PASS: For unnumbered files, find matching prefix from numbered files
+            logger.info(f"[PREFIX MATCHING] Found {len(numbered_prefixes)} numbered prefixes: {sorted(numbered_prefixes)}")
+            
+            for pf in parsed_files:
+                if pf['prefix'] is None:  # Unnumbered file needing prefix assignment
+                    stem_lower = pf['raw_stem'].strip().lower()
+                    best_match = None
+                    best_match_length = 0
+                    
+                    # Check if this stem starts with any known numbered prefix
+                    for known_prefix in numbered_prefixes:
+                        # Check if stem starts with this prefix (with optional separator)
+                        # e.g., "wit poster" starts with "wit"
+                        if stem_lower.startswith(known_prefix):
+                            # Verify there's a separator or end after prefix (not just substring match)
+                            remainder = stem_lower[len(known_prefix):]
+                            if not remainder or remainder[0] in [' ', '_', '-']:
+                                # Valid match - track longest match
+                                if len(known_prefix) > best_match_length:
+                                    best_match = known_prefix
+                                    best_match_length = len(known_prefix)
+                    
+                    if best_match:
+                        pf['prefix'] = best_match
+                        logger.info(f"[PREFIX MATCH] '{pf['filename']}' matched prefix '{best_match}' (common with numbered files)")
+                    else:
+                        # No match - use full stem as its own prefix
+                        pf['prefix'] = stem_lower
+                        logger.info(f"[PREFIX MATCH] '{pf['filename']}' → no match, using full stem: '{stem_lower}'")
             
             # Group by prefix (must be 3+ characters for grouping)
             prefix_groups = {}
@@ -743,6 +779,7 @@ def main(page: ft.Page):
                 
                 # Analyze numbering pattern
                 is_sequential = False
+                zero_pad_width = 0
                 analysis_msg = f"[GROUP: '{prefix}'] {len(items)} files ({len(numbers)} numbered, {len(items)-len(numbers)} unnumbered)"
                 add_log_message(analysis_msg)
                 logger.info(analysis_msg)
@@ -754,10 +791,19 @@ def main(page: ft.Page):
                     max_gap = max(gaps)
                     avg_gap = sum(gaps) / len(gaps)
                     
+                    # Calculate zero-padding width based on max number
+                    max_number = max(numbers_sorted)
+                    zero_pad_width = len(str(max_number))
+                    
                     # Sequential if average gap ≤ 2 and max gap ≤ 5 (allows small missing numbers)
                     if avg_gap <= 2.0 and max_gap <= 5:
                         is_sequential = True
                         msg = f"  ✓ SEQUENTIAL pattern detected: range {min(numbers)}-{max(numbers)}, avg gap {avg_gap:.1f}, max gap {max_gap}"
+                        add_log_message(msg)
+                        logger.info(msg)
+                        
+                        # Report zero-padding recommendation
+                        msg = f"  → Sequence numbers will be zero-padded to {zero_pad_width} digits (e.g., {str(min(numbers)).zfill(zero_pad_width)}, {str(max(numbers)).zfill(zero_pad_width)})"
                         add_log_message(msg)
                         logger.info(msg)
                         
@@ -774,6 +820,7 @@ def main(page: ft.Page):
                     msg = f"  • Mixed: 1 numbered file + {len(items)-1} unnumbered files with same prefix"
                     add_log_message(msg)
                     logger.info(msg)
+                    zero_pad_width = len(str(numbers[0]))  # Use single number's width
                 else:
                     msg = f"  • All files unnumbered but share common prefix (3+ chars: '{prefix}')"
                     add_log_message(msg)
@@ -784,11 +831,18 @@ def main(page: ft.Page):
                 add_log_message(msg)
                 logger.info(msg)
                 
-                # Store group
-                groups[prefix] = [item['obj'] for item in items]
+                # Store group with padding info
+                groups[prefix] = {
+                    'files': [item['obj'] for item in items],
+                    'zero_pad_width': zero_pad_width,
+                    'items': items  # Keep parsed items for sorting
+                }
             
             # Create compound objects for groups with 2+ files
-            for text_base, group_files in groups.items():
+            for text_base, group_data in groups.items():
+                group_files = group_data['files']
+                zero_pad_width = group_data['zero_pad_width']
+                
                 if len(group_files) >= 2:
                     # Get the folder path from the first child (all children should be in same folder)
                     folder_path = str(Path(group_files[0]['filepath']).parent)
@@ -815,13 +869,18 @@ def main(page: ft.Page):
                         "text_base": text_base,
                         "child_count": len(group_files),
                         "folder_path": folder_path,
+                        "zero_pad_width": zero_pad_width,
                         "type": "compound"
                     })
                     
                     # Assign this compound ID as parentid to all children
-                    for child_obj in group_files:
+                    # Also store sequence numbers from parsed data for display
+                    parsed_items = group_data['items']
+                    for parsed_item in parsed_items:
+                        child_obj = parsed_item['obj']
                         child_obj["parentid"] = compound_id
                         child_obj["type"] = "child"
+                        child_obj["sequence_number"] = parsed_item.get('number')  # Store for display
                     
                     logger.info(f"[DEBUG] Compound: {compound_id} | Base: '{text_base}' | Folder: {folder_path} | Children: {[f['filename'] for f in group_files]}")
                 else:
@@ -925,13 +984,27 @@ def main(page: ft.Page):
             
             # Display compound objects with their children
             for compound in compound_objects:
+                zero_pad = compound.get('zero_pad_width', 0)
                 result_lines.append(f"📦 COMPOUND: {compound['objectid']} ('{compound['text_base']}' - {compound['child_count']} children)")
                 result_lines.append(f"    Folder: {compound['folder_path']}")
                 
-                # Show children indented
+                # Show children indented, sorted by sequence number
                 if compound['objectid'] in children_by_parent:
-                    for child in children_by_parent[compound['objectid']]:
-                        result_lines.append(f"    ↳ {child['objectid']} → {child['filename']}")
+                    children = children_by_parent[compound['objectid']]
+                    
+                    # Sort: numbered files by sequence, then unnumbered alphabetically
+                    numbered = [c for c in children if c.get('sequence_number') is not None]
+                    unnumbered = [c for c in children if c.get('sequence_number') is None]
+                    numbered.sort(key=lambda x: x['sequence_number'])
+                    unnumbered.sort(key=lambda x: x['filename'])
+                    
+                    for child in numbered + unnumbered:
+                        seq_num = child.get('sequence_number')
+                        if seq_num is not None and zero_pad > 0:
+                            seq_display = f"[{str(seq_num).zfill(zero_pad)}]"
+                            result_lines.append(f"    ↳ {child['objectid']} {seq_display} → {child['filename']}")
+                        else:
+                            result_lines.append(f"    ↳ {child['objectid']} → {child['filename']}")
                 result_lines.append("")  # Blank line between compounds
             
             # Display standalone objects

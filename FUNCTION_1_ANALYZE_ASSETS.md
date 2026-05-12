@@ -54,38 +54,58 @@ A **compound object** is a logical grouping of related digital assets. The compo
 ### How Grouping Works
 When `group_compound_objects` is enabled in Function 0:
 
-1. **Intelligent Pattern Analysis**: Files are analyzed for common patterns:
-   - **Prefix Extraction**: Extracts leading letters before any number or separator (space, underscore, hyphen)
-   - **Weighted Matching**: Prefixes must be 3+ characters to qualify for grouping
-   - **Flexible Separators**: Handles `photo_001`, `photo 001`, `photo-001`, or `photo001`
-   - **Case-Insensitive**: `Wit`, `wit`, `WIT` are treated as identical
-   - Example: `wit 001.jpg`, `wit poster.jpg`, `wit program.pdf` → all have prefix "wit"
-   - Example: `photo_001.jpg`, `photo_002.jpg`, `photo_album.pdf` → all have prefix "photo"
+1. **Intelligent Pattern Analysis**: Files are analyzed in two passes to find common patterns:
+   
+   **First Pass - Extract Base Patterns:**
+   - Files with trailing numbers: extract everything before last number as prefix
+   - `100 Nights-1.jpg` → prefix: "100 nights", sequence: 1
+   - `Wit 042.JPG` → prefix: "wit", sequence: 42
+   - `AnnaChristie-F14-23.pdf` → prefix: "annachristie-f14", sequence: 23
+   
+   **Second Pass - Match Unnumbered Files:**
+   - For files without trailing numbers, check if they start with any known prefix
+   - Uses longest matching prefix (most specific match)
+   - `Wit Poster.jpg` starts with "wit" → uses prefix "wit"
+   - `AnnaChristie-F14-Poster.pdf` starts with "annachristie-f14" → uses that prefix
+   - `Traditions and Encounters Program.pdf` → no numbered files, uses full stem
+   
+   **Matching Rules:**
+   - Prefixes must be 3+ characters to qualify for grouping (weighted matching)
+   - Flexible separators: space, underscore, hyphen between prefix and suffix
+   - Case-insensitive comparison
+   - Validates separator after prefix (prevents false substring matches)
 
 2. **Sequence Detection**: For numbered files, analyzes if numbers form a sequence:
    - Calculates average gap and maximum gap between numbers
    - Sequential if: average gap ≤ 2.0 and max gap ≤ 5
    - Tolerates missing numbers (e.g., 1, 2, 3, 5, 6 is still sequential - missing 4)
-   - Reports details: number range, gaps, missing values
+   - **Zero-Padding**: Calculates padding width from max number (20 → 2 digits)
+   - Reports details: number range, gaps, missing values, padding width
 
 3. **Detailed Reporting**: Logs comprehensive analysis for each group:
    - Number of files (numbered vs unnumbered)
    - Sequence analysis (range, gaps, patterns)
+   - Zero-padding recommendations
    - Grouping decision with rationale
    - Missing numbers or irregularities
 
-4. **Compound Object Creation**: For each group with 2+ files:
+4. **Smart Display**: Results show files in proper order:
+   - Children sorted by sequence number (numbered first, then unnumbered)
+   - Sequence numbers displayed with zero-padding: `[01]`, `[02]`, `[10]`
+   - Makes visual inspection easier and confirms proper grouping
+
+5. **Compound Object Creation**: For each group with 2+ files:
    - A compound object is created with its own `dg_<epoch>` identifier
    - The compound is associated with the **folder path** containing the children
    - Compound ID is reused if the same group (folder + text base) is processed again
    - The compound ID becomes the `parentid` for all children
 
-5. **Child Tracking**: Each child asset:
+6. **Child Tracking**: Each child asset:
    - Has its own unique `dg_<epoch>` identifier (objectid)
    - Has a `parentid` field pointing to the compound object
    - Retains its file path and other metadata
 
-6. **Standalone Objects**: Files that don't match any group:
+7. **Standalone Objects**: Files that don't match any group:
    - Prefix less than 3 characters (too short for matching)
    - Only file with that prefix (no group formed)
    - Have `parentid = None`
@@ -136,16 +156,25 @@ This ensures that once a file receives an identifier, running the function again
 When analyzing files with compound grouping enabled, detailed analysis is logged:
 
 ```
-[GROUP ANALYSIS] Found 2 prefix groups (3+ char prefixes)
+[GROUP ANALYSIS] Found 3 prefix groups (3+ char prefixes)
+[PREFIX MATCHING] Found 2 numbered prefixes: ['100 nights', 'wit']
+[PREFIX MATCH] 'Wit Poster.jpg' matched prefix 'wit' (common with numbered files)
+[PREFIX MATCH] 'Wit Program.pdf' matched prefix 'wit' (common with numbered files)
 
 [GROUP: 'wit'] 100 files (98 numbered, 2 unnumbered)
   ✓ SEQUENTIAL pattern detected: range 1-100, avg gap 1.0, max gap 2
+  → Sequence numbers will be zero-padded to 3 digits (e.g., 001, 100)
   ℹ Note: 2 gap(s) in sequence (e.g., missing numbers)
   ➤ DECISION: Creating compound (common prefix 'wit', 100 files)
 
-[GROUP: 'photo'] 3 files (2 numbered, 1 unnumbered)
-  • Mixed: 2 numbered files + 1 unnumbered file with same prefix
-  ➤ DECISION: Creating compound (common prefix 'photo', 3 files)
+[GROUP: '100 nights'] 20 files (20 numbered, 0 unnumbered)
+  ✓ SEQUENTIAL pattern detected: range 1-20, avg gap 1.0, max gap 1
+  → Sequence numbers will be zero-padded to 2 digits (e.g., 01, 20)
+  ➤ DECISION: Creating compound (common prefix '100 nights', 20 files)
+
+[GROUP: 'annachristie-f14'] 2 files (0 numbered, 2 unnumbered)
+  • All files unnumbered but share common prefix (3+ chars: 'annachristie-f14')
+  ➤ DECISION: Creating compound (common prefix 'annachristie-f14', 2 files)
 ```
 
 This helps you understand:
