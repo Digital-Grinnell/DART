@@ -7,16 +7,27 @@ This guide helps you get the best results from DART's intelligent compound objec
 ---
 
 ## Table of Contents
-1. [How Compound Grouping Works](#how-compound-grouping-works)
-2. [Filename Convention Guidelines](#filename-convention-guidelines)
-3. [Common Scenarios](#common-scenarios)
-4. [Troubleshooting](#troubleshooting)
+1. [Compound Grouping Setting](#compound-grouping-setting)
+2. [How Compound Grouping Works](#how-compound-grouping-works)
+3. [Filename Convention Guidelines](#filename-convention-guidelines)
+4. [Common Scenarios](#common-scenarios)
+5. [Troubleshooting](#troubleshooting)
+
+---
+
+## Compound Grouping Setting
+
+**Compound grouping must be enabled in Function 0 (App Settings)** to group related files together. Look for the checkbox labeled "Group compound objects" in the settings.
+
+**When ENABLED:** DART analyzes filename patterns and groups related files (e.g., "Wit 001.jpg", "Wit 002.jpg", "Wit Poster.jpg") into a single compound object with one parent ID and multiple children. This is ideal for collections where multiple files represent different views, pages, or components of the same intellectual object.
+
+**When DISABLED:** Every file becomes a standalone object with its own unique identifier. Use this mode when each file represents a completely independent object with no relationship to other files, or when you want full control over grouping decisions.
 
 ---
 
 ## How Compound Grouping Works
 
-DART's compound grouping uses a **three-pass intelligent algorithm**:
+DART's compound grouping, when **enabled**, uses a **three-pass intelligent algorithm**:
 
 ### Pass 1: Learn Patterns from Numbered Files
 The app first looks for files with trailing sequence numbers and extracts their base prefix:
