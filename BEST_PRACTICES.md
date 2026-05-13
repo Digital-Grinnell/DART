@@ -1,8 +1,8 @@
 # DART Best Practices & Filename Conventions
 
-**Core Mission:** DART is focused on providing a valid import/ingest-compatible CSV metadata file using the digital objects and their original filenames as the "source of truth". Each object is given a unique Digital.Grinnell identifier and DART can help maintain those while directing files to proper long-term/preservation storage.
+**Core Mission:** DART is focused on providing a valid import/ingest-compatible CSV metadata file using groups of digital objects and their original filenames as the "source of truth". Each object is given a unique Digital.Grinnell identifier and DART helps maintain those while directing files to proper long-term/preservation storage.
 
-This guide helps you get the best results from DART's intelligent compound object grouping.
+This guide helps you get the best results from DART's intelligent compound object grouping and other features.  
 
 ---
 
