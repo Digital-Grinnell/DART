@@ -1,5 +1,7 @@
 # DART Best Practices & Filename Conventions
 
+**Core Mission:** DART is focused on providing a valid import/ingest-compatible CSV metadata file using the digital objects and their original filenames as the "source of truth". Each object is given a unique Digital.Grinnell identifier and DART can help maintain those while directing files to proper long-term/preservation storage.
+
 This guide helps you get the best results from DART's intelligent compound object grouping.
 
 ---
@@ -369,6 +371,27 @@ scan_003.jpg     ← Different extension
 scan_catalog.pdf ← Different extension
 ```
 As long as they share the common prefix, they'll group together.
+
+### Controlling Child Object Order
+Don't use trailing numbers (like "000") to try to influence the display order of supplementary files:
+
+**Avoid:**
+```
+Wit 001.jpg
+Wit 002.jpg
+Wit - Poster 000.jpg    ← Don't do this!
+Wit - Program 000.pdf   ← These won't group correctly
+```
+
+**Instead:**
+```
+Wit 001.jpg
+Wit 002.jpg
+Wit - Poster.jpg        ← No trailing number
+Wit - Program.pdf       ← No trailing number
+```
+
+After DART generates the CSV file with all your objects, you can easily adjust the order of child objects by moving rows around in the CSV. This gives you complete control over ordering without affecting the filename-based grouping logic.
 
 ---
 
