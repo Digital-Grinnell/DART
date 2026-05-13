@@ -6,6 +6,13 @@
 
 DART is focused on providing a valid import/ingest-compatible CSV metadata file using the digital objects and their original filenames as the "source of truth". Each object is given a unique Digital.Grinnell identifier and DART can help maintain those while directing files to proper long-term/preservation storage.
 
+**CSV Metadata Workflow:**
+- Define your metadata schema using a **CSV structure template** (with required CollectionBuilder fields)
+- Designate a **core metadata CSV** as your master/controlling metadata file
+- Generate new metadata from asset batches using the template structure
+- Future functions will intelligently merge new metadata into the core CSV
+- Maintain consistency and avoid duplicate identifiers across workflow phases
+
 ## Purpose
 
 DART provides a comprehensive platform for digital asset management workflows:
@@ -22,6 +29,8 @@ DART provides a comprehensive platform for digital asset management workflows:
 - **Persistent Settings**: Automatic saving/loading of window position, directories, and user preferences
 - **Persistent File Selection**: Selected files are remembered across app restarts - no need to re-select
 - **Permanent ID Assignment**: Files receive unique `dg_<epoch>` identifiers that never change once assigned
+- **CSV Metadata Management**: Template-based CSV generation with intelligent merging into master metadata file
+- **CollectionBuilder Compatibility**: Validates CSV structure for required fields (objectid, filename)
 - **Professional Logging**: Timestamped log files in `{working_folder}/logfiles/` with real-time display
 - **Function Management**: Icon-enhanced dropdown with usage tracking and workflow ordering
 - **Help Mode**: Built-in markdown help viewer for each function with copy-to-clipboard
@@ -35,7 +44,12 @@ DART provides a comprehensive platform for digital asset management workflows:
 - **Function 1** 🎯: Analyze digital assets and generate standard DG identifiers (dg_<epoch>)
   - Creates compound objects for related file groups (optional)
   - Permanent ID assignment with folder-based compound tracking
-- **Function 2** 📊: Count files by extension type
+- **Function 2** 📊: Export analyzed assets to CSV using template structure
+  - Generates CollectionBuilder-compatible metadata files
+  - Auto-populates objectid, filename, parentid, display_template, and format fields
+  - Supports compound object export with parent/child relationships
+  - Maps file types to CollectionBuilder layouts (image/video/audio/pdf/compound_object)
+  - Timestamped exports to working directory
 - **Function 3** 💻: Display system information
 
 *Additional asset processing functions are added as needed for your specific workflow.*
@@ -88,7 +102,7 @@ DART/
 ├── QUICKSTART.md              # Quick reference guide
 ├── FUNCTION_0_APP_SETTINGS.md # Help docs for Function 0
 ├── FUNCTION_1_ANALYZE_ASSETS.md  # Help docs for Function 1
-├── FUNCTION_2_COUNT_FILES.md  # Help docs for Function 2
+├── FUNCTION_2_EXPORT_CSV.md     # Help docs for Function 2 (CSV export)
 ├── FUNCTION_3_SYSTEM_INFO.md  # Help docs for Function 3
 └── README.md                   # This file
 ```

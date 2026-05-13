@@ -12,6 +12,8 @@ import json
 import platform
 import socket
 import re
+import csv
+import shutil
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Tuple
@@ -84,7 +86,7 @@ PERSISTENCE_FILE = DATA_DIR / "persistent.json"
 ENCRYPTION_KEY_FILE = DATA_DIR / "encryption_key"
 
 # Sensitive fields that should be encrypted in settings
-SENSITIVE_FIELDS = ["api_key", "api_secret", "password"]
+SENSITIVE_FIELDS = ["api_key", "api_secret", "password", "azure_connection_string"]
 
 # App settings filename and defaults
 APP_SETTINGS_FILENAME = "dart_settings.json"
@@ -94,11 +96,18 @@ DEFAULT_APP_SETTINGS = {
     "group_compound_objects": False,
     "use_working_folder_for_file_selection": False,
     "csv_structure_file": "",
+    "core_metadata_csv": "",
+    "azure_blob_storage_path": "",
+    "azure_connection_string": "",
     "api_key": "",
     "api_secret": "",
     "password": "",
     "file_to_id_map": {},  # Maps full file paths to assigned dg_<epoch> IDs
 }
+
+# Required CollectionBuilder CSV fields
+REQUIRED_CSV_FIELDS = ["objectid", "filename"]
+RECOMMENDED_CSV_FIELDS = ["title", "format", "date"]
 
 
 class PersistentStorage:
@@ -308,6 +317,125 @@ def load_help_document(filename: str) -> str:
         return f"# Error Loading Help\n\n{str(e)}"
 
 
+def validate_csv_structure(csv_path: str) -> Tuple[bool, str, list]:
+    """
+    Validate that a CSV file has the required CollectionBuilder fields.
+    Returns (success, message, field_list).
+    """
+    if not csv_path or not csv_path.strip():
+        return True, "No CSV structure file specified", []
+    
+    csv_file = Path(csv_path)
+    if not csv_file.exists():
+        return False, f"CSV file not found: {csv_path}", []
+    
+    try:
+        with open(csv_file, 'r', encoding='utf-8') as f:
+            reader = csv.reader(f)
+            headers = next(reader, None)
+            
+            if not headers:
+                return False, "CSV file is empty or has no header row", []
+            
+            # Normalize headers (lowercase, strip whitespace)
+            headers = [h.strip().lower() for h in headers]
+            
+            # Check for required fields
+            missing_fields = [field for field in REQUIRED_CSV_FIELDS if field.lower() not in headers]
+            
+            if missing_fields:
+                return False, f"Missing required fields: {', '.join(missing_fields)}", headers
+            
+            # Check for recommended fields (warning only)
+            missing_recommended = [field for field in RECOMMENDED_CSV_FIELDS if field.lower() not in headers]
+            
+            if missing_recommended:
+                msg = f"✓ Valid structure ({len(headers)} columns). Note: Missing recommended fields: {', '.join(missing_recommended)}"
+            else:
+                msg = f"✓ Valid structure with all required and recommended fields ({len(headers)} columns)"
+            
+            return True, msg, headers
+            
+    except Exception as e:
+        return False, f"Error reading CSV file: {str(e)}", []
+
+
+def validate_core_metadata_csv(csv_path: str, structure_path: str = "") -> Tuple[bool, str]:
+    """
+    Validate the core metadata CSV file.
+    Checks that it exists, has valid structure, and matches template if provided.
+    Returns (success, message).
+    """
+    if not csv_path or not csv_path.strip():
+        return True, "No core metadata CSV specified (optional)"
+    
+    csv_file = Path(csv_path)
+    if not csv_file.exists():
+        return False, f"Core metadata CSV file not found: {csv_path}"
+    
+    # Validate basic structure
+    valid, msg, headers = validate_csv_structure(csv_path)
+    if not valid:
+        return False, f"Core CSV validation failed: {msg}"
+    
+    # If structure template is provided, verify compatibility
+    if structure_path and structure_path.strip():
+        struct_valid, struct_msg, struct_headers = validate_csv_structure(structure_path)
+        if struct_valid and struct_headers:
+            # Check if core CSV has all columns from template
+            missing_cols = [col for col in struct_headers if col not in headers]
+            if missing_cols:
+                return False, f"Core CSV missing columns from template: {', '.join(missing_cols)}"
+            
+            return True, f"✓ Core CSV valid and compatible with template ({len(headers)} columns)"
+    
+    return True, f"✓ Core CSV valid ({len(headers)} columns)"
+
+
+def copy_csv_to_working_dir(csv_path: str, working_dir: str, file_type: str) -> Tuple[str, bool, str]:
+    """
+    Copy a CSV file to the working directory if it's not already there.
+    Returns (new_path, was_copied, message).
+    file_type should be "template" or "core" for logging.
+    """
+    if not csv_path or not csv_path.strip():
+        return "", False, ""
+    
+    source_path = Path(csv_path)
+    working_path = Path(working_dir)
+    
+    if not source_path.exists():
+        return csv_path, False, f"Source file not found: {csv_path}"
+    
+    # Check if file is already in working directory
+    if source_path.parent.resolve() == working_path.resolve():
+        return csv_path, False, f"{file_type.capitalize()} CSV already in working directory"
+    
+    # Copy file to working directory
+    dest_path = working_path / source_path.name
+    
+    try:
+        # Check if destination already exists
+        if dest_path.exists():
+            # Compare file contents to see if they're the same
+            if source_path.read_bytes() == dest_path.read_bytes():
+                return str(dest_path), False, f"{file_type.capitalize()} CSV already exists in working directory (identical)"
+            else:
+                # Files differ - create a unique name
+                base_name = dest_path.stem
+                suffix = dest_path.suffix
+                counter = 1
+                while dest_path.exists():
+                    dest_path = working_path / f"{base_name}_{counter}{suffix}"
+                    counter += 1
+        
+        shutil.copy2(source_path, dest_path)
+        return str(dest_path), True, f"✓ Copied {file_type} CSV to working directory: {dest_path.name}"
+    
+    except Exception as e:
+        return csv_path, False, f"Error copying {file_type} CSV: {str(e)}"
+
+
 def main(page: ft.Page):
     page.title = "DART - Digital Asset Routing and Transformation"
     page.padding = 20
@@ -447,6 +575,14 @@ def main(page: ft.Page):
             if last_file:
                 return [Path(last_file)]
             return []
+    
+    def clear_file_selection(e):
+        """Clear the current file selection."""
+        storage.set_ui_state("last_file", "")
+        storage.set_ui_state("last_files", "")
+        file_field.value = ""
+        update_status("File selection cleared")
+        page.update()
 
     # ------------------------------------------------------------------ function implementations
 
@@ -495,8 +631,138 @@ def main(page: ft.Page):
             label="csv_structure_file",
             value=str(settings.get("csv_structure_file", "")),
             hint_text="Path to CSV file defining expected column structure",
-            width=320,
+            width=500,
+            read_only=False,
         )
+        
+        csv_validation_text = ft.Text(
+            "",
+            size=11,
+            color=ft.Colors.GREY_700,
+            visible=False,
+        )
+        
+        # Validate existing CSV if one is set
+        existing_csv = settings.get("csv_structure_file", "")
+        if existing_csv:
+            valid, msg, fields = validate_csv_structure(existing_csv)
+            csv_validation_text.value = msg
+            csv_validation_text.color = ft.Colors.GREEN if valid else ft.Colors.RED
+            csv_validation_text.visible = True
+        
+        def on_csv_picker_result(picker_event: ft.FilePickerResultEvent):
+            """Handle CSV file picker result."""
+            if picker_event.files and len(picker_event.files) > 0:
+                csv_path = picker_event.files[0].path
+                csv_structure_field.value = csv_path
+                
+                # Validate the selected CSV
+                valid, msg, fields = validate_csv_structure(csv_path)
+                csv_validation_text.value = msg
+                csv_validation_text.color = ft.Colors.GREEN if valid else ft.Colors.RED
+                csv_validation_text.visible = True
+                
+                # Auto-populate core CSV if it's empty
+                if not core_csv_field.value or not core_csv_field.value.strip():
+                    core_csv_field.value = csv_path
+                    # Validate the auto-populated core CSV
+                    core_valid, core_msg = validate_core_metadata_csv(csv_path, csv_path)
+                    core_csv_validation_text.value = core_msg
+                    core_csv_validation_text.color = ft.Colors.GREEN if core_valid else ft.Colors.RED
+                    core_csv_validation_text.visible = True
+                    add_log_message(f"Auto-populated core metadata CSV from template: {Path(csv_path).name}")
+                    logger.info(f"Auto-populated core_metadata_csv from template: {csv_path}")
+                
+                page.update()
+        
+        csv_picker = ft.FilePicker(on_result=on_csv_picker_result)
+        page.overlay.append(csv_picker)
+        
+        def browse_csv_click(evt):
+            """Open file picker for CSV selection."""
+            csv_picker.pick_files(
+                dialog_title="Select CSV Structure File",
+                allowed_extensions=["csv"],
+                allow_multiple=False,
+            )
+        
+        csv_browse_button = ft.ElevatedButton(
+            "Browse...",
+            on_click=browse_csv_click,
+            height=40,
+        )
+        
+        # Core Metadata CSV field with picker
+        core_csv_field = ft.TextField(
+            label="core_metadata_csv",
+            value=str(settings.get("core_metadata_csv", "")),
+            hint_text="Path to core/controlling metadata CSV file (optional)",
+            width=500,
+            read_only=False,
+        )
+        
+        core_csv_validation_text = ft.Text(
+            "",
+            size=11,
+            color=ft.Colors.GREY_700,
+            visible=False,
+        )
+        
+        # Validate existing core CSV if one is set
+        existing_core_csv = settings.get("core_metadata_csv", "")
+        if existing_core_csv:
+            valid, msg = validate_core_metadata_csv(existing_core_csv, existing_csv)
+            core_csv_validation_text.value = msg
+            core_csv_validation_text.color = ft.Colors.GREEN if valid else ft.Colors.RED
+            core_csv_validation_text.visible = True
+        
+        def on_core_csv_picker_result(picker_event: ft.FilePickerResultEvent):
+            """Handle core CSV file picker result."""
+            if picker_event.files and len(picker_event.files) > 0:
+                core_csv_path = picker_event.files[0].path
+                core_csv_field.value = core_csv_path
+                
+                # Validate the selected core CSV
+                template_path = csv_structure_field.value
+                valid, msg = validate_core_metadata_csv(core_csv_path, template_path)
+                core_csv_validation_text.value = msg
+                core_csv_validation_text.color = ft.Colors.GREEN if valid else ft.Colors.RED
+                core_csv_validation_text.visible = True
+                page.update()
+        
+        core_csv_picker = ft.FilePicker(on_result=on_core_csv_picker_result)
+        page.overlay.append(core_csv_picker)
+        
+        def browse_core_csv_click(evt):
+            """Open file picker for core CSV selection."""
+            core_csv_picker.pick_files(
+                dialog_title="Select Core Metadata CSV File",
+                allowed_extensions=["csv"],
+                allow_multiple=False,
+            )
+        
+        core_csv_browse_button = ft.ElevatedButton(
+            "Browse...",
+            on_click=browse_core_csv_click,
+            height=40,
+        )
+        
+        azure_storage_field = ft.TextField(
+            label="azure_blob_storage_path",
+            value=str(settings.get("azure_blob_storage_path", "")),
+            hint_text="Azure Blob Storage path (e.g., container/folder)",
+            width=500,
+        )
+        
+        azure_connection_field = ft.TextField(
+            label="azure_connection_string",
+            value=str(settings.get("azure_connection_string", "")),
+            hint_text="Azure Storage connection string (encrypted)",
+            password=True,
+            can_reveal_password=True,
+            width=500,
+        )
+        
         api_key_field = ft.TextField(
             label="api_key",
             value=str(settings.get("api_key", "")),
@@ -555,13 +821,89 @@ def main(page: ft.Page):
                     is_error=True,
                 )
                 return
+            
+            # Validate CSV structure if provided
+            csv_file_path = (csv_structure_field.value or "").strip()
+            if csv_file_path:
+                valid, msg, fields = validate_csv_structure(csv_file_path)
+                if not valid:
+                    update_status(f"CSV structure validation error: {msg}", is_error=True)
+                    csv_validation_text.value = msg
+                    csv_validation_text.color = ft.Colors.RED
+                    csv_validation_text.visible = True
+                    page.update()
+                    return
+                else:
+                    add_log_message(f"CSV structure validated: {msg}")
+                    logger.info(f"CSV structure validated: {csv_file_path} - {msg}")
+            
+            # Validate core metadata CSV if provided
+            core_csv_path = (core_csv_field.value or "").strip()
+            if core_csv_path:
+                valid, msg = validate_core_metadata_csv(core_csv_path, csv_file_path)
+                if not valid:
+                    update_status(f"Core CSV validation error: {msg}", is_error=True)
+                    core_csv_validation_text.value = msg
+                    core_csv_validation_text.color = ft.Colors.RED
+                    core_csv_validation_text.visible = True
+                    page.update()
+                    return
+                else:
+                    add_log_message(f"Core metadata CSV validated: {msg}")
+                    logger.info(f"Core CSV validated: {core_csv_path} - {msg}")
+            
+            # Copy CSV files to working directory if they're not already there
+            # Handle case where both files might be the same
+            files_to_copy = {}
+            if csv_file_path:
+                files_to_copy['template'] = csv_file_path
+            if core_csv_path and core_csv_path != csv_file_path:
+                files_to_copy['core'] = core_csv_path
+            elif core_csv_path and core_csv_path == csv_file_path:
+                # Both are the same file - copy once, use for both
+                files_to_copy['both'] = csv_file_path
+            
+            copied_template_path = csv_file_path
+            copied_core_path = core_csv_path
+            
+            for file_type, file_path in files_to_copy.items():
+                new_path, was_copied, copy_msg = copy_csv_to_working_dir(file_path, working_dir, file_type)
+                if copy_msg:
+                    add_log_message(copy_msg)
+                    logger.info(copy_msg)
+                
+                if was_copied:
+                    if file_type == 'template':
+                        copied_template_path = new_path
+                        csv_structure_field.value = new_path
+                    elif file_type == 'core':
+                        copied_core_path = new_path
+                        core_csv_field.value = new_path
+                    elif file_type == 'both':
+                        # Same file used for both - update both paths
+                        copied_template_path = new_path
+                        copied_core_path = new_path
+                        csv_structure_field.value = new_path
+                        core_csv_field.value = new_path
+                        add_log_message(f"Both template and core CSV point to the same file: {Path(new_path).name}")
+            
+            # Update validation displays if paths changed
+            if copied_template_path != csv_file_path:
+                csv_file_path = copied_template_path
+            if copied_core_path != core_csv_path:
+                core_csv_path = copied_core_path
+            
+            page.update()
 
             new_settings = {
                 "auto_save_enabled": parsed_auto_save,
                 "auto_save_format": (auto_save_format_field.value or "").strip() or "txt",
                 "group_compound_objects": parsed_group_compound,
                 "use_working_folder_for_file_selection": parsed_use_working_folder,
-                "csv_structure_file": (csv_structure_field.value or "").strip(),
+                "csv_structure_file": csv_file_path,
+                "core_metadata_csv": core_csv_path,
+                "azure_blob_storage_path": (azure_storage_field.value or "").strip(),
+                "azure_connection_string": (azure_connection_field.value or "").strip(),
                 "api_key": (api_key_field.value or "").strip(),
                 "api_secret": (api_secret_field.value or "").strip(),
                 "password": (password_field.value or "").strip(),
@@ -592,10 +934,34 @@ def main(page: ft.Page):
                         auto_save_format_field,
                         group_compound_field,
                         use_working_folder_field,
-                        csv_structure_field,
+                        ft.Row(
+                            controls=[
+                                csv_structure_field,
+                                csv_browse_button,
+                            ],
+                            alignment=ft.MainAxisAlignment.START,
+                        ),
+                        csv_validation_text,
+                        ft.Row(
+                            controls=[
+                                core_csv_field,
+                                core_csv_browse_button,
+                            ],
+                            alignment=ft.MainAxisAlignment.START,
+                        ),
+                        core_csv_validation_text,
+                        ft.Container(height=8),
+                        azure_storage_field,
                         ft.Container(height=8),
                         ft.Text(
-                            "Sensitive fields (encrypted in file):",
+                            "Azure Storage (encrypted):",
+                            size=12,
+                            weight=ft.FontWeight.BOLD,
+                        ),
+                        azure_connection_field,
+                        ft.Container(height=8),
+                        ft.Text(
+                            "Other sensitive fields (encrypted):",
                             size=12,
                             weight=ft.FontWeight.BOLD,
                         ),
@@ -622,6 +988,296 @@ def main(page: ft.Page):
         page.overlay.append(settings_dialog)
         settings_dialog.open = True
         page.update()
+
+    def analyze_compound_objects(objects, group_compound, file_to_id_map, page):
+        """
+        Analyze objects for compound grouping patterns and assign parent/child relationships.
+        
+        This function performs three-pass analysis:
+        1. Parse filenames to extract prefixes and sequence numbers
+        2. Match unnumbered files to numbered prefixes
+        3. Find common prefixes among remaining unnumbered files
+        
+        Args:
+            objects: List of object dicts with objectid, filepath, filename
+            group_compound: Boolean, whether to perform compound grouping
+            file_to_id_map: Dict of existing file/compound ID mappings
+            page: Flet page object for ID generation
+            
+        Returns:
+            tuple: (compound_objects, file_to_id_map, new_mappings, reused_mappings)
+                - compound_objects: List of compound parent objects created
+                - file_to_id_map: Updated mapping dict (with new compound IDs)
+                - new_mappings: Count of new compound IDs created
+                - reused_mappings: Count of existing compound IDs reused
+                
+        Side effects:
+            Modifies objects in place, adding: parentid, type, sequence_number
+        """
+        compound_objects = []
+        compound_new_mappings = 0
+        compound_reused_mappings = 0
+        
+        if not group_compound:
+            # No compound grouping - all objects are standalone
+            add_log_message(f"[DEBUG] Compound grouping DISABLED - all objects standalone")
+            for obj in objects:
+                obj["parentid"] = None
+                obj["type"] = "single"
+            return compound_objects, file_to_id_map, compound_new_mappings, compound_reused_mappings
+        
+        add_log_message(f"[DEBUG] Compound grouping ENABLED - analyzing filename patterns")
+        logger.info("[DEBUG] Starting compound object analysis")
+        
+        # FIRST PASS: Parse all filenames to extract prefix and number components
+        parsed_files = []
+        numbered_prefixes = set()  # Track prefixes from numbered files
+        
+        for obj in objects:
+            stem = Path(obj['filename']).stem
+            
+            # Extract prefix and trailing sequence number
+            # Pattern: everything before the LAST number is the prefix, last number is sequence
+            match = re.match(r'^(.+?)[\s_\-]*(\d+)$', stem)
+            if match:
+                prefix = match.group(1).strip().lower()  # Normalize: lowercase, strip whitespace
+                number = int(match.group(2))
+                numbered_prefixes.add(prefix)
+                parsed_files.append({
+                    'obj': obj,
+                    'prefix': prefix,
+                    'number': number,
+                    'filename': obj['filename'],
+                    'raw_stem': stem
+                })
+                logger.info(f"[PARSE] '{obj['filename']}' → prefix: '{prefix}', number: {number}")
+            else:
+                # No trailing number - defer prefix assignment
+                parsed_files.append({
+                    'obj': obj,
+                    'prefix': None,  # Will be assigned in second pass
+                    'number': None,
+                    'filename': obj['filename'],
+                    'raw_stem': stem
+                })
+                logger.info(f"[PARSE] '{obj['filename']}' → no trailing number (defer prefix assignment)")
+        
+        # SECOND PASS: For unnumbered files, find matching prefix from numbered files
+        logger.info(f"[PREFIX MATCHING] Found {len(numbered_prefixes)} numbered prefixes: {sorted(numbered_prefixes)}")
+        
+        for pf in parsed_files:
+            if pf['prefix'] is None:  # Unnumbered file needing prefix assignment
+                stem_lower = pf['raw_stem'].strip().lower()
+                best_match = None
+                best_match_length = 0
+                
+                # Check if this stem starts with any known numbered prefix
+                for known_prefix in numbered_prefixes:
+                    if stem_lower.startswith(known_prefix):
+                        # Verify there's a separator or end after prefix (not just substring match)
+                        remainder = stem_lower[len(known_prefix):]
+                        if not remainder or remainder[0] in [' ', '_', '-']:
+                            # Valid match - track longest match
+                            if len(known_prefix) > best_match_length:
+                                best_match = known_prefix
+                                best_match_length = len(known_prefix)
+                
+                if best_match:
+                    pf['prefix'] = best_match
+                    logger.info(f"[PREFIX MATCH] '{pf['filename']}' matched prefix '{best_match}' (common with numbered files)")
+                else:
+                    # No match - use full stem as its own prefix (may be refined in pass 3)
+                    pf['prefix'] = stem_lower
+                    logger.info(f"[PREFIX MATCH] '{pf['filename']}' → no match, using full stem: '{stem_lower}'")
+        
+        # THIRD PASS: Find common prefixes among remaining unnumbered files
+        unmatched = [pf for pf in parsed_files if pf['number'] is None and pf['prefix'] not in numbered_prefixes]
+        
+        logger.info(f"[THIRD PASS] Total parsed files: {len(parsed_files)}")
+        logger.info(f"[THIRD PASS] Unnumbered files: {len([pf for pf in parsed_files if pf['number'] is None])}")
+        logger.info(f"[THIRD PASS] Numbered prefixes known: {sorted(numbered_prefixes)}")
+        logger.info(f"[THIRD PASS] Unmatched files (for Pass 3): {len(unmatched)}")
+        add_log_message(f"[THIRD PASS] Checking {len(unmatched)} unmatched unnumbered files for common patterns")
+        
+        if len(unmatched) >= 2:
+            logger.info(f"[COMMON PREFIX SEARCH] Analyzing {len(unmatched)} unmatched files for common patterns")
+            add_log_message(f"[COMMON PREFIX SEARCH] Analyzing {len(unmatched)} unmatched files")
+            
+            # List all unmatched files for debugging
+            for pf in unmatched:
+                logger.info(f"[COMMON PREFIX SEARCH] Unmatched file: '{pf['filename']}' with prefix: '{pf['prefix']}'")
+            
+            # Build a map of potential base prefixes
+            potential_bases = {}
+            for pf in unmatched:
+                stem = pf['prefix']
+                # Try to extract base by removing last word after separator
+                match = re.match(r'^(.+)[\s_\-]+\w+$', stem)
+                if match:
+                    # Strip whitespace AND trailing separators to normalize
+                    potential_base = match.group(1).strip().rstrip(' _-')
+                    logger.info(f"[COMMON PREFIX] '{pf['filename']}' (stem: '{stem}') → potential base: '{potential_base}'")
+                    if len(potential_base) >= 3:
+                        if potential_base not in potential_bases:
+                            potential_bases[potential_base] = []
+                        potential_bases[potential_base].append(pf)
+                else:
+                    logger.info(f"[COMMON PREFIX] '{pf['filename']}' (stem: '{stem}') → NO MATCH for base extraction regex")
+            
+            logger.info(f"[COMMON PREFIX] Found {len(potential_bases)} potential base(s): {list(potential_bases.keys())}")
+            
+            # Apply common base to files that share it (2+ files with same base)
+            for base, files in potential_bases.items():
+                if len(files) >= 2:
+                    msg = f"[COMMON PREFIX] Found {len(files)} files sharing base: '{base}'"
+                    logger.info(msg)
+                    add_log_message(msg)
+                    for pf in files:
+                        old_prefix = pf['prefix']
+                        pf['prefix'] = base
+                        logger.info(f"[COMMON PREFIX] '{pf['filename']}' → prefix changed from '{old_prefix}' to '{base}'")
+        
+        # Group by prefix (must be 3+ characters for grouping)
+        prefix_groups = {}
+        for pf in parsed_files:
+            prefix = pf['prefix']
+            # Only group if prefix is 3+ characters (weighted matching)
+            if len(prefix) >= 3:
+                if prefix not in prefix_groups:
+                    prefix_groups[prefix] = []
+                prefix_groups[prefix].append(pf)
+        
+        # Analyze each prefix group for patterns
+        add_log_message(f"[GROUP ANALYSIS] Found {len(prefix_groups)} prefix groups (3+ char prefixes)")
+        logger.info(f"[GROUP ANALYSIS] Analyzing {len(prefix_groups)} prefix groups")
+        
+        groups = {}
+        for prefix, items in prefix_groups.items():
+            # Extract numbers from this group
+            numbers = [item['number'] for item in items if item['number'] is not None]
+            
+            if len(items) < 2:
+                # Single file with this prefix - don't group
+                logger.info(f"[GROUP: '{prefix}'] Single file only - not creating compound")
+                continue
+            
+            # Analyze numbering pattern
+            is_sequential = False
+            zero_pad_width = 0
+            analysis_msg = f"[GROUP: '{prefix}'] {len(items)} files ({len(numbers)} numbered, {len(items)-len(numbers)} unnumbered)"
+            add_log_message(analysis_msg)
+            logger.info(analysis_msg)
+            
+            if len(numbers) >= 2:
+                # Check if numbers form a sequence
+                numbers_sorted = sorted(numbers)
+                gaps = [numbers_sorted[i+1] - numbers_sorted[i] for i in range(len(numbers_sorted)-1)]
+                max_gap = max(gaps)
+                avg_gap = sum(gaps) / len(gaps)
+                
+                # Calculate zero-padding width based on max number
+                max_number = max(numbers_sorted)
+                zero_pad_width = len(str(max_number))
+                
+                # Sequential if average gap ≤ 2 and max gap ≤ 5 (allows small missing numbers)
+                if avg_gap <= 2.0 and max_gap <= 5:
+                    is_sequential = True
+                    msg = f"  ✓ SEQUENTIAL pattern detected: range {min(numbers)}-{max(numbers)}, avg gap {avg_gap:.1f}, max gap {max_gap}"
+                    add_log_message(msg)
+                    logger.info(msg)
+                    
+                    # Report zero-padding recommendation
+                    msg = f"  → Sequence numbers will be zero-padded to {zero_pad_width} digits (e.g., {str(min(numbers)).zfill(zero_pad_width)}, {str(max(numbers)).zfill(zero_pad_width)})"
+                    add_log_message(msg)
+                    logger.info(msg)
+                    
+                    if max_gap > 1:
+                        missing_count = sum(1 for g in gaps if g > 1)
+                        msg = f"  ℹ Note: {missing_count} gap(s) in sequence (e.g., missing numbers)"
+                        add_log_message(msg)
+                        logger.info(msg)
+                else:
+                    msg = f"  ✗ Not sequential: avg gap {avg_gap:.1f}, max gap {max_gap} (too irregular)"
+                    add_log_message(msg)
+                    logger.info(msg)
+            elif len(numbers) == 1:
+                msg = f"  • Mixed: 1 numbered file + {len(items)-1} unnumbered files with same prefix"
+                add_log_message(msg)
+                logger.info(msg)
+                zero_pad_width = len(str(numbers[0]))  # Use single number's width
+            else:
+                msg = f"  • All files unnumbered but share common prefix (3+ chars: '{prefix}')"
+                add_log_message(msg)
+                logger.info(msg)
+            
+            # Decision: Group if 2+ files share prefix (3+ chars)
+            msg = f"  ➤ DECISION: Creating compound (common prefix '{prefix}', {len(items)} files)"
+            add_log_message(msg)
+            logger.info(msg)
+            
+            # Store group with padding info
+            groups[prefix] = {
+                'files': [item['obj'] for item in items],
+                'zero_pad_width': zero_pad_width,
+                'items': items  # Keep parsed items for sorting
+            }
+        
+        # Create compound objects for groups with 2+ files
+        for text_base, group_data in groups.items():
+            group_files = group_data['files']
+            zero_pad_width = group_data['zero_pad_width']
+            
+            if len(group_files) >= 2:
+                # Get the folder path from the first child (all children should be in same folder)
+                folder_path = str(Path(group_files[0]['filepath']).parent)
+                
+                # Create a compound key: folder + text_base for mapping
+                compound_key = f"{folder_path}::COMPOUND::{text_base}"
+                
+                # Check if this compound already has an assigned ID
+                if compound_key in file_to_id_map:
+                    # Reuse existing compound ID
+                    compound_id = file_to_id_map[compound_key]
+                    compound_reused_mappings += 1
+                    add_log_message(f"[DEBUG] Reusing existing compound ID {compound_id} for '{text_base}' in {folder_path}")
+                    logger.info(f"[DEBUG] Reused compound: {compound_id} | Folder: {folder_path} | Base: '{text_base}'")
+                else:
+                    # Generate new compound object ID
+                    compound_id = generate_unique_id(page)
+                    file_to_id_map[compound_key] = compound_id
+                    compound_new_mappings += 1
+                    add_log_message(f"[DEBUG] Created new compound {compound_id} for '{text_base}' in {folder_path}")
+                    logger.info(f"[DEBUG] New compound: {compound_id} | Folder: {folder_path} | Base: '{text_base}'")
+                
+                compound_objects.append({
+                    "objectid": compound_id,
+                    "text_base": text_base,
+                    "child_count": len(group_files),
+                    "folder_path": folder_path,
+                    "zero_pad_width": zero_pad_width,
+                    "type": "compound"
+                })
+                
+                # Assign this compound ID as parentid to all children
+                # Also store sequence numbers from parsed data for display
+                parsed_items = group_data['items']
+                for parsed_item in parsed_items:
+                    child_obj = parsed_item['obj']
+                    child_obj["parentid"] = compound_id
+                    child_obj["type"] = "child"
+                    child_obj["sequence_number"] = parsed_item.get('number')  # Store for display
+                
+                logger.info(f"[DEBUG] Compound: {compound_id} | Base: '{text_base}' | Folder: {folder_path} | Children: {[f['filename'] for f in group_files]}")
+            else:
+                # Single file - not part of a compound
+                group_files[0]["parentid"] = None
+                group_files[0]["type"] = "single"
+                logger.info(f"[DEBUG] Single object (no compound): {group_files[0]['filename']}")
+        
+        add_log_message(f"[DEBUG] Compound analysis complete: {len(compound_objects)} compounds created")
+        logger.info(f"[DEBUG] Total compound objects: {len(compound_objects)}")
+        
+        return compound_objects, file_to_id_map, compound_new_mappings, compound_reused_mappings
 
     def on_function_1_list_files(e):
         """Function 1: Analyze digital assets and generate standard DG identifiers."""
@@ -725,271 +1381,14 @@ def main(page: ft.Page):
         add_log_message(f"[DEBUG] IDs assigned: {new_mappings} new, {reused_mappings} reused")
         logger.info(f"[DEBUG] Total mappings in cache: {len(file_to_id_map)}")
         
-        # Process compound object grouping if enabled
-        compound_objects = []
-        if group_compound:
-            add_log_message(f"[DEBUG] Compound grouping ENABLED - analyzing filename patterns")
-            logger.info("[DEBUG] Starting compound object analysis")
-            
-            # FIRST PASS: Parse all filenames to extract prefix and number components
-            parsed_files = []
-            numbered_prefixes = set()  # Track prefixes from numbered files
-            
-            for obj in objects:
-                stem = Path(obj['filename']).stem
-                
-                # Extract prefix and trailing sequence number
-                # Pattern: everything before the LAST number is the prefix, last number is sequence
-                # This handles: "100 Nights-1", "photo_001", "Wit 042", "2013_photo_05", etc.
-                match = re.match(r'^(.+?)[\s_\-]*(\d+)$', stem)
-                if match:
-                    prefix = match.group(1).strip().lower()  # Normalize: lowercase, strip whitespace
-                    number = int(match.group(2))
-                    numbered_prefixes.add(prefix)
-                    parsed_files.append({
-                        'obj': obj,
-                        'prefix': prefix,
-                        'number': number,
-                        'filename': obj['filename'],
-                        'raw_stem': stem
-                    })
-                    logger.info(f"[PARSE] '{obj['filename']}' → prefix: '{prefix}', number: {number}")
-                else:
-                    # No trailing number - defer prefix assignment
-                    parsed_files.append({
-                        'obj': obj,
-                        'prefix': None,  # Will be assigned in second pass
-                        'number': None,
-                        'filename': obj['filename'],
-                        'raw_stem': stem
-                    })
-                    logger.info(f"[PARSE] '{obj['filename']}' → no trailing number (defer prefix assignment)")
-            
-            # SECOND PASS: For unnumbered files, find matching prefix from numbered files
-            logger.info(f"[PREFIX MATCHING] Found {len(numbered_prefixes)} numbered prefixes: {sorted(numbered_prefixes)}")
-            
-            for pf in parsed_files:
-                if pf['prefix'] is None:  # Unnumbered file needing prefix assignment
-                    stem_lower = pf['raw_stem'].strip().lower()
-                    best_match = None
-                    best_match_length = 0
-                    
-                    # Check if this stem starts with any known numbered prefix
-                    for known_prefix in numbered_prefixes:
-                        # Check if stem starts with this prefix (with optional separator)
-                        # e.g., "wit poster" starts with "wit"
-                        if stem_lower.startswith(known_prefix):
-                            # Verify there's a separator or end after prefix (not just substring match)
-                            remainder = stem_lower[len(known_prefix):]
-                            if not remainder or remainder[0] in [' ', '_', '-']:
-                                # Valid match - track longest match
-                                if len(known_prefix) > best_match_length:
-                                    best_match = known_prefix
-                                    best_match_length = len(known_prefix)
-                    
-                    if best_match:
-                        pf['prefix'] = best_match
-                        logger.info(f"[PREFIX MATCH] '{pf['filename']}' matched prefix '{best_match}' (common with numbered files)")
-                    else:
-                        # No match - use full stem as its own prefix (may be refined in pass 3)
-                        pf['prefix'] = stem_lower
-                        logger.info(f"[PREFIX MATCH] '{pf['filename']}' → no match, using full stem: '{stem_lower}'")
-            
-            # THIRD PASS: Find common prefixes among remaining unnumbered files
-            # Collect files that didn't match any numbered prefix
-            unmatched = [pf for pf in parsed_files if pf['number'] is None and pf['prefix'] not in numbered_prefixes]
-            
-            logger.info(f"[THIRD PASS] Total parsed files: {len(parsed_files)}")
-            logger.info(f"[THIRD PASS] Unnumbered files: {len([pf for pf in parsed_files if pf['number'] is None])}")
-            logger.info(f"[THIRD PASS] Numbered prefixes known: {sorted(numbered_prefixes)}")
-            logger.info(f"[THIRD PASS] Unmatched files (for Pass 3): {len(unmatched)}")
-            add_log_message(f"[THIRD PASS] Checking {len(unmatched)} unmatched unnumbered files for common patterns")
-            
-            if len(unmatched) >= 2:
-                logger.info(f"[COMMON PREFIX SEARCH] Analyzing {len(unmatched)} unmatched files for common patterns")
-                add_log_message(f"[COMMON PREFIX SEARCH] Analyzing {len(unmatched)} unmatched files")
-                
-                # List all unmatched files for debugging
-                for pf in unmatched:
-                    logger.info(f"[COMMON PREFIX SEARCH] Unmatched file: '{pf['filename']}' with prefix: '{pf['prefix']}'")
-                
-                # Build a map of potential base prefixes
-                potential_bases = {}
-                for pf in unmatched:
-                    stem = pf['prefix']
-                    # Try to extract base by removing last word after separator
-                    # Use GREEDY match (.+) to get everything up to LAST separator+word
-                    # "traditions and encounters poster" → "traditions and encounters"
-                    # "traditions and encounters program" → "traditions and encounters"
-                    match = re.match(r'^(.+)[\s_\-]+\w+$', stem)
-                    if match:
-                        # Strip whitespace AND trailing separators to normalize
-                        potential_base = match.group(1).strip().rstrip(' _-')
-                        logger.info(f"[COMMON PREFIX] '{pf['filename']}' (stem: '{stem}') → potential base: '{potential_base}'")
-                        if len(potential_base) >= 3:
-                            if potential_base not in potential_bases:
-                                potential_bases[potential_base] = []
-                            potential_bases[potential_base].append(pf)
-                    else:
-                        logger.info(f"[COMMON PREFIX] '{pf['filename']}' (stem: '{stem}') → NO MATCH for base extraction regex")
-                
-                logger.info(f"[COMMON PREFIX] Found {len(potential_bases)} potential base(s): {list(potential_bases.keys())}")
-                
-                # Apply common base to files that share it (2+ files with same base)
-                for base, files in potential_bases.items():
-                    if len(files) >= 2:
-                        msg = f"[COMMON PREFIX] Found {len(files)} files sharing base: '{base}'"
-                        logger.info(msg)
-                        add_log_message(msg)
-                        for pf in files:
-                            old_prefix = pf['prefix']
-                            pf['prefix'] = base
-                            logger.info(f"[COMMON PREFIX] '{pf['filename']}' → prefix changed from '{old_prefix}' to '{base}'")
-            
-            # Group by prefix (must be 3+ characters for grouping)
-            prefix_groups = {}
-            for pf in parsed_files:
-                prefix = pf['prefix']
-                # Only group if prefix is 3+ characters (weighted matching)
-                if len(prefix) >= 3:
-                    if prefix not in prefix_groups:
-                        prefix_groups[prefix] = []
-                    prefix_groups[prefix].append(pf)
-            
-            # Analyze each prefix group for patterns
-            add_log_message(f"[GROUP ANALYSIS] Found {len(prefix_groups)} prefix groups (3+ char prefixes)")
-            logger.info(f"[GROUP ANALYSIS] Analyzing {len(prefix_groups)} prefix groups")
-            
-            groups = {}
-            for prefix, items in prefix_groups.items():
-                # Extract numbers from this group
-                numbers = [item['number'] for item in items if item['number'] is not None]
-                
-                if len(items) < 2:
-                    # Single file with this prefix - don't group
-                    logger.info(f"[GROUP: '{prefix}'] Single file only - not creating compound")
-                    continue
-                
-                # Analyze numbering pattern
-                is_sequential = False
-                zero_pad_width = 0
-                analysis_msg = f"[GROUP: '{prefix}'] {len(items)} files ({len(numbers)} numbered, {len(items)-len(numbers)} unnumbered)"
-                add_log_message(analysis_msg)
-                logger.info(analysis_msg)
-                
-                if len(numbers) >= 2:
-                    # Check if numbers form a sequence
-                    numbers_sorted = sorted(numbers)
-                    gaps = [numbers_sorted[i+1] - numbers_sorted[i] for i in range(len(numbers_sorted)-1)]
-                    max_gap = max(gaps)
-                    avg_gap = sum(gaps) / len(gaps)
-                    
-                    # Calculate zero-padding width based on max number
-                    max_number = max(numbers_sorted)
-                    zero_pad_width = len(str(max_number))
-                    
-                    # Sequential if average gap ≤ 2 and max gap ≤ 5 (allows small missing numbers)
-                    if avg_gap <= 2.0 and max_gap <= 5:
-                        is_sequential = True
-                        msg = f"  ✓ SEQUENTIAL pattern detected: range {min(numbers)}-{max(numbers)}, avg gap {avg_gap:.1f}, max gap {max_gap}"
-                        add_log_message(msg)
-                        logger.info(msg)
-                        
-                        # Report zero-padding recommendation
-                        msg = f"  → Sequence numbers will be zero-padded to {zero_pad_width} digits (e.g., {str(min(numbers)).zfill(zero_pad_width)}, {str(max(numbers)).zfill(zero_pad_width)})"
-                        add_log_message(msg)
-                        logger.info(msg)
-                        
-                        if max_gap > 1:
-                            missing_count = sum(1 for g in gaps if g > 1)
-                            msg = f"  ℹ Note: {missing_count} gap(s) in sequence (e.g., missing numbers)"
-                            add_log_message(msg)
-                            logger.info(msg)
-                    else:
-                        msg = f"  ✗ Not sequential: avg gap {avg_gap:.1f}, max gap {max_gap} (too irregular)"
-                        add_log_message(msg)
-                        logger.info(msg)
-                elif len(numbers) == 1:
-                    msg = f"  • Mixed: 1 numbered file + {len(items)-1} unnumbered files with same prefix"
-                    add_log_message(msg)
-                    logger.info(msg)
-                    zero_pad_width = len(str(numbers[0]))  # Use single number's width
-                else:
-                    msg = f"  • All files unnumbered but share common prefix (3+ chars: '{prefix}')"
-                    add_log_message(msg)
-                    logger.info(msg)
-                
-                # Decision: Group if 2+ files share prefix (3+ chars)
-                msg = f"  ➤ DECISION: Creating compound (common prefix '{prefix}', {len(items)} files)"
-                add_log_message(msg)
-                logger.info(msg)
-                
-                # Store group with padding info
-                groups[prefix] = {
-                    'files': [item['obj'] for item in items],
-                    'zero_pad_width': zero_pad_width,
-                    'items': items  # Keep parsed items for sorting
-                }
-            
-            # Create compound objects for groups with 2+ files
-            for text_base, group_data in groups.items():
-                group_files = group_data['files']
-                zero_pad_width = group_data['zero_pad_width']
-                
-                if len(group_files) >= 2:
-                    # Get the folder path from the first child (all children should be in same folder)
-                    folder_path = str(Path(group_files[0]['filepath']).parent)
-                    
-                    # Create a compound key: folder + text_base for mapping
-                    compound_key = f"{folder_path}::COMPOUND::{text_base}"
-                    
-                    # Check if this compound already has an assigned ID
-                    if compound_key in file_to_id_map:
-                        # Reuse existing compound ID
-                        compound_id = file_to_id_map[compound_key]
-                        add_log_message(f"[DEBUG] Reusing existing compound ID {compound_id} for '{text_base}' in {folder_path}")
-                        logger.info(f"[DEBUG] Reused compound: {compound_id} | Folder: {folder_path} | Base: '{text_base}'")
-                    else:
-                        # Generate new compound object ID
-                        compound_id = generate_unique_id(page)
-                        file_to_id_map[compound_key] = compound_id
-                        new_mappings += 1
-                        add_log_message(f"[DEBUG] Created new compound {compound_id} for '{text_base}' in {folder_path}")
-                        logger.info(f"[DEBUG] New compound: {compound_id} | Folder: {folder_path} | Base: '{text_base}'")
-                    
-                    compound_objects.append({
-                        "objectid": compound_id,
-                        "text_base": text_base,
-                        "child_count": len(group_files),
-                        "folder_path": folder_path,
-                        "zero_pad_width": zero_pad_width,
-                        "type": "compound"
-                    })
-                    
-                    # Assign this compound ID as parentid to all children
-                    # Also store sequence numbers from parsed data for display
-                    parsed_items = group_data['items']
-                    for parsed_item in parsed_items:
-                        child_obj = parsed_item['obj']
-                        child_obj["parentid"] = compound_id
-                        child_obj["type"] = "child"
-                        child_obj["sequence_number"] = parsed_item.get('number')  # Store for display
-                    
-                    logger.info(f"[DEBUG] Compound: {compound_id} | Base: '{text_base}' | Folder: {folder_path} | Children: {[f['filename'] for f in group_files]}")
-                else:
-                    # Single file - not part of a compound
-                    group_files[0]["parentid"] = None
-                    group_files[0]["type"] = "single"
-                    logger.info(f"[DEBUG] Single object (no compound): {group_files[0]['filename']}")
-            
-            add_log_message(f"[DEBUG] Compound analysis complete: {len(compound_objects)} compounds created")
-            logger.info(f"[DEBUG] Total compound objects: {len(compound_objects)}")
-        else:
-            # No compound grouping - all objects are standalone
-            add_log_message(f"[DEBUG] Compound grouping DISABLED - all objects standalone")
-            for obj in objects:
-                obj["parentid"] = None
-                obj["type"] = "single"
+        # Process compound object grouping if enabled (using shared function)
+        compound_objects, file_to_id_map, compound_new, compound_reused = analyze_compound_objects(
+            objects, group_compound, file_to_id_map, page
+        )
+        
+        # Update mapping counts
+        new_mappings += compound_new
+        reused_mappings += compound_reused
         
         # Save updated file-to-ID mappings (save whenever files were processed)
         if working_dir and (new_mappings > 0 or reused_mappings > 0):
@@ -1138,49 +1537,272 @@ def main(page: ft.Page):
             update_status(f"Analyzed {len(files)} file(s), generated {len(objects)} unique object ID(s)")
             logger.info(f"Function 1: Analyzed {len(files)} files, generated {len(objects)} unique object IDs")
 
-    def on_function_2_count_files(e):
-        """Function 2: Count files by extension."""
+    def get_display_template(file_extension):
+        """
+        Map file extension to CollectionBuilder display_template value.
+        
+        Args:
+            file_extension: File extension (with or without leading dot)
+            
+        Returns:
+            str: CollectionBuilder display_template value (image, video, audio, pdf, record)
+        """
+        ext = file_extension.lower().lstrip('.')
+        
+        # Image formats → "image"
+        if ext in ['jpg', 'jpeg', 'png', 'gif', 'tif', 'tiff', 'bmp', 'webp']:
+            return 'image'
+        
+        # Video formats → "video"
+        elif ext in ['mp4', 'mov', 'avi', 'mkv', 'wmv', 'flv', 'webm']:
+            return 'video'
+        
+        # Audio formats → "audio"
+        elif ext in ['mp3', 'wav', 'flac', 'aac', 'ogg', 'm4a', 'wma']:
+            return 'audio'
+        
+        # PDF → "pdf"
+        elif ext == 'pdf':
+            return 'pdf'
+        
+        # Archives and other formats → "record"
+        elif ext in ['zip', 'tar', 'gz', '7z', 'rar', 'bz2']:
+            return 'record'
+        
+        # Unknown → empty (will use CB default)
+        else:
+            return ''
+
+    def on_function_2_export_csv(e):
+        """Function 2: Export analyzed assets to CSV using template structure."""
         storage.record_function_usage("Function 2")
 
-        if not current_directory or not current_directory.exists():
-            update_status("Error: Please select an inputs folder first", is_error=True)
+        # Check for working directory
+        working_dir = output_dir_field.value
+        if not working_dir or not Path(working_dir).exists():
+            update_status("Error: Please set a working/outputs folder first", is_error=True)
             return
 
-        ext_counts = {}
-        for file_path in current_directory.glob("*"):
-            if file_path.is_file():
-                ext = file_path.suffix.lower() or "(no extension)"
-                ext_counts[ext] = ext_counts.get(ext, 0) + 1
+        # Load settings and check for CSV template
+        settings, _ = load_app_settings(working_dir)
+        csv_template_path = settings.get("csv_structure_file", "")
+        
+        if not csv_template_path or not Path(csv_template_path).exists():
+            update_status("Error: CSV structure template not configured in settings", is_error=True)
+            add_log_message("[ERROR] No CSV template found - configure in Function 0")
+            return
 
-        result_text = f"File count by extension in {current_directory.name}:\n\n"
-        if ext_counts:
-            for ext, count in sorted(ext_counts.items(), key=lambda x: x[1], reverse=True):
-                result_text += f"• {ext}: {count}\n"
+        # Load CSV template to get column structure
+        try:
+            with open(csv_template_path, 'r', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                template_columns = reader.fieldnames
+                add_log_message(f"[DEBUG] Loaded CSV template with {len(template_columns)} columns")
+                logger.info(f"CSV template columns: {template_columns}")
+        except Exception as ex:
+            update_status(f"Error reading CSV template: {ex}", is_error=True)
+            return
+
+        # Get files to process (similar to Function 1)
+        group_compound = settings.get("group_compound_objects", False)
+        
+        asset_extensions = {
+            '.jpg', '.jpeg', '.png', '.gif', '.tif', '.tiff', '.bmp', '.webp',
+            '.pdf',
+            '.mp4', '.mov', '.avi', '.mkv', '.wmv', '.flv', '.webm',
+            '.mp3', '.wav', '.flac', '.aac', '.ogg', '.m4a', '.wma',
+            '.zip', '.tar', '.gz', '.7z', '.rar', '.bz2',
+        }
+
+        selected_files = get_selected_files()
+        files = []
+        
+        if selected_files:
+            for file_path in selected_files:
+                if file_path.is_file() and file_path.suffix.lower() in asset_extensions:
+                    files.append(str(file_path))
         else:
-            result_text += "(No files found)"
+            if not current_directory or not current_directory.exists():
+                update_status("Error: Please select files or an inputs folder first", is_error=True)
+                return
+            
+            for file_path in current_directory.glob("*"):
+                if file_path.is_file() and file_path.suffix.lower() in asset_extensions:
+                    files.append(str(file_path))
 
-        def close_dialog(e):
-            dialog.open = False
+        if not files:
+            update_status("Error: No digital asset files found to export", is_error=True)
+            return
+
+        files.sort()
+        add_log_message(f"[DEBUG] Found {len(files)} files to export")
+
+        # Load or generate object IDs (reuse Function 1 logic)
+        file_to_id_map = settings.get("file_to_id_map", {})
+        
+        objects = []
+        new_mappings = 0
+        reused_mappings = 0
+        
+        for file_path_str in files:
+            if file_path_str in file_to_id_map:
+                unique_id = file_to_id_map[file_path_str]
+                reused_mappings += 1
+            else:
+                unique_id = generate_unique_id(page)
+                file_to_id_map[file_path_str] = unique_id
+                new_mappings += 1
+            
+            file_path = Path(file_path_str)
+            objects.append({
+                "objectid": unique_id,
+                "filepath": file_path_str,
+                "filename": file_path.name,
+                "display_template": get_display_template(file_path.suffix),
+                "format": file_path.suffix.lower().lstrip('.'),
+                "parentid": None,  # Will be set if compound grouping enabled
+            })
+        
+        add_log_message(f"[DEBUG] IDs: {new_mappings} new, {reused_mappings} reused")
+        
+        # Process compound object grouping if enabled (using shared function)
+        compound_objects, file_to_id_map, compound_new, compound_reused = analyze_compound_objects(
+            objects, group_compound, file_to_id_map, page
+        )
+        
+        # Update mapping counts
+        new_mappings += compound_new
+        reused_mappings += compound_reused
+
+        # Create CSV filename with timestamp
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        csv_filename = f"dart_export_{timestamp}.csv"
+        csv_output_path = Path(working_dir) / csv_filename
+
+        # Write CSV file
+        try:
+            with open(csv_output_path, 'w', newline='', encoding='utf-8') as f:
+                writer = csv.DictWriter(f, fieldnames=template_columns)
+                writer.writeheader()
+                
+                # Write compound parent objects first (if compound grouping enabled)
+                if group_compound and compound_objects:
+                    for compound in compound_objects:
+                        row = {}
+                        for col in template_columns:
+                            if col == 'objectid':
+                                row[col] = compound.get('objectid', '')
+                            elif col == 'filename':
+                                # Compound objects don't have a filename
+                                row[col] = ''
+                            elif col == 'parentid':
+                                # Compound objects have no parent
+                                row[col] = ''
+                            elif col == 'display_template':
+                                # Set compound_object layout for parent
+                                row[col] = 'compound_object'
+                            elif col == 'title':
+                                # Use text_base as suggested title (title case)
+                                row[col] = compound.get('text_base', '').replace('_', ' ').replace('-', ' ').title()
+                            else:
+                                row[col] = ''
+                        
+                        writer.writerow(row)
+                
+                # Write file objects (children or standalone)
+                for obj in objects:
+                    # Build row with template columns
+                    row = {}
+                    for col in template_columns:
+                        # Map known fields
+                        if col == 'objectid':
+                            row[col] = obj.get('objectid', '')
+                        elif col == 'filename':
+                            row[col] = obj.get('filename', '')
+                        elif col == 'parentid':
+                            row[col] = obj.get('parentid', '')
+                        elif col == 'display_template':
+                            row[col] = obj.get('display_template', '')
+                        elif col == 'format':
+                            row[col] = obj.get('format', '')
+                        else:
+                            # Leave other columns empty for manual population
+                            row[col] = ''
+                    
+                    writer.writerow(row)
+            
+            add_log_message(f"[SUCCESS] Exported {len(objects)} objects to {csv_filename}")
+            logger.info(f"CSV export successful: {csv_output_path}")
+            
+            # Update settings with new mappings
+            settings["file_to_id_map"] = file_to_id_map
+            save_app_settings(working_dir, settings)
+            
+            total_rows = len(objects) + len(compound_objects)
+            result_text = f"✅ CSV Export Successful\n\n"
+            result_text += f"Exported: {total_rows} total rows\n"
+            if group_compound and compound_objects:
+                result_text += f"  • {len(compound_objects)} compound objects (parents)\n"
+                result_text += f"  • {len(objects)} file objects (children/standalone)\n"
+            else:
+                result_text += f"  • {len(objects)} file objects\n"
+            result_text += f"Template: {Path(csv_template_path).name}\n"
+            result_text += f"Columns: {len(template_columns)}\n"
+            result_text += f"Output: {csv_filename}\n"
+            result_text += f"Location: {working_dir}\n"
+            result_text += f"Compound grouping: {'ENABLED' if group_compound else 'DISABLED'}\n\n"
+            result_text += f"Auto-populated fields:\n"
+            result_text += f"• objectid (unique DG identifier)\n"
+            result_text += f"• filename (original filename)\n"
+            
+            # List fields actually in the template
+            populated_fields = ['objectid', 'filename']
+            if 'parentid' in template_columns:
+                result_text += f"• parentid (compound object parent ID)\n"
+                populated_fields.append('parentid')
+            if 'display_template' in template_columns:
+                result_text += f"• display_template (CB layout: image/video/audio/pdf/compound_object)\n"
+                populated_fields.append('display_template')
+            if 'format' in template_columns:
+                result_text += f"• format (file extension)\n"
+                populated_fields.append('format')
+            if 'title' in template_columns and group_compound and compound_objects:
+                result_text += f"• title (suggested title for compound objects)\n"
+                populated_fields.append('title')
+            
+            result_text += f"\nEmpty fields ready for metadata:\n"
+            empty_fields = [col for col in template_columns if col not in populated_fields]
+            for field in empty_fields[:10]:  # Show first 10
+                result_text += f"• {field}\n"
+            if len(empty_fields) > 10:
+                result_text += f"• ... and {len(empty_fields) - 10} more\n"
+
+            def close_dialog(e):
+                dialog.open = False
+                page.update()
+
+            dialog = ft.AlertDialog(
+                modal=True,
+                title=ft.Text("Function 2: Export to CSV", weight=ft.FontWeight.BOLD),
+                content=ft.Container(
+                    content=ft.Text(result_text, selectable=True),
+                    width=600,
+                    height=500,
+                ),
+                actions=[ft.TextButton("Close", on_click=close_dialog)],
+            )
+
+            page.overlay.append(dialog)
+            dialog.open = True
             page.update()
 
-        dialog = ft.AlertDialog(
-            modal=True,
-            title=ft.Text("Function 2: Count Files by Extension"),
-            content=ft.Container(
-                content=ft.Text(result_text, selectable=True),
-                width=600,
-                height=400,
-            ),
-            actions=[ft.TextButton("Close", on_click=close_dialog)],
-        )
-
-        page.overlay.append(dialog)
-        dialog.open = True
-        page.update()
-
-        total = sum(ext_counts.values())
-        update_status(f"Counted {total} file(s) across {len(ext_counts)} extension(s)")
-        logger.info(f"Function 2: Counted files by extension in {current_directory}")
+            update_status(f"✅ Exported {total_rows} rows to {csv_filename}")
+            
+        except Exception as ex:
+            error_msg = f"Error writing CSV: {ex}"
+            update_status(error_msg, is_error=True)
+            add_log_message(f"[ERROR] {error_msg}")
+            logger.error(error_msg)
 
     def on_function_3_system_info(e):
         """Function 3: Display system information."""
@@ -1224,7 +1846,7 @@ def main(page: ft.Page):
     active_functions = [
         "function_0_app_settings",
         "function_1_list_files",
-        "function_2_count_files",
+        "function_2_export_csv",
         "function_3_system_info",
     ]
 
@@ -1241,11 +1863,11 @@ def main(page: ft.Page):
             "handler": on_function_1_list_files,
             "help_file": "FUNCTION_1_ANALYZE_ASSETS.md"
         },
-        "function_2_count_files": {
-            "label": "2: Count Files by Extension",
+        "function_2_export_csv": {
+            "label": "2: Export Assets to CSV",
             "icon": "📊",
-            "handler": on_function_2_count_files,
-            "help_file": "FUNCTION_2_COUNT_FILES.md"
+            "handler": on_function_2_export_csv,
+            "help_file": "FUNCTION_2_EXPORT_CSV.md"
         },
         "function_3_system_info": {
             "label": "3: System Information",
@@ -1499,6 +2121,11 @@ def main(page: ft.Page):
                                         icon=ft.Icons.FILE_OPEN,
                                         on_click=lambda _: open_file_picker_with_settings(),
                                     ),
+                                    ft.ElevatedButton(
+                                        "Clear",
+                                        icon=ft.Icons.CLEAR,
+                                        on_click=clear_file_selection,
+                                    ),
                                 ],
                             ),
                         ],
@@ -1628,6 +2255,39 @@ def main(page: ft.Page):
 
     logger.info("UI initialised successfully")
     add_log_message("DART application ready. Select a function to begin.")
+    
+    # Validate CSV structure file on startup if configured
+    working_dir = output_dir_field.value
+    if working_dir:
+        settings, _ = load_app_settings(working_dir)
+        csv_file = settings.get("csv_structure_file", "")
+        core_csv = settings.get("core_metadata_csv", "")
+        
+        # Auto-populate core CSV from template if core is undefined but template exists
+        if csv_file and not core_csv:
+            core_csv = csv_file
+            settings["core_metadata_csv"] = core_csv
+            save_app_settings(working_dir, settings)
+            add_log_message(f"Auto-populated core metadata CSV from template: {Path(csv_file).name}")
+            logger.info(f"Auto-populated core_metadata_csv from template at startup: {csv_file}")
+        
+        if csv_file:
+            valid, msg, fields = validate_csv_structure(csv_file)
+            if valid:
+                add_log_message(f"✓ CSV structure template validated: {msg}")
+                logger.info(f"CSV structure validated on startup: {csv_file}")
+            else:
+                add_log_message(f"⚠ CSV structure validation warning: {msg}")
+                logger.warning(f"CSV structure validation failed: {csv_file} - {msg}")
+        
+        if core_csv:
+            valid, msg = validate_core_metadata_csv(core_csv, csv_file)
+            if valid:
+                add_log_message(f"✓ Core metadata CSV validated: {msg}")
+                logger.info(f"Core metadata CSV validated on startup: {core_csv}")
+            else:
+                add_log_message(f"⚠ Core metadata CSV validation warning: {msg}")
+                logger.warning(f"Core metadata CSV validation failed: {core_csv} - {msg}")
 
 
 if __name__ == "__main__":

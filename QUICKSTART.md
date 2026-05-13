@@ -15,7 +15,7 @@ This application was created by extracting the proven UI framework from OHM (Ora
 ### Documentation
 - **README.md** - Comprehensive guide to using and customizing DART
 - **FUNCTION_1_ANALYZE_ASSETS.md** - Help for Function 1: Analyze digital assets
-- **FUNCTION_2_COUNT_FILES.md** - Help for example function 2
+- **FUNCTION_2_EXPORT_CSV.md** - Help for CSV export function
 - **FUNCTION_3_SYSTEM_INFO.md** - Help for example function 3
 - **CHANGELOG.md** - Version history starting at 1.0.0
 - **LICENSE** - MIT license
@@ -47,7 +47,7 @@ This will:
 The app includes four functions:
 - **Function 0**: App Settings (configure behavior, encryption-enabled)
 - **Function 1**: Analyze Digital Assets & Generate Standard DG Identifiers
-- **Function 2**: Count files by extension
+- **Function 2**: Export assets to CSV using template structure
 - **Function 3**: Display system information
 
 Enable "Help Mode" to view the documentation for each function.

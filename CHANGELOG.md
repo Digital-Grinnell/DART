@@ -7,6 +7,104 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.3.0] - 2026-05-13
+
+### Summary
+Version 1.3.0 introduces comprehensive CSV metadata management for CollectionBuilder workflows:
+
+**Key Highlights:**
+- Complete CSV metadata infrastructure with template validation
+- Function 2 replaced with CSV export functionality
+- Azure Blob Storage connection string support (encrypted)
+- Core metadata CSV designation and auto-copy to working directory
+- CollectionBuilder-compatible CSV generation with auto-populated fields
+
+### Added
+- **Function 2: CSV Export** 📊: Complete rewrite of Function 2
+  - Exports analyzed assets to CSV using configured template structure
+  - Auto-populates objectid, filename, parentid, display_template, and format fields
+  - Full compound object support with parent/child relationships:
+    - Writes compound parent objects first with `display_template=compound_object`
+    - Child objects include `parentid` field linking to parent
+    - Suggested title auto-generated for compound parents from filename pattern
+    - Compound parents have blank filename (no physical file)
+  - Maps file extensions to CollectionBuilder display_template layouts:
+    - Images (.jpg, .png, etc.) → `image`
+    - Videos (.mp4, .mov, etc.) → `video`
+    - Audio (.mp3, .wav, etc.) → `audio`
+    - PDFs → `pdf`
+    - Archives (.zip, etc.) → `record`
+    - Compound parents → `compound_object`
+  - Generates timestamped CSV files: `dart_export_YYYYMMDD_HHMMSS.csv`
+  - Validates template has required CollectionBuilder fields (objectid, filename)
+  - Preserves empty template columns for manual/automated metadata population
+  - Integrates with Function 1 compound grouping logic for consistent behavior
+- **CSV Template Configuration**: Function 0 settings expanded
+  - `csv_structure_file`: Path to CSV template defining metadata schema
+  - `core_metadata_csv`: Master metadata CSV file designation (optional)
+  - Browse buttons with file picker integration
+  - Clear buttons to reset file selections
+  - Real-time validation of CSV structure on selection
+  - Auto-populates core CSV from template when undefined
+- **CSV Auto-Copy Feature**: Intelligent file management
+  - Copies both CSV files to working directory on settings save
+  - Handles case where template and core point to same file
+  - Deduplication logic prevents double-copying
+  - Ensures CSV files stay with project data
+- **Azure Storage Integration**: Cloud storage connection settings
+  - `azure_connection_string`: Encrypted connection string field (password field with reveal)
+  - Added to SENSITIVE_FIELDS for automatic encryption
+  - Dedicated UI section "Azure Storage (encrypted)"
+  - Comprehensive documentation on obtaining connection string from Azure Portal
+  - Ready for future upload functions to use
+- **CSV Validation Functions**: Robust template checking
+  - `validate_csv_structure()`: Verifies required CollectionBuilder fields exist
+  - `validate_core_metadata_csv()`: Checks core CSV matches template structure
+  - `copy_csv_to_working_dir()`: Smart copy with same-file detection
+  - Real-time feedback in Function 0 dialog
+- **Documentation**: Complete help system
+  - FUNCTION_2_EXPORT_CSV.md: Comprehensive Function 2 guide
+  - FUNCTION_0_APP_SETTINGS.md: Updated with CSV and Azure sections
+  - BEST_PRACTICES.md: CSV workflow guidance and filename conventions
+  - README.md: Updated Core Mission with CSV workflow description
+- **Code Refactoring**: Improved maintainability
+  - Extracted `analyze_compound_objects()` as shared function (~300 lines)
+  - Eliminated ~150 lines of duplicated compound analysis code from Function 2
+  - Both Function 1 and Function 2 now call same analysis logic
+  - Single source of truth for parent/child relationship identification
+  - Improved consistency and reduced maintenance burden
+
+### Changed
+- **Function 2 Purpose**: Complete functional replacement
+  - **Old**: Count files by extension (simple example function)
+  - **New**: Export assets to CSV for CollectionBuilder workflows
+  - Icon unchanged (📊) but represents data export now
+  - Help file changed from FUNCTION_2_COUNT_FILES.md to FUNCTION_2_EXPORT_CSV.md
+- **Settings UI Organization**: Restructured Function 0 dialog
+  - CSV fields grouped together with validation feedback
+  - Azure settings in dedicated "Azure Storage (encrypted)" section
+  - Other sensitive fields grouped under "Other sensitive fields (encrypted)"
+  - Improved visual hierarchy and field grouping
+- **Default Settings**: Added new fields to DEFAULT_APP_SETTINGS
+  - csv_structure_file: ""
+  - core_metadata_csv: ""
+  - azure_blob_storage_path: ""
+  - azure_connection_string: ""
+
+### Removed
+- **Old Function 2**: File counting functionality removed
+  - `on_function_2_count_files()` replaced by `on_function_2_export_csv()`
+  - FUNCTION_2_COUNT_FILES.md retained for reference but not linked
+
+### Notes
+- CSV workflow supports iterative metadata development across batches
+- Object IDs remain persistent - same file always gets same ID
+- Empty CSV columns ready for enrichment by future functions or manual editing
+- Azure upload functionality to be implemented in future functions
+- CollectionBuilder compatibility validated at template selection time
+
+---
+
 ## [1.2.0] - 2026-05-12
 
 ### Summary
