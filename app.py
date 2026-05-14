@@ -2184,7 +2184,7 @@ def main(page: ft.Page):
 
         # Create CSV filename with timestamp
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        csv_filename = f"dart_export_{timestamp}.csv"
+        csv_filename = f"DART_export_{timestamp}.csv"
         csv_output_path = Path(working_dir) / csv_filename
 
         # Write CSV file
@@ -2383,7 +2383,7 @@ def main(page: ft.Page):
             add_log_message("[WARN] No input directory set - files must have valid filepath in CSV")
         
         # Find latest CSV export or let user select
-        csv_files = sorted(Path(working_dir).glob("dart_export_*.csv"), reverse=True)
+        csv_files = sorted(Path(working_dir).glob("DART_export_*.csv"), reverse=True)
         if not csv_files:
             update_status("Error: No CSV exports found. Run Function 2 first.", is_error=True)
             return
@@ -2661,7 +2661,7 @@ def main(page: ft.Page):
         
         # Write updated CSV
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        output_csv = Path(working_dir) / f"dart_export_with_derivatives_{timestamp}.csv"
+        output_csv = Path(working_dir) / f"DART_export_with_derivatives_{timestamp}.csv"
         
         try:
             with open(output_csv, 'w', newline='', encoding='utf-8') as f:
@@ -2792,16 +2792,16 @@ def main(page: ft.Page):
             add_log_message("[INFO] Update core_metadata_csv path in Function 0 settings")
             return
         
-        # Find all CSV files in working directory, sorted by modification time (newest first)
+        # Find all DART_export CSV files in working directory, sorted by modification time (newest first)
         csv_files = sorted(
-            [f for f in working_path.glob("*.csv") if f.is_file()],
+            [f for f in working_path.glob("DART_export*.csv") if f.is_file()],
             key=lambda p: p.stat().st_mtime,
             reverse=True
         )
         
         if len(csv_files) < 1:
-            update_status("Error: No CSV files found in working directory", is_error=True)
-            add_log_message(f"[ERROR] No CSV files found in {working_dir}")
+            update_status("Error: No DART_export CSV files found in working directory", is_error=True)
+            add_log_message(f"[ERROR] No DART_export CSV files found in {working_dir}")
             add_log_message("[INFO] Run Function 2 first to generate a CSV export")
             return
         
@@ -2812,13 +2812,14 @@ def main(page: ft.Page):
         if new_csv.resolve() == old_csv.resolve():
             # Find second newest CSV
             if len(csv_files) < 2:
-                update_status("Error: Only core CSV found in working directory", is_error=True)
-                add_log_message(f"[ERROR] Only one CSV file (core metadata) found in {working_dir}")
+                update_status("Error: Only core CSV found, no DART_export files to compare", is_error=True)
+                add_log_message(f"[ERROR] Only one DART_export CSV file (core metadata) found in {working_dir}")
                 add_log_message("[INFO] Run Function 2 to generate a new CSV export to compare")
                 return
             new_csv = csv_files[1]
         
         add_log_message(f"[INFO] Using core metadata CSV as 'old': {old_csv.name}")
+        add_log_message(f"[INFO] Auto-selected newest DART_export CSV as 'new': {new_csv.name}")
         
         # Define helper functions
         def show_comparison_results(result):
@@ -2982,7 +2983,19 @@ def main(page: ft.Page):
                         removed = len(diff_result.get('removed', []))
                         changed = len(diff_result.get('changed', []))
                         
-                        summary_text = f\"\"\"CSV Comparison Summary (csvdiff)\\n\"\"\" + \"=\"*40 + f\"\"\"\\n\\nCore CSV: {old_csv.name}\\nNew CSV: {Path(selected_new_csv).name}\\n\\nResults:\\n  • {added} new records (in new file only)\\n  • {removed} missing in new (in core file only)\\n  • {changed} changed records (different values)\\n\\nDetailed results: {output_diff.name}\\n\"\"\"
+                        summary_text = f"""CSV Comparison Summary (csvdiff)
+{"="*40}
+
+Core CSV: {old_csv.name}
+New CSV: {Path(selected_new_csv).name}
+
+Results:
+  • {added} new records (in new file only)
+  • {removed} missing in new (in core file only)
+  • {changed} changed records (different values)
+
+Detailed results: {output_diff.name}
+"""
                         
                         with open(output_summary, 'w') as f:
                             f.write(summary_text)

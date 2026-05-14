@@ -1,11 +1,11 @@
 # Function 4: Compare and Merge CSV Files
 
 ## Purpose
-Compare two CSV files to identify matching records, new records, changed values, and records missing from the new file. This function automatically uses your core metadata CSV (from settings) as the baseline and lets you select which new CSV to compare against it.
+Compare two CSV files to identify matching records, new records, changed values, and records missing from the new file. This function automatically uses your core metadata CSV (from settings) as the baseline and auto-selects the newest DART_export CSV from your working directory for comparison.
 
 ## When to Use
 Use this function when you want to:
-- Compare a new CSV export against your core/master metadata file
+- Compare a new DART_export CSV against your core/master metadata file
 - Identify which records have changed between two versions
 - Review new records before merging them into your core file
 - Audit metadata updates and track what changed
@@ -14,7 +14,7 @@ Use this function when you want to:
 ## Requirements
 - **Working/Outputs folder** must be set
 - **Core metadata CSV** must be configured in Function 0 settings
-- **At least 1 CSV file** must exist in the working directory (for comparison)
+- **At least 1 DART_export CSV file** must exist in the working directory (for comparison)
 - Both CSV files must have a `filename` column (unique identifier)
 - No duplicate `filename` values within each file
 
@@ -52,23 +52,22 @@ Uses the csvdiff Python library for comparison:
 
 1. Configure **core_metadata_csv** in Function 0 settings (used as baseline)
 
-2. Ensure your working directory contains CSV file(s) to compare
+2. Ensure your working directory contains DART_export CSV file(s) to compare
 
 3. Select **Function 4: Compare and Merge CSV Files** from the dropdown
 
 4. Click **Execute Function**
 
-5. DART shows a selection dialog with available CSV files:
-   - Core CSV is displayed at the top (from settings)
-   - Newest CSV is highlighted with a ⭐ icon (recommended)
-   - Click any CSV to select it as the "new" file
-   - Or click "Use Newest" button for quick selection
+5. DART automatically:
+   - Uses core metadata CSV as the "old" file
+   - Auto-selects the newest DART_export CSV as the "new" file
+   - If newest is same as core, uses second newest DART_export CSV
 
-6. DART performs the comparison and generates three output files
+6. DART performs the comparison and generates output files
 
 7. Review the results dialog showing:
    - Summary counts by status
-   - Preview of first 10 changes
+   - Preview of first 10 changes (pandas mode)
    - Links to output files
 
 ## What Gets Compared
@@ -170,13 +169,8 @@ Core metadata CSV is configured in settings
 
 - **"Core metadata CSV not configured"**: Set core_metadata_csv in Function 0 settings
 - **"Core CSV file not found"**: Verify core_metadata_csv path is correct in settings
-- **"No CSV files found"**: Run Function 2 to generate a CSV export
-- **"Only core CSV found"**: Run Function 2 to generate a new export to compare
-- No duplicate `filename` values in either file
-
-**Common errors:**
-
-- **"Need at least 2 CSV files"**: Add more CSV files to working directory
+- **"No DART_export CSV files found"**: Run Function 2 to generate a CSV export
+- **"Only core CSV found, no DART_export files to compare"**: Run Function 2 to generate a new export to compare
 - **"Missing filename column"**: Both files must have this column
 - **"Duplicate filename values"**: Fix duplicates before comparison
 - **"Error comparing CSVs"**: Check log for pandas/data format issues
@@ -214,11 +208,11 @@ Function 4 implements the merge workflow recommended by the PDF guide:
 - Use the `changed_fields` column to filter by specific field changes
 - Sort by `status` in Excel to group records by classification
 - TConfigure core_metadata_csv in Function 0 (e.g., `core_metadata.csv`)
-2. Run Function 2 to export new batch of assets (creates `dart_export_20260514_143022.csv`)
+2. Run Function 2 to export new batch of assets (creates `DART_export_20260514_143022.csv`)
 3. Run Function 4 to compare
 4. Selection dialog shows:
    - Core: `core_metadata.csv` (from settings)
-   - Available CSVs with `dart_export_20260514_143022.csv` ⭐ (newest)
+   - Available CSVs with `DART_export_20260514_143022.csv` ⭐ (newest)
 5. Click "Use Newest" button (or select specific CSV)
 6. Review results: 145 matches, 12 new, 8 changed, 3 missing
 7. Open `merged_changes_only_20260514_143105.csv` in Excel

@@ -190,9 +190,9 @@ DART automatically maps file types to appropriate layouts. For compound objects 
 
 ## Output
 
-**Filename format**: `dart_export_YYYYMMDD_HHMMSS.csv`
+**Filename format**: `DART_export_YYYYMMDD_HHMMSS.csv`
 
-**Example**: `dart_export_20240513_143022.csv`
+**Example**: `DART_export_20240513_143022.csv`
 
 **Location**: Your working/outputs folder
 

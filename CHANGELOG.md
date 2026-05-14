@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.5.2] - 2026-05-14
 
 ### Summary
-Version 1.5.2 changes Function 4 to use `filename` as the comparison key instead of `objectid`, treating filename as the source of truth for record matching.
+Version 1.5.2 changes Function 4 to use `filename` as the comparison key instead of `objectid`, treating filename as the source of truth for record matching. Also corrects csvdiff dependency version and restricts CSV file selection to only DART_export files.
 
 ### Changed
 - **Function 4 comparison key**: Changed from `objectid` to `filename` throughout
@@ -22,6 +22,15 @@ Version 1.5.2 changes Function 4 to use `filename` as the comparison key instead
   - Empty filename handling: Multiple rows with empty filenames allowed (used to disable objects from display)
   - Error messages: Updated to reference "filename" instead of "objectid"
   - Output columns: First column is now `filename` (was `objectid`)
+- **Function 4 CSV file selection**: Now only considers `DART_export*.csv` files
+  - Auto-selects newest DART_export CSV as "new" file for comparison
+  - Ignores other CSV files (e.g., core metadata, merge outputs) in working directory
+  - Clearer error messages mentioning DART_export files specifically
+  - Log messages indicate which DART_export file was auto-selected
+
+### Fixed
+- **Dependencies**: Corrected csvdiff requirement to `csvdiff>=0.3.0` (was incorrectly set to >=1.7.0)
+  - Latest available version is 0.3.3, not 1.7.0
 
 ### Documentation
 - **FUNCTION_4_COMPARE_MERGE_CSV.md**: Updated throughout
@@ -65,7 +74,7 @@ Version 1.5.1 adds alternative csvdiff comparison method for Function 4, providi
   - Creates text summary file with counts
   - Faster for large datasets
   - Better for programmatic processing and tool integration
-- **Dependencies**: Added `csvdiff>=1.7.0` to python_requirements.txt
+- **Dependencies**: Added `csvdiff>=0.3.0` to python_requirements.txt
 
 ### Changed
 - **Function 4**: Now supports two comparison methods selectable via settings
@@ -316,7 +325,7 @@ Version 1.4.0 adds Function 3 for generating web-optimized image derivatives (sm
 - Approximate processing time: 1-5 seconds per image
 - Network overhead: 70-280 KB uploaded per image
 - CSV columns added: image_small, image_thumb
-- Output: `dart_export_with_derivatives_YYYYMMDD_HHMMSS.csv`
+- Output: `DART_export_with_derivatives_YYYYMMDD_HHMMSS.csv`
 
 ---
 
@@ -488,7 +497,7 @@ Version 1.3.0 introduces comprehensive CSV metadata management for CollectionBui
     - PDFs → `pdf`
     - Archives (.zip, etc.) → `record`
     - Compound parents → `compound_object`
-  - Generates timestamped CSV files: `dart_export_YYYYMMDD_HHMMSS.csv`
+  - Generates timestamped CSV files: `DART_export_YYYYMMDD_HHMMSS.csv`
   - Validates template has required CollectionBuilder fields (objectid, filename)
   - Preserves empty template columns for manual/automated metadata population
   - Integrates with Function 1 compound grouping logic for consistent behavior

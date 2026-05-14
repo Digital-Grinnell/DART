@@ -168,9 +168,9 @@ Function 3 intelligently checks Azure before generating new derivatives:
 
 ## Output
 
-**Filename format**: `dart_export_with_derivatives_YYYYMMDD_HHMMSS.csv`
+**Filename format**: `DART_export_with_derivatives_YYYYMMDD_HHMMSS.csv`
 
-**Example**: `dart_export_with_derivatives_20260513_204500.csv`
+**Example**: `DART_export_with_derivatives_20260513_204500.csv`
 
 **Location**: Your working/outputs folder
 
@@ -259,7 +259,7 @@ The kill switch is useful when:
 ### Common Errors
 
 **"No CSV exports found. Run Function 2 first."**
-- Cause: No `dart_export_*.csv` files in working directory
+- Cause: No `DART_export_*.csv` files in working directory
 - Fix: Run Function 2 to create initial CSV
 
 **"Azure Blob Storage not configured."**

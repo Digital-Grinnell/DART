@@ -4,5 +4,5 @@ cryptography>=41.0.0
 azure-storage-blob>=12.19.0
 Pillow>=10.0.0
 pandas>=2.0.0
-csvdiff>=1.7.0
+csvdiff>=0.3.0
 -e ../common-DG-utilities
