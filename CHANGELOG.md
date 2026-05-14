@@ -18,8 +18,9 @@ Version 1.5.2 changes Function 4 to use `filename` as the comparison key instead
   - Column validation: Now checks for `filename` column (was `objectid`)
   - Duplicate detection: Checks for duplicate `filename` values (was `objectid`)
   - Merge operation: `on='filename'` in pandas merge (was `on='objectid'`)
-  - csvdiff: `key="filename"` in load_csv calls (was `key="objectid"`)
+  - csvdiff: `index_columns=['filename']` in diff_files call (was using objectid)
   - Empty filename handling: Multiple rows with empty filenames allowed (used to disable objects from display)
+  - Preview display: Uses `filename` as identifier, falls back to `objectid` when filename is blank
   - Error messages: Updated to reference "filename" instead of "objectid"
   - Output columns: First column is now `filename` (was `objectid`)
 - **Function 4 CSV file selection**: Now only considers `DART_export*.csv` files
@@ -31,6 +32,9 @@ Version 1.5.2 changes Function 4 to use `filename` as the comparison key instead
 ### Fixed
 - **Dependencies**: Corrected csvdiff requirement to `csvdiff>=0.3.0` (was incorrectly set to >=1.7.0)
   - Latest available version is 0.3.3, not 1.7.0
+- **Function 4 glob pattern**: Fixed missing underscore in DART_export file search pattern
+- **Function 4 csvdiff integration**: Fixed API usage to use `diff_files()` instead of non-existent `load_csv()` and `compare()`
+  - Now correctly calls `diff_files(old_csv, new_csv, index_columns=['filename'])`
 
 ### Documentation
 - **FUNCTION_4_COMPARE_MERGE_CSV.md**: Updated throughout
@@ -46,7 +50,7 @@ Version 1.5.2 changes Function 4 to use `filename` as the comparison key instead
 
 ### Technical Details
 - pandas merge: `old_valid.merge(new_valid, on='filename', ...)`
-- csvdiff: `load_csv(open(str(csv_path)), key="filename")`
+- csvdiff: `diff_files(old_csv, new_csv, index_columns=['filename'])`
 - Shared columns detection: `shared_cols.discard('filename')` excludes filename from comparison
 - First data row still skipped (contains duplicate headings)
 - Empty/NaN filename rows handled separately and marked as new/missing_in_new

@@ -2794,7 +2794,7 @@ def main(page: ft.Page):
         
         # Find all DART_export CSV files in working directory, sorted by modification time (newest first)
         csv_files = sorted(
-            [f for f in working_path.glob("DART_export*.csv") if f.is_file()],
+            [f for f in working_path.glob("DART_export_*.csv") if f.is_file()],
             key=lambda p: p.stat().st_mtime,
             reverse=True
         )
@@ -2875,11 +2875,18 @@ def main(page: ft.Page):
                     'missing_in_new': '⚠️'
                 }.get(row['status'], '•')
                 
-                objectid = row['objectid']
+                # Use filename as primary identifier, fallback to objectid if filename is blank
+                identifier = row.get('filename', '')
+                if pd.isna(identifier) or str(identifier).strip() == '':
+                    # Fallback to objectid (try _old first, then _new)
+                    identifier = row.get('objectid_old', row.get('objectid_new', f'Row {idx}'))
+                    if pd.isna(identifier) or str(identifier).strip() == '':
+                        identifier = f'Row {idx}'
+                
                 status = row['status']
                 changed_fields = row['changed_fields']
                 
-                preview_text = f"{status_icon} {objectid} ({status})"
+                preview_text = f"{status_icon} {identifier} ({status})"
                 if changed_fields:
                     preview_text += f" - {changed_fields}"
                 
@@ -2952,7 +2959,7 @@ def main(page: ft.Page):
                     # Use csvdiff tool for comparison
                     add_log_message("[INFO] Using csvdiff tool for comparison")
                     try:
-                        from csvdiff import load_csv, compare
+                        from csvdiff import diff_files
                     except ImportError:
                         update_status("Error: csvdiff not installed. Install with: pip install csvdiff", is_error=True)
                         add_log_message("[ERROR] csvdiff package not found. Run: pip install csvdiff")
@@ -2961,12 +2968,8 @@ def main(page: ft.Page):
                     update_status("Running csvdiff comparison...")
                     
                     try:
-                        # Load CSVs with csvdiff
-                        old_data = load_csv(open(str(old_csv)), key="filename")
-                        new_data = load_csv(open(str(selected_new_csv)), key="filename")
-                        
-                        # Perform diff
-                        diff_result = compare(old_data, new_data)
+                        # Use csvdiff to compare files with filename as key
+                        diff_result = diff_files(str(old_csv), str(selected_new_csv), index_columns=['filename'])
                         
                         # Convert csvdiff result to our format
                         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')

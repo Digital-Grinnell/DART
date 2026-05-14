@@ -73,11 +73,13 @@ Uses the csvdiff Python library for comparison:
 ## What Gets Compared
 
 DART automatically:
+- Uses `filename` as the unique identifier for matching records between files
 - Detects all shared columns between both files (excludes `filename`)
 - Performs **case-sensitive** comparison of all values
 - Normalizes whitespace (strips leading/trailing spaces)
 - Treats empty strings and missing values (NaN) as equivalent
 - Validates that `filename` is unique in both files
+- For display purposes: Uses `filename` to identify records, falls back to `objectid` when filename is blank (e.g., for compound parent objects)
 
 ## Output Files
 
