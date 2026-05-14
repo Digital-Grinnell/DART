@@ -1,4 +1,4 @@
-# Function 2: Export Assets to CSV
+# Function 2: Export Assets to CSV and Azure
 
 ## Purpose
 Export analyzed digital assets to a CSV file using your configured template structure. This function generates a CollectionBuilder-compatible metadata CSV with automatically populated core fields.
@@ -25,7 +25,7 @@ Use this function when you want to:
    - Either use the **File Selector** to choose specific files
    - Or set an **Inputs Folder** to process all assets in that folder
 
-3. Select **Function 2: Export Assets to CSV** from the dropdown
+3. Select **Function 2: Export Assets to CSV and Azure** from the dropdown
 
 4. Click **Execute Function**
 

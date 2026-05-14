@@ -1,10 +1,10 @@
-# Function 3: Generate Small & Thumbnail Derivatives
+# Function 3: Generate Derivatives for CSV and Azure
 
 ## Purpose
 Generate small and thumbnail derivative images from your original files and upload them to Azure Blob Storage with automatic URL population in your CSV metadata file.
 
 ## When to Use
-Use this function after Function 2 (Export Assets to CSV) when you want to:
+Use this function after Function 2 (Export Assets to CSV and Azure) when you want to:
 - Create web-optimized derivative images for CollectionBuilder
 - Generate small images (max 800x800px) for detail pages
 - Generate thumbnail images (max 400x400px) for browse/grid views
@@ -21,11 +21,11 @@ Use this function after Function 2 (Export Assets to CSV) when you want to:
 
 ## Workflow
 
-1. Run **Function 2: Export Assets to CSV** to create your metadata CSV
+1. Run **Function 2: Export Assets to CSV and Azure** to create your metadata CSV
 
 2. Configure **Azure Blob Storage** in Function 0 if not already done
 
-3. Select **Function 3: Generate Small & Thumbnail Derivatives**
+3. Select **Function 3: Generate Derivatives for CSV and Azure**
 
 4. Click **Execute Function**
 

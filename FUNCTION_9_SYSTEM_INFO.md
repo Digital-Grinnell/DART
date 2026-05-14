@@ -1,4 +1,4 @@
-# Function 3: System Information
+# Function 9: System Information
 
 ## Purpose
 Display information about the system running the application.
@@ -15,7 +15,7 @@ Use this function when you want to:
 
 ## Usage
 
-1. Select **Function 3: Example Function - System Info** from the dropdown
+1. Select **Function 9: System Information** from the dropdown
 2. Click **Execute Function**
 3. A dialog will display system information
 

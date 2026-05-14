@@ -50,7 +50,7 @@ DART provides a comprehensive platform for digital asset management workflows:
 - **Function 1** 🎯: Analyze digital assets and generate standard DG identifiers (dg_<epoch>)
   - Creates compound objects for related file groups (optional)
   - Permanent ID assignment with folder-based compound tracking
-- **Function 2** 📊: Export analyzed assets to CSV using template structure
+- **Function 2** 📊: Export Assets to CSV and Azure
   - Generates CollectionBuilder-compatible metadata files
   - Auto-populates objectid, filename, parentid, display_template, format, and object_location fields
   - Supports compound object export with parent/child relationships
@@ -60,7 +60,7 @@ DART provides a comprehensive platform for digital asset management workflows:
   - Files uploaded with DG identifiers as filenames (e.g., dg_1715614222.jpg)
   - **Kill Switch**: Emergency stop for long-running Azure uploads (stops cleanly after current file)
   - Timestamped exports to working directory
-- **Function 3** 🖼️: Generate Small & Thumbnail Derivatives
+- **Function 3** 🖼️: Generate Derivatives for CSV and Azure
   - Creates small (800x800) and thumbnail (400x400) image derivatives
   - Uploads derivatives to Azure Blob Storage (/smalls/ and /thumbs/ folders)
   - **Auto-creates derivative containers**: Automatic /smalls/ and /thumbs/ container setup
@@ -69,7 +69,7 @@ DART provides a comprehensive platform for digital asset management workflows:
   - Maintains aspect ratios, handles EXIF orientation and transparency
   - **Clickable log viewer**: Results dialog includes link to open detailed log in popup
   - **Kill Switch**: Emergency stop for long-running derivative generation
-- **Function 4** �💻: Display system information
+- **Function 9** 💻: Display system information
 
 *Additional asset processing functions are added as needed for your specific workflow.*
 
@@ -123,8 +123,8 @@ DART/
 ├── QUICKSTART.md              # Quick reference guide
 ├── FUNCTION_0_APP_SETTINGS.md # Help docs for Function 0
 ├── FUNCTION_1_ANALYZE_ASSETS.md  # Help docs for Function 1
-├── FUNCTION_2_EXPORT_CSV.md     # Help docs for Function 2 (CSV export)
-├── FUNCTION_3_SYSTEM_INFO.md  # Help docs for Function 3
+├── FUNCTION_2_EXPORT_CSV.md     # Help docs for Function 2 (CSV and Azure export)
+├── FUNCTION_3_GENERATE_DERIVATIVES.md  # Help docs for Function 3 (Derivatives)
 └── README.md                   # This file
 ```
 

@@ -2739,9 +2739,9 @@ def main(page: ft.Page):
             update_status(f"Error writing CSV: {ex}", is_error=True)
             logger.error(f"Error writing updated CSV: {ex}")
 
-    def on_function_4_system_info(e):
-        """Function 4: Display system information."""
-        storage.record_function_usage("Function 4")
+    def on_function_9_system_info(e):
+        """Function 9: Display system information."""
+        storage.record_function_usage("Function 9")
 
         info_lines = [
             f"Hostname: {socket.gethostname()}",
@@ -2760,7 +2760,7 @@ def main(page: ft.Page):
 
         dialog = ft.AlertDialog(
             modal=True,
-            title=ft.Text("Function 4: System Info"),
+            title=ft.Text("Function 9: System Info"),
             content=ft.Container(
                 content=ft.Text(result_text, selectable=True),
                 width=600,
@@ -2774,7 +2774,7 @@ def main(page: ft.Page):
         page.update()
 
         update_status("Displayed system information")
-        logger.info("Function 4: Displayed system information")
+        logger.info("Function 9: Displayed system information")
 
     # ------------------------------------------------------------------ function management
 
@@ -2783,7 +2783,7 @@ def main(page: ft.Page):
         "function_1_list_files",
         "function_2_export_csv",
         "function_3_generate_derivatives",
-        "function_4_system_info",
+        "function_9_system_info",
     ]
 
     functions = {
@@ -2800,22 +2800,22 @@ def main(page: ft.Page):
             "help_file": "FUNCTION_1_ANALYZE_ASSETS.md"
         },
         "function_2_export_csv": {
-            "label": "2: Export Assets to CSV",
+            "label": "2: Export Assets to CSV and Azure",
             "icon": "📊",
             "handler": on_function_2_export_csv,
             "help_file": "FUNCTION_2_EXPORT_CSV.md"
         },
         "function_3_generate_derivatives": {
-            "label": "3: Generate Small & Thumbnail Derivatives",
+            "label": "3: Generate Derivatives for CSV and Azure",
             "icon": "🖼️",
             "handler": on_function_3_generate_derivatives,
             "help_file": "FUNCTION_3_GENERATE_DERIVATIVES.md"
         },
-        "function_4_system_info": {
-            "label": "4: System Information",
+        "function_9_system_info": {
+            "label": "9: System Information",
             "icon": "💻",
-            "handler": on_function_4_system_info,
-            "help_file": "FUNCTION_4_SYSTEM_INFO.md"
+            "handler": on_function_9_system_info,
+            "help_file": "FUNCTION_9_SYSTEM_INFO.md"
         },
     }
 

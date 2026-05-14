@@ -62,6 +62,12 @@ Version 1.4.1 improves Function 2 and Function 3 with automatic Azure container 
   - Clickable button for log access integrated inline
   - Better spacing and visual hierarchy
   - Maintains 600x400px dialog size
+- **Function Numbering**: System Info moved to Function 9
+  - `on_function_4_system_info()` → `on_function_9_system_info()`
+  - Updated functions dictionary key and label
+  - Renamed `FUNCTION_4_SYSTEM_INFO.md` → `FUNCTION_9_SYSTEM_INFO.md`
+  - Opens slots 4-8 for additional workflow functions
+  - System Info kept as placeholder for testing purposes
 
 ### Documentation
 - **FUNCTION_2_EXPORT_CSV.md**: Updated Azure section
@@ -93,10 +99,10 @@ Version 1.4.1 improves Function 2 and Function 3 with automatic Azure container 
 ## [1.4.0] - 2026-05-13
 
 ### Summary
-Version 1.4.0 adds Function 3 for generating web-optimized image derivatives (small and thumbnail) with automatic Azure upload and CSV metadata population. Previous Function 3 (System Info) becomes Function 4.
+Version 1.4.0 adds Function 3 for generating web-optimized image derivatives (small and thumbnail) with automatic Azure upload and CSV metadata population. Previous Function 3 (System Info) becomes Function 9 as a placeholder.
 
 ### Added
-- **Function 3: Generate Small & Thumbnail Derivatives** 🖼️
+- **Function 3: Generate Derivatives for CSV and Azure** 🖼️
   - Generates small derivatives (800x800px max) for detail pages
   - Generates thumbnail derivatives (400x400px max) for browse views
   - Maintains aspect ratios for all processed images
@@ -152,7 +158,7 @@ Version 1.4.0 adds Function 3 for generating web-optimized image derivatives (sm
 - **README.md**: Updated workflow functions section
   - Added Function 3 description with derivative details
   - Updated Function 3 from System Info to Derivatives
-  - System Info now listed as Function 4
+  - System Info now listed as Function 9 (placeholder)
 
 ### Technical Details
 - Temporary derivatives stored in `temp_derivatives/` folder
@@ -374,7 +380,7 @@ Version 1.3.0 introduces comprehensive CSV metadata management for CollectionBui
 ### Changed
 - **Function 2 Purpose**: Complete functional replacement
   - **Old**: Count files by extension (simple example function)
-  - **New**: Export assets to CSV for CollectionBuilder workflows
+  - **New**: Export Assets to CSV and Azure
   - Icon unchanged (📊) but represents data export now
   - Help file changed from FUNCTION_2_COUNT_FILES.md to FUNCTION_2_EXPORT_CSV.md
 - **Settings UI Organization**: Restructured Function 0 dialog

@@ -47,7 +47,7 @@ This will:
 The app includes four functions:
 - **Function 0**: App Settings (configure behavior, encryption-enabled)
 - **Function 1**: Analyze Digital Assets & Generate Standard DG Identifiers
-- **Function 2**: Export assets to CSV using template structure
+- **Function 2**: Export Assets to CSV and Azure
 - **Function 3**: Display system information
 
 Enable "Help Mode" to view the documentation for each function.
