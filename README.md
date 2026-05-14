@@ -31,6 +31,8 @@ DART provides a comprehensive platform for digital asset management workflows:
 - **Permanent ID Assignment**: Files receive unique `dg_<epoch>` identifiers that never change once assigned
 - **CSV Metadata Management**: Template-based CSV generation with intelligent merging into master metadata file
 - **CollectionBuilder Compatibility**: Validates CSV structure for required fields (objectid, filename)
+- **Azure Blob Storage Integration**: Automatic file uploads with encrypted connection strings
+- **Kill Switch**: Emergency stop button for batch operations (stops cleanly without data corruption)
 - **Professional Logging**: Timestamped log files in `{working_folder}/logfiles/` with real-time display
 - **Function Management**: Icon-enhanced dropdown with usage tracking and workflow ordering
 - **Help Mode**: Built-in markdown help viewer for each function with copy-to-clipboard
@@ -46,9 +48,12 @@ DART provides a comprehensive platform for digital asset management workflows:
   - Permanent ID assignment with folder-based compound tracking
 - **Function 2** 📊: Export analyzed assets to CSV using template structure
   - Generates CollectionBuilder-compatible metadata files
-  - Auto-populates objectid, filename, parentid, display_template, and format fields
+  - Auto-populates objectid, filename, parentid, display_template, format, and object_location fields
   - Supports compound object export with parent/child relationships
   - Maps file types to CollectionBuilder layouts (image/video/audio/pdf/compound_object)
+  - **Azure Blob Storage integration**: Automatically uploads files and generates object_location URLs
+  - Files uploaded with DG identifiers as filenames (e.g., dg_1715614222.jpg)
+  - **Kill Switch**: Emergency stop for long-running Azure uploads (stops cleanly after current file)
   - Timestamped exports to working directory
 - **Function 3** 💻: Display system information
 
@@ -83,8 +88,10 @@ The run scripts automatically:
 
 - **Python 3.8+**
 - **Flet 0.25.2** (installed automatically by run scripts)
+- **cryptography** (for encrypted settings)
+- **azure-storage-blob 12.19.0+** (for Azure Blob Storage uploads)
 
-No other dependencies required for the base template.
+All dependencies are installed automatically by the run scripts.
 
 ## Project Structure
 

@@ -18,6 +18,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, Tuple
 from cryptography.fernet import Fernet, InvalidToken
+from azure.storage.blob import BlobServiceClient, ContentSettings
 
 # Import common DG utilities
 from common_dg_utilities.dg_utils import generate_unique_id
@@ -392,6 +393,32 @@ def validate_core_metadata_csv(csv_path: str, structure_path: str = "") -> Tuple
     return True, f"✓ Core CSV valid ({len(headers)} columns)"
 
 
+def validate_azure_path(azure_path: str) -> Tuple[bool, str]:
+    """
+    Validate the Azure Blob Storage path.
+    Checks that path contains /objs/ folder for original files.
+    Also checks that user didn't enter a full URL by mistake.
+    Returns (success, message).
+    
+    Note: /smalls/ and /thumbs/ folders should exist as parallel folders
+    in Azure but are not validated programmatically.
+    """
+    if not azure_path or not azure_path.strip():
+        return True, "No Azure path specified (optional)"
+    
+    path_normalized = azure_path.strip()
+    
+    # Check if user entered a URL instead of just the path
+    if any(pattern in path_normalized.lower() for pattern in ['http://', 'https://', '.blob.core.windows.net', '.blob.']):
+        return False, "✗ Enter only the path (e.g., 'objs/collection'), NOT the full URL. The URL is built automatically from your connection string."
+    
+    # Check for /objs/ folder (required)
+    if "/objs/" not in path_normalized and not path_normalized.endswith("/objs"):
+        return False, "✗ Path must contain /objs/ folder for original files"
+    
+    return True, "✓ Valid path with /objs/ folder (ensure /smalls/ and /thumbs/ exist in Azure)"
+
+
 def copy_csv_to_working_dir(csv_path: str, working_dir: str, file_type: str) -> Tuple[str, bool, str]:
     """
     Copy a CSV file to the working directory if it's not already there.
@@ -436,6 +463,186 @@ def copy_csv_to_working_dir(csv_path: str, working_dir: str, file_type: str) -> 
         return csv_path, False, f"Error copying {file_type} CSV: {str(e)}"
 
 
+def sanitize_error_message(error_msg: str, connection_string: str) -> str:
+    """
+    Remove connection string and sensitive data from error messages.
+    Azure SDK errors often include the full connection string.
+    """
+    sanitized = str(error_msg)
+    
+    # Remove the entire connection string if present
+    if connection_string and connection_string in sanitized:
+        sanitized = sanitized.replace(connection_string, "[CONNECTION_STRING_REDACTED]")
+    
+    # Remove AccountKey values
+    import re
+    sanitized = re.sub(r'AccountKey=[^;]+', 'AccountKey=[REDACTED]', sanitized)
+    
+    return sanitized
+
+
+def init_azure_client(connection_string: str) -> Tuple[bool, Optional[BlobServiceClient], str]:
+    """
+    Initialize Azure Blob Service Client from connection string.
+    Returns (success, client, message).
+    """
+    if not connection_string or not connection_string.strip():
+        logger.warning("Azure connection string not configured")
+        return False, None, "Azure connection string not configured"
+    
+    try:
+        blob_service_client = BlobServiceClient.from_connection_string(connection_string)
+        # Test connection by getting account information
+        account_info = blob_service_client.get_account_information()
+        logger.info(f"Connected to Azure Storage (SKU: {account_info.get('sku_name', 'unknown')})")
+        return True, blob_service_client, f"✓ Connected to Azure Storage (SKU: {account_info.get('sku_name', 'unknown')})"
+    except Exception as e:
+        # Sanitize error message before logging or displaying
+        sanitized_msg = sanitize_error_message(str(e), connection_string)
+        logger.error(f"Azure connection failed: {sanitized_msg}")
+        return False, None, f"Failed to connect to Azure: {sanitized_msg}"
+
+
+def build_object_location(azure_path: str, object_id: str, file_extension: str, connection_string: str) -> Tuple[bool, str, str]:
+    """
+    Build complete Azure Blob Storage URL for an object.
+    
+    Args:
+        azure_path: Path like "objs/collection_name" or "container/objs/path"
+        object_id: The dg_<epoch> identifier
+        file_extension: Original file extension (e.g., '.jpg')
+        connection_string: Azure connection string to extract account name
+    
+    Returns (success, url, message).
+    
+    URL format: https://{account}.blob.core.windows.net/{container}/{path}/{objectid}{ext}
+    """
+    try:
+        # Parse connection string to get account name
+        account_name = None
+        for part in connection_string.split(';'):
+            if part.startswith('AccountName='):
+                account_name = part.split('=', 1)[1]
+                break
+        
+        if not account_name:
+            return False, "", "Could not extract AccountName from connection string"
+        
+        # Normalize path (remove leading/trailing slashes)
+        normalized_path = azure_path.strip().strip('/')
+        
+        # Split path into container and blob path
+        path_parts = normalized_path.split('/', 1)
+        if len(path_parts) == 1:
+            # Just container name provided (e.g., "objs")
+            container = path_parts[0]
+            blob_path = ""
+        else:
+            # Container and path provided (e.g., "container/objs/collection")
+            container = path_parts[0]
+            blob_path = path_parts[1]
+        
+        # Build blob name: path/objectid.ext
+        if blob_path:
+            blob_name = f"{blob_path}/{object_id}{file_extension}"
+        else:
+            blob_name = f"{object_id}{file_extension}"
+        
+        # Build complete URL
+        url = f"https://{account_name}.blob.core.windows.net/{container}/{blob_name}"
+        
+        return True, url, f"Built URL for {object_id}{file_extension}"
+        
+    except Exception as e:
+        sanitized_msg = sanitize_error_message(str(e), connection_string)
+        logger.error(f"Error building object_location for {object_id}: {sanitized_msg}")
+        return False, "", f"Error building object_location: {sanitized_msg}"
+
+
+def upload_to_azure(
+    blob_service_client: BlobServiceClient,
+    local_file_path: str,
+    azure_path: str,
+    object_id: str,
+    file_extension: str
+) -> Tuple[bool, str]:
+    """
+    Upload a file to Azure Blob Storage with renamed filename.
+    
+    Args:
+        blob_service_client: Initialized Azure BlobServiceClient
+        local_file_path: Path to local file to upload
+        azure_path: Azure path like "objs/collection" or "container/objs/path"
+        object_id: The dg_<epoch> identifier (becomes the filename)
+        file_extension: Original file extension to preserve
+    
+    Returns (success, message).
+    """
+    try:
+        local_path = Path(local_file_path)
+        if not local_path.exists():
+            return False, f"Local file not found: {local_file_path}"
+        
+        # Normalize path
+        normalized_path = azure_path.strip().strip('/')
+        
+        # Split path into container and blob path
+        path_parts = normalized_path.split('/', 1)
+        if len(path_parts) == 1:
+            container = path_parts[0]
+            blob_path = ""
+        else:
+            container = path_parts[0]
+            blob_path = path_parts[1]
+        
+        # Build blob name with object_id as filename
+        if blob_path:
+            blob_name = f"{blob_path}/{object_id}{file_extension}"
+        else:
+            blob_name = f"{object_id}{file_extension}"
+        
+        # Debug logging to verify blob name construction
+        logger.info(f"Uploading to Azure: local={local_path.name}, object_id={object_id}, extension={file_extension}, blob_name={blob_name}")
+        
+        # Get blob client
+        blob_client = blob_service_client.get_blob_client(container=container, blob=blob_name)
+        
+        # Determine content type from extension
+        content_type_map = {
+            '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
+            '.gif': 'image/gif', '.tif': 'image/tiff', '.tiff': 'image/tiff',
+            '.bmp': 'image/bmp', '.webp': 'image/webp',
+            '.pdf': 'application/pdf',
+            '.mp4': 'video/mp4', '.mov': 'video/quicktime', '.avi': 'video/x-msvideo',
+            '.mkv': 'video/x-matroska', '.webm': 'video/webm',
+            '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.flac': 'audio/flac',
+            '.aac': 'audio/aac', '.ogg': 'audio/ogg', '.m4a': 'audio/mp4',
+            '.zip': 'application/zip', '.tar': 'application/x-tar',
+            '.gz': 'application/gzip', '.7z': 'application/x-7z-compressed',
+            '.rar': 'application/x-rar-compressed',
+        }
+        
+        content_type = content_type_map.get(file_extension.lower(), 'application/octet-stream')
+        content_settings = ContentSettings(content_type=content_type)
+        
+        # Upload file
+        with open(local_path, 'rb') as data:
+            blob_client.upload_blob(
+                data,
+                overwrite=True,
+                content_settings=content_settings
+            )
+        
+        logger.info(f"Successfully uploaded: {local_path.name} → Azure blob: {blob_name}")
+        return True, f"✓ Uploaded {local_path.name} → {blob_name}"
+        
+    except Exception as e:
+        # Note: Don't pass connection_string here as it's not available in this function
+        error_msg = str(e)
+        logger.error(f"Upload failed: {local_path.name} → blob_name={blob_name}, error={error_msg}")
+        return False, f"Upload failed for {local_path.name} (as {blob_name.split('/')[-1]}): {error_msg}"
+
+
 def main(page: ft.Page):
     page.title = "DART - Digital Asset Routing and Transformation"
     page.padding = 20
@@ -445,6 +652,9 @@ def main(page: ft.Page):
 
     storage = PersistentStorage()
     logger.info("DART application started")
+    
+    # Kill switch for emergency stop of batch operations
+    kill_switch = False
     
     # Setup logging in working directory if it exists
     working_dir = storage.get_ui_state("last_output_dir")
@@ -484,6 +694,14 @@ def main(page: ft.Page):
         log_output.value = ""
         page.update()
         logger.info("Log cleared")
+
+    def on_kill_switch_click(e):
+        """Handle Kill Switch button click - emergency stop for batch operations."""
+        nonlocal kill_switch
+        logger.warning("KILL SWITCH ACTIVATED")
+        kill_switch = True
+        add_log_message("⚠️ KILL SWITCH ACTIVATED - Stopping batch operation")
+        update_status("⚠️ Kill switch activated - stopping after current file", True)
 
     # ------------------------------------------------------------------ UI state
 
@@ -750,9 +968,38 @@ def main(page: ft.Page):
         azure_storage_field = ft.TextField(
             label="azure_blob_storage_path",
             value=str(settings.get("azure_blob_storage_path", "")),
-            hint_text="Azure Blob Storage path (e.g., container/folder)",
+            hint_text="Azure Blob Storage path (must contain /objs/ folder)",
             width=500,
         )
+        
+        azure_path_validation_text = ft.Text(
+            "",
+            size=11,
+            color=ft.Colors.GREY_700,
+            visible=False,
+        )
+        
+        # Validate existing Azure path if one is set
+        existing_azure_path = settings.get("azure_blob_storage_path", "")
+        if existing_azure_path:
+            valid, msg = validate_azure_path(existing_azure_path)
+            azure_path_validation_text.value = msg
+            azure_path_validation_text.color = ft.Colors.GREEN if valid else ft.Colors.RED
+            azure_path_validation_text.visible = True
+        
+        def on_azure_path_change(e):
+            """Validate Azure path when field value changes."""
+            path_value = azure_storage_field.value or ""
+            if path_value.strip():
+                valid, msg = validate_azure_path(path_value)
+                azure_path_validation_text.value = msg
+                azure_path_validation_text.color = ft.Colors.GREEN if valid else ft.Colors.RED
+                azure_path_validation_text.visible = True
+            else:
+                azure_path_validation_text.visible = False
+            page.update()
+        
+        azure_storage_field.on_change = on_azure_path_change
         
         azure_connection_field = ft.TextField(
             label="azure_connection_string",
@@ -895,6 +1142,14 @@ def main(page: ft.Page):
             
             page.update()
 
+            # Validate Azure path before saving
+            azure_path_value = (azure_storage_field.value or "").strip()
+            if azure_path_value:
+                valid, msg = validate_azure_path(azure_path_value)
+                if not valid:
+                    update_status(f"Azure path validation failed: {msg}", is_error=True)
+                    return
+
             new_settings = {
                 "auto_save_enabled": parsed_auto_save,
                 "auto_save_format": (auto_save_format_field.value or "").strip() or "txt",
@@ -902,7 +1157,7 @@ def main(page: ft.Page):
                 "use_working_folder_for_file_selection": parsed_use_working_folder,
                 "csv_structure_file": csv_file_path,
                 "core_metadata_csv": core_csv_path,
-                "azure_blob_storage_path": (azure_storage_field.value or "").strip(),
+                "azure_blob_storage_path": azure_path_value,
                 "azure_connection_string": (azure_connection_field.value or "").strip(),
                 "api_key": (api_key_field.value or "").strip(),
                 "api_secret": (api_secret_field.value or "").strip(),
@@ -952,6 +1207,7 @@ def main(page: ft.Page):
                         core_csv_validation_text,
                         ft.Container(height=8),
                         azure_storage_field,
+                        azure_path_validation_text,
                         ft.Container(height=8),
                         ft.Text(
                             "Azure Storage (encrypted):",
@@ -1575,6 +1831,8 @@ def main(page: ft.Page):
 
     def on_function_2_export_csv(e):
         """Function 2: Export analyzed assets to CSV using template structure."""
+        nonlocal kill_switch
+        kill_switch = False  # Reset kill switch at start of operation
         storage.record_function_usage("Function 2")
 
         # Check for working directory
@@ -1602,6 +1860,37 @@ def main(page: ft.Page):
         except Exception as ex:
             update_status(f"Error reading CSV template: {ex}", is_error=True)
             return
+
+        # Check if Azure is configured and validate connection
+        azure_path = settings.get("azure_blob_storage_path", "")
+        azure_connection_string = settings.get("azure_connection_string", "")
+        azure_enabled = False
+        blob_service_client = None
+        
+        if azure_path and azure_connection_string:
+            add_log_message("[INFO] Azure configuration detected, validating...")
+            
+            # Validate Azure path
+            path_valid, path_msg = validate_azure_path(azure_path)
+            if not path_valid:
+                update_status(f"Azure path validation failed: {path_msg}", is_error=True)
+                add_log_message(f"[ERROR] {path_msg}")
+                return
+            
+            # Initialize Azure client
+            success, client, msg = init_azure_client(azure_connection_string)
+            if not success:
+                logger.error(f"Azure connection failed: {msg}")
+                update_status(f"Azure connection failed: {msg}", is_error=True)
+                add_log_message(f"[ERROR] {msg}")
+                return
+            
+            blob_service_client = client
+            azure_enabled = True
+            add_log_message(f"[SUCCESS] {msg}")
+            add_log_message(f"[INFO] Azure uploads ENABLED - files will be uploaded to: {azure_path}")
+        else:
+            add_log_message("[INFO] Azure not configured - uploads disabled (CSV export only)")
 
         # Get files to process (similar to Function 1)
         group_compound = settings.get("group_compound_objects", False)
@@ -1674,6 +1963,64 @@ def main(page: ft.Page):
         new_mappings += compound_new
         reused_mappings += compound_reused
 
+        # Build object_location URLs and upload files to Azure if enabled
+        upload_success_count = 0
+        upload_fail_count = 0
+        
+        if azure_enabled and blob_service_client:
+            add_log_message(f"[INFO] Starting Azure uploads for {len(objects)} files...")
+            
+            for obj in objects:
+                # Check kill switch
+                if kill_switch:
+                    logger.warning("Kill switch activated - stopping Azure uploads")
+                    add_log_message("⚠️ Kill switch activated - Azure uploads stopped")
+                    break
+                
+                object_id = obj['objectid']
+                file_path = obj['filepath']
+                file_extension = Path(file_path).suffix
+                
+                # Build object_location URL
+                success, url, msg = build_object_location(
+                    azure_path,
+                    object_id,
+                    file_extension,
+                    azure_connection_string
+                )
+                
+                if success:
+                    obj['object_location'] = url
+                    
+                    # Upload file to Azure
+                    upload_success, upload_msg = upload_to_azure(
+                        blob_service_client,
+                        file_path,
+                        azure_path,
+                        object_id,
+                        file_extension
+                    )
+                    
+                    if upload_success:
+                        upload_success_count += 1
+                        add_log_message(f"[SUCCESS] {upload_msg}")
+                    else:
+                        upload_fail_count += 1
+                        logger.error(f"Upload failed: {upload_msg}")
+                        add_log_message(f"[ERROR] {upload_msg}")
+                        # Still include object_location in CSV even if upload failed
+                else:
+                    obj['object_location'] = ''
+                    logger.error(f"Failed to build object_location: {msg}")
+                    add_log_message(f"[ERROR] {msg}")
+            
+            logger.info(f"Azure upload complete: {upload_success_count} succeeded, {upload_fail_count} failed")
+            add_log_message(f"[INFO] Upload complete: {upload_success_count} succeeded, {upload_fail_count} failed")
+        else:
+            # Azure not enabled - set empty object_location for all objects
+            for obj in objects:
+                obj['object_location'] = ''
+
         # Create CSV filename with timestamp
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         csv_filename = f"dart_export_{timestamp}.csv"
@@ -1725,6 +2072,8 @@ def main(page: ft.Page):
                             row[col] = obj.get('display_template', '')
                         elif col == 'format':
                             row[col] = obj.get('format', '')
+                        elif col == 'object_location':
+                            row[col] = obj.get('object_location', '')
                         else:
                             # Leave other columns empty for manual population
                             row[col] = ''
@@ -1750,8 +2099,18 @@ def main(page: ft.Page):
             result_text += f"Columns: {len(template_columns)}\n"
             result_text += f"Output: {csv_filename}\n"
             result_text += f"Location: {working_dir}\n"
-            result_text += f"Compound grouping: {'ENABLED' if group_compound else 'DISABLED'}\n\n"
-            result_text += f"Auto-populated fields:\n"
+            result_text += f"Compound grouping: {'ENABLED' if group_compound else 'DISABLED'}\n"
+            
+            # Add Azure upload information if enabled
+            if azure_enabled:
+                result_text += f"Azure uploads: {'ENABLED' if azure_enabled else 'DISABLED'}\n"
+                if upload_success_count > 0 or upload_fail_count > 0:
+                    result_text += f"  • Uploaded: {upload_success_count} succeeded, {upload_fail_count} failed\n"
+                    result_text += f"  • Azure path: {azure_path}\n"
+            else:
+                result_text += f"Azure uploads: DISABLED (configure in Function 0)\n"
+            
+            result_text += f"\nAuto-populated fields:\n"
             result_text += f"• objectid (unique DG identifier)\n"
             result_text += f"• filename (original filename)\n"
             
@@ -1766,6 +2125,12 @@ def main(page: ft.Page):
             if 'format' in template_columns:
                 result_text += f"• format (file extension)\n"
                 populated_fields.append('format')
+            if 'object_location' in template_columns:
+                if azure_enabled:
+                    result_text += f"• object_location (Azure Blob Storage URL)\n"
+                else:
+                    result_text += f"• object_location (empty - Azure not configured)\n"
+                populated_fields.append('object_location')
             if 'title' in template_columns and group_compound and compound_objects:
                 result_text += f"• title (suggested title for compound objects)\n"
                 populated_fields.append('title')
@@ -2166,10 +2531,24 @@ def main(page: ft.Page):
                                                 ),
                                             ),
                                             ft.Container(height=5),
-                                            ft.Checkbox(
-                                                label="Help Mode",
-                                                ref=help_mode_enabled,
-                                                tooltip="Enable to view help documentation for functions instead of executing them",
+                                            ft.Row(
+                                                controls=[
+                                                    ft.Checkbox(
+                                                        label="Help Mode",
+                                                        ref=help_mode_enabled,
+                                                        tooltip="Enable to view help documentation for functions instead of executing them",
+                                                    ),
+                                                    ft.Container(width=20),
+                                                    ft.ElevatedButton(
+                                                        "🛑 Kill Switch",
+                                                        on_click=on_kill_switch_click,
+                                                        icon=ft.Icons.CANCEL,
+                                                        color=ft.Colors.WHITE,
+                                                        bgcolor=ft.Colors.RED_700,
+                                                        tooltip="Emergency stop - halts batch processing immediately",
+                                                    ),
+                                                ],
+                                                spacing=10,
                                             ),
                                         ],
                                         spacing=5,

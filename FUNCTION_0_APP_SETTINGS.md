@@ -15,7 +15,12 @@ The encryption key is stored separately in `~/.DART-data/encryption_key` with re
 - **use_working_folder_for_file_selection**: When `true`, the File Selector opens in the working/outputs folder. When `false`, it opens in the inputs folder. **[BOOLEAN]**
 - **csv_structure_file**: Path to a CSV template file that defines the expected column structure for metadata exports. Use the "Browse..." button to select a CSV file. **[VALIDATED]**
 - **core_metadata_csv**: Path to your main/controlling metadata CSV file. This is the master metadata file that future functions will update and merge into. **[VALIDATED, OPTIONAL]**
-- **azure_blob_storage_path**: Azure Blob Storage path for cloud storage operations (e.g., `container/folder` or `container/subfolder/path`). Used for uploading or accessing files in Azure storage.
+- **azure_blob_storage_path**: Azure Blob Storage path for cloud storage operations. **[VALIDATED]**
+  - **REQUIRED**: Path must contain `/objs/` folder (this holds original source files)
+  - Format: `container/objs/subfolder` or `objs/collection_name`
+  - Example: `objs/TDPS_archive` or `mycontainer/objs/photos`
+  - **Parallel folders**: Your Azure storage should also contain `/smalls/` and `/thumbs/` folders as siblings to `/objs/` for derivative files
+  - Validation ensures `/objs/` is present; `/smalls/` and `/thumbs/` are expected but not verified programmatically
 - **azure_connection_string**: Azure Storage account connection string for authentication. Required for uploading files to Azure Blob Storage. **[ENCRYPTED]**
 - **api_key**: Your API key for external services. **[ENCRYPTED]**
 - **api_secret**: Your API secret for external services. **[ENCRYPTED]**
@@ -139,9 +144,20 @@ The Azure Blob Storage settings enable DART to upload files directly to Microsof
 **Two Settings Required:**
 
 1. **azure_blob_storage_path**: The path within Azure storage where files should be uploaded
-   - Format: `container/folder/subfolder`
-   - Example: `objs/TDPS_archive` or `mycontainer/collections/photos`
-   - This is just the path structure, not a full URL
+   - **REQUIRED**: Must contain `/objs/` folder for original source files
+   - Format: `container/objs/subfolder` or `objs/collection_name`
+   - Example: `objs/TDPS_archive` or `mycontainer/objs/photos`
+   - **IMPORTANT**: Enter ONLY the path, NOT a full URL
+   - ✓ Correct: `objs/TDPS_archive`
+   - ✗ Wrong: `https://account.blob.core.windows.net/objs/TDPS_archive`
+   - ✗ Wrong: `collectionbuilder.blob.core.windows.net/objs/TDPS_archive`
+   - The full URL is built automatically from your connection string
+   - **Validation**: DART checks that `/objs/` is present and rejects URLs
+   - **Expected structure**: Your Azure container should have three parallel folders:
+     - `/objs/` - Original source files (source of truth)
+     - `/smalls/` - Medium-sized derivatives
+     - `/thumbs/` - Thumbnail-sized derivatives
+   - Note: Only `/objs/` is validated; `/smalls/` and `/thumbs/` should exist but aren't checked programmatically
 
 2. **azure_connection_string**: Your Azure Storage account connection string (encrypted)
    - Found in Azure Portal → Storage Account → Access Keys → Connection string
@@ -159,17 +175,41 @@ The Azure Blob Storage settings enable DART to upload files directly to Microsof
 
 **Example Configuration:**
 
-If your Azure URL is: `https://collectionbuilder.blob.core.windows.net/objs/TDPS_archive/`
+If your Azure storage structure is:
+```
+https://collectionbuilder.blob.core.windows.net/
+  ├── objs/TDPS_archive/
+  ├── smalls/TDPS_archive/
+  └── thumbs/TDPS_archive/
+```
 
 Configure DART with:
 - **azure_blob_storage_path**: `objs/TDPS_archive`
 - **azure_connection_string**: `DefaultEndpointsProtocol=https;AccountName=collectionbuilder;AccountKey=xxxxx...;EndpointSuffix=core.windows.net`
+
+DART will validate that `/objs/` is in the path and expect `/smalls/` and `/thumbs/` exist as parallel folders.
 
 **Security Notes:**
 - The connection string is encrypted in `dart_settings.json`
 - It's safe to commit the settings file to version control
 - The encryption key is stored separately in `~/.DART-data/encryption_key`
 - Never share your connection string in plain text
+
+**Common Errors:**
+
+❌ **"The specifed resource name contains invalid characters"**
+- **Cause**: You entered a full URL in `azure_blob_storage_path` instead of just the path
+- **Wrong**: `https://account.blob.core.windows.net/objs/collection` or `account.blob.core.windows.net/objs/collection`
+- **Correct**: `objs/collection`
+- **Fix**: Edit Function 0 settings and remove the account name/URL portion
+
+❌ **"Path must contain /objs/ folder"**
+- **Cause**: The path doesn't include the required `/objs/` folder
+- **Fix**: Update path to include `/objs/` (e.g., `objs/collection` or `container/objs/subfolder`)
+
+❌ **"Failed to connect to Azure"**
+- **Cause**: Invalid connection string or network issue
+- **Fix**: Verify connection string is correct and complete from Azure Portal
 
 **Future Functions:**
 Once configured, future DART functions will be able to:
@@ -187,7 +227,8 @@ Once configured, future DART functions will be able to:
   "use_working_folder_for_file_selection": false,
   "csv_structure_file": "/path/to/metadata_template.csv",
   "core_metadata_csv": "/path/to/collection_metadata_master.csv",
-  "azure_blob_storage_path": "mycontainer/tdps-archive",
+  "azure_blob_storage_path": "objs/tdps-archive",
+  "azure_connection_string": "gAAAAABk...[encrypted]",
   "api_key": "gAAAAABk...[encrypted]",
   "api_secret": "gAAAAABk...[encrypted]",
   "password": "gAAAAABk...[encrypted]",

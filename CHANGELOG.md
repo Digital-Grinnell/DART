@@ -7,6 +7,146 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.3.3] - 2026-05-13
+
+### Summary
+Version 1.3.3 adds an emergency stop feature (Kill Switch) to halt long-running Azure upload operations in Function 2.
+
+### Added
+- **Kill Switch Button**: Emergency stop for batch operations
+  - Red "🛑 Kill Switch" button in Functions section
+  - Stops Azure uploads immediately after current file completes
+  - Located next to Help Mode checkbox in UI
+  - Provides clean stop without data corruption
+- **Kill Switch Logic**: Safe operation interruption
+  - Boolean flag checked in Azure upload loop
+  - Current file upload completes before stopping (no mid-upload interruption)
+  - Logs warning message when activated
+  - Updates UI status with stop notification
+  - Automatically resets when Function 2 runs again
+- **Handler Function**: `on_kill_switch_click()`
+  - Sets kill_switch flag to True
+  - Logs warning to file and UI
+  - Updates status text with error styling
+
+### Changed
+- **Function 2**: Enhanced with kill switch checking
+  - Resets kill_switch to False at function start
+  - Checks kill_switch in Azure upload loop
+  - Breaks upload loop cleanly when activated
+  - CSV export continues with partial results
+  - Logs show files uploaded before stop
+
+### Documentation
+- **FUNCTION_2_EXPORT_CSV.md**: New "Kill Switch - Emergency Stop" section
+  - When to use the kill switch
+  - How to use step-by-step instructions
+  - What happens when activated
+  - Comparison table: Kill Switch vs Force Quit
+  - Best practices for clean operation stops
+- **User Pattern**: Based on CABB (Crunch Alma Bibs in Bulk) kill switch implementation
+  - Proven pattern for emergency stops in batch operations
+  - Consistent UX across Digital.Grinnell tools
+
+---
+
+## [1.3.2] - 2026-05-13
+
+### Summary
+Version 1.3.2 implements Azure Blob Storage upload functionality in Function 2, enabling automatic file uploads with renamed filenames and complete object_location URL generation for CollectionBuilder.
+
+### Added
+- **Azure Upload in Function 2**: Automatic file uploads to Azure Blob Storage during CSV export
+  - Files uploaded to Azure with `dg_<epoch>` identifiers as filenames (e.g., `dg_1715614222.jpg`)
+  - Original file extensions preserved
+  - Content-Type headers automatically set based on file type
+  - Validates Azure configuration before starting export
+  - Reports upload success/failure statistics
+  - Continues CSV export even if some uploads fail
+- **object_location Field**: Complete Azure Blob Storage URLs auto-populated in CSV
+  - Format: `https://{account}.blob.core.windows.net/{container}/{path}/{objectid}{ext}`
+  - Example: `https://collectionbuilder.blob.core.windows.net/objs/tdps/dg_1715614222.jpg`
+  - Populated automatically if `object_location` column exists in template
+  - Empty if Azure is not configured
+- **Azure Helper Functions**: Core Azure functionality
+  - `init_azure_client()`: Initialize BlobServiceClient and validate connection
+  - `build_object_location()`: Generate complete Azure URLs from path and object ID
+  - `upload_to_azure()`: Upload files with renamed filenames and content type detection
+- **Dependency**: Added `azure-storage-blob>=12.19.0` to requirements
+  - Enables Azure Blob Storage operations
+  - Connection validation and file upload capabilities
+
+### Changed
+- **Function 2 CSV Export**: Enhanced with Azure upload integration
+  - Validates Azure configuration at start (if configured)
+  - Builds object_location for each file during processing
+  - Uploads files to Azure in parallel with CSV generation
+  - Includes object_location in CSV output (if column exists)
+  - Result dialog shows upload statistics (succeeded/failed counts)
+  - Log messages track each upload attempt
+- **Import Statements**: Added Azure SDK imports
+  - `from azure.storage.blob import BlobServiceClient, ContentSettings`
+
+### Documentation
+- **FUNCTION_2_EXPORT_CSV.md**: Comprehensive Azure upload documentation
+  - New "Azure Blob Storage Upload" section explaining the four-step process
+  - Azure configuration requirements and setup instructions
+  - Updated CSV examples to include `object_location` column
+  - Notes on DART's three-folder structure (/objs/, /smalls/, /thumbs/)
+  - Behavior when Azure is not configured
+- **Updated Examples**: All CSV examples now show `object_location` field
+
+### Technical Details
+- **File Renaming**: Original files (e.g., `photo_001.jpg`) uploaded as `dg_1715614222.jpg`
+- **URL Structure**: Account name extracted from connection string to build complete URLs
+- **Content Types**: Automatic MIME type detection for images, videos, audio, PDFs, archives
+- **Error Handling**: Individual upload failures don't block CSV export
+- **Validation Order**: Path validation → Connection test → Upload → CSV generation
+
+### Notes
+- Azure uploads only to `/objs/` folder in this version
+- Future functions will handle `/smalls/` and `/thumbs/` derivatives
+- Original local files remain unchanged
+- CSV export works with or without Azure configured
+- Compound parent objects have no object_location (no physical file)
+
+---
+
+## [1.3.1] - 2026-05-13
+
+### Summary
+Version 1.3.1 adds Azure Blob Storage path validation to ensure proper folder structure for DART's three-tier storage system.
+
+### Added
+- **Azure Path Validation**: Function 0 now validates `azure_blob_storage_path` setting
+  - **Required**: Path must contain `/objs/` folder for original source files
+  - Real-time validation feedback as you type
+  - Validation before saving settings prevents invalid configurations
+  - Helpful error messages guide correct path format
+  - Function: `validate_azure_path()` checks path structure
+- **Documentation**: Updated FUNCTION_0_APP_SETTINGS.md
+  - Documented `/objs/` folder requirement
+  - Explained three-folder structure: `/objs/`, `/smalls/`, `/thumbs/`
+  - Added validation notes and examples
+  - Updated example configurations to show proper structure
+
+### Changed
+- **azure_blob_storage_path Setting**: Now validated before save
+  - Must contain `/objs/` folder (enforced)
+  - Should have parallel `/smalls/` and `/thumbs/` folders (documented, not enforced)
+  - Real-time validation text appears below field
+  - Hint text updated to: "Azure Blob Storage path (must contain /objs/ folder)"
+
+### Notes
+- **DART Storage Structure**: Three parallel folders in Azure:
+  - `/objs/` - Original source files (source of truth)
+  - `/smalls/` - Medium-sized derivatives
+  - `/thumbs/` - Thumbnail-sized derivatives
+- Only `/objs/` is validated programmatically
+- `/smalls/` and `/thumbs/` are expected to exist but not verified (would require Azure SDK/API call)
+
+---
+
 ## [1.3.0] - 2026-05-13
 
 ### Summary
