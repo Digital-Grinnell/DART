@@ -19,6 +19,8 @@ from pathlib import Path
 from typing import Optional, Tuple
 from cryptography.fernet import Fernet, InvalidToken
 from azure.storage.blob import BlobServiceClient, ContentSettings
+from PIL import Image, ImageOps
+import io
 
 # Import common DG utilities
 from common_dg_utilities.dg_utils import generate_unique_id
@@ -641,6 +643,66 @@ def upload_to_azure(
         error_msg = str(e)
         logger.error(f"Upload failed: {local_path.name} → blob_name={blob_name}, error={error_msg}")
         return False, f"Upload failed for {local_path.name} (as {blob_name.split('/')[-1]}): {error_msg}"
+
+
+def generate_derivative(
+    input_path: str,
+    output_path: str,
+    max_width: int,
+    max_height: int,
+    quality: int = 85
+) -> Tuple[bool, str]:
+    """
+    Generate a derivative image at specified maximum dimensions.
+    Maintains aspect ratio and handles various image formats.
+    
+    Args:
+        input_path: Path to original image file
+        output_path: Path where derivative should be saved
+        max_width: Maximum width in pixels
+        max_height: Maximum height in pixels
+        quality: JPEG quality (0-100, default 85)
+    
+    Returns:
+        (success, message) tuple
+    """
+    try:
+        logger.info(f"Generating derivative: {output_path} (max {max_width}x{max_height})")
+        
+        # Open and process image
+        with Image.open(input_path) as img:
+            # Handle EXIF orientation
+            img = ImageOps.exif_transpose(img)
+            
+            # Convert to RGB if necessary (for JPEG output)
+            if img.mode in ('RGBA', 'LA', 'P'):
+                # Create white background for transparency
+                background = Image.new('RGB', img.size, (255, 255, 255))
+                if img.mode == 'P':
+                    img = img.convert('RGBA')
+                background.paste(img, mask=img.split()[-1] if 'A' in img.mode else None)
+                img = background
+            elif img.mode not in ('RGB', 'L'):
+                img = img.convert('RGB')
+            
+            # Create derivative maintaining aspect ratio
+            img.thumbnail((max_width, max_height), Image.Resampling.LANCZOS)
+            
+            # Save as JPEG
+            img.save(output_path, 'JPEG', quality=quality, optimize=True)
+            
+            logger.info(f"Successfully created derivative: {output_path} ({img.size[0]}x{img.size[1]})")
+            return True, f"✓ Created {os.path.basename(output_path)} ({img.size[0]}x{img.size[1]})"
+            
+    except FileNotFoundError:
+        logger.error(f"Input file not found: {input_path}")
+        return False, f"Input file not found: {input_path}"
+    except PermissionError:
+        logger.error(f"Permission denied: {input_path}")
+        return False, f"Permission denied: {input_path}"
+    except Exception as e:
+        logger.error(f"Error generating derivative: {str(e)}")
+        return False, f"Error generating derivative: {str(e)}"
 
 
 def main(page: ft.Page):
@@ -2169,9 +2231,294 @@ def main(page: ft.Page):
             add_log_message(f"[ERROR] {error_msg}")
             logger.error(error_msg)
 
-    def on_function_3_system_info(e):
-        """Function 3: Display system information."""
+    def on_function_3_generate_derivatives(e):
+        """Function 3: Generate small and thumbnail derivatives and upload to Azure."""
+        nonlocal kill_switch
+        kill_switch = False  # Reset kill switch
         storage.record_function_usage("Function 3")
+
+        # Check for working directory
+        working_dir = output_dir_field.value
+        if not working_dir or not Path(working_dir).exists():
+            update_status("Error: Please set a working/outputs folder first", is_error=True)
+            return
+
+        # Load settings
+        settings, _ = load_app_settings(working_dir)
+        
+        # Check Azure configuration
+        azure_path = settings.get("azure_blob_storage_path", "")
+        azure_connection_string = settings.get("azure_connection_string", "")
+        
+        if not azure_path or not azure_connection_string:
+            update_status("Error: Azure Blob Storage not configured. Configure in Function 0.", is_error=True)
+            add_log_message("[ERROR] Azure configuration required for Function 3")
+            return
+        
+        # Validate and initialize Azure client
+        path_valid, path_msg = validate_azure_path(azure_path)
+        if not path_valid:
+            update_status(f"Azure path validation failed: {path_msg}", is_error=True)
+            return
+        
+        success, blob_service_client, msg = init_azure_client(azure_connection_string)
+        if not success:
+            update_status(msg, is_error=True)
+            return
+        
+        add_log_message(f"[INFO] {msg}")
+        
+        # Find latest CSV export or let user select
+        csv_files = sorted(Path(working_dir).glob("dart_export_*.csv"), reverse=True)
+        if not csv_files:
+            update_status("Error: No CSV exports found. Run Function 2 first.", is_error=True)
+            return
+        
+        # Use the most recent CSV
+        csv_path = csv_files[0]
+        add_log_message(f"[INFO] Processing CSV: {csv_path.name}")
+        
+        # Read CSV
+        try:
+            with open(csv_path, 'r', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                fieldnames = list(reader.fieldnames)
+                rows = list(reader)
+        except Exception as ex:
+            update_status(f"Error reading CSV: {ex}", is_error=True)
+            return
+        
+        # Add image_small and image_thumb columns if not present
+        if 'image_small' not in fieldnames:
+            fieldnames.append('image_small')
+        if 'image_thumb' not in fieldnames:
+            fieldnames.append('image_thumb')
+        
+        # Build base Azure paths for derivatives
+        # Extract container and path from objs path
+        normalized_path = azure_path.strip().strip('/')
+        path_parts = normalized_path.split('/', 1)
+        if len(path_parts) == 1:
+            container = path_parts[0]
+            base_path = ""
+        else:
+            container = path_parts[0]
+            base_path = path_parts[1]
+        
+        # Replace /objs/ with /smalls/ and /thumbs/
+        smalls_path = base_path.replace('/objs/', '/smalls/').replace('objs/', 'smalls/')
+        thumbs_path = base_path.replace('/objs/', '/thumbs/').replace('objs/', 'thumbs/')
+        
+        # Rebuild full paths
+        smalls_azure_path = f"{container}/{smalls_path}" if smalls_path else container + "/smalls"
+        thumbs_azure_path = f"{container}/{thumbs_path}" if thumbs_path else container + "/thumbs"
+        
+        add_log_message(f"[INFO] Derivatives will be uploaded to:")
+        add_log_message(f"  • Small: {smalls_azure_path}")
+        add_log_message(f"  • Thumbs: {thumbs_azure_path}")
+        
+        # Process each row
+        total_rows = len(rows)
+        processed_count = 0
+        skipped_count = 0
+        small_success = 0
+        small_fail = 0
+        thumb_success = 0
+        thumb_fail = 0
+        
+        # Create temp directory for derivatives
+        temp_dir = Path(working_dir) / "temp_derivatives"
+        temp_dir.mkdir(exist_ok=True)
+        
+        add_log_message(f"[INFO] Processing {total_rows} rows...")
+        
+        for idx, row in enumerate(rows):
+            # Check kill switch
+            if kill_switch:
+                add_log_message("⚠️ Kill switch activated - stopping derivative generation")
+                break
+            
+            # Skip rows without files (like compound parents)
+            filename = row.get('filename', '').strip()
+            if not filename:
+                skipped_count += 1
+                continue
+            
+            # Skip non-image files
+            ext = Path(filename).suffix.lower()
+            if ext not in {'.jpg', '.jpeg', '.png', '.gif', '.tif', '.tiff', '.bmp', '.webp'}:
+                add_log_message(f"[SKIP] Non-image file: {filename}")
+                skipped_count += 1
+                continue
+            
+            objectid = row.get('objectid', '')
+            if not objectid:
+                add_log_message(f"[ERROR] No object ID for {filename}")
+                skipped_count += 1
+                continue
+            
+            # Find source file
+            source_path = Path(row.get('filepath', ''))
+            if not source_path.exists():
+                # Try to find it in selected files or input directory
+                if current_directory:
+                    source_path = current_directory / filename
+                if not source_path.exists():
+                    add_log_message(f"[ERROR] Source file not found: {filename}")
+                    skipped_count += 1
+                    continue
+            
+            add_log_message(f"[{idx+1}/{total_rows}] Processing {filename} ({objectid})")
+            
+            # Generate derivatives
+            small_filename = f"{objectid}_SMALL.jpg"
+            thumb_filename = f"{objectid}_TN.jpg"
+            small_local_path = temp_dir / small_filename
+            thumb_local_path = temp_dir / thumb_filename
+            
+            # Generate small (800x800)
+            success_small, msg_small = generate_derivative(
+                str(source_path),
+                str(small_local_path),
+                800, 800, quality=85
+            )
+            
+            if success_small:
+                # Upload small to Azure
+                upload_success, upload_msg = upload_to_azure(
+                    blob_service_client,
+                    str(small_local_path),
+                    smalls_azure_path,
+                    objectid + "_SMALL",
+                    ".jpg"
+                )
+                
+                if upload_success:
+                    # Build URL
+                    success_url, url, url_msg = build_object_location(
+                        smalls_azure_path,
+                        objectid + "_SMALL",
+                        ".jpg",
+                        azure_connection_string
+                    )
+                    if success_url:
+                        row['image_small'] = url
+                        small_success += 1
+                        add_log_message(f"  ✓ Small: {small_filename}")
+                    else:
+                        small_fail += 1
+                        add_log_message(f"  ✗ Small URL failed: {url_msg}")
+                else:
+                    small_fail += 1
+                    add_log_message(f"  ✗ Small upload failed: {upload_msg}")
+            else:
+                small_fail += 1
+                add_log_message(f"  ✗ Small generation failed: {msg_small}")
+            
+            # Generate thumbnail (400x400)
+            success_thumb, msg_thumb = generate_derivative(
+                str(source_path),
+                str(thumb_local_path),
+                400, 400, quality=85
+            )
+            
+            if success_thumb:
+                # Upload thumbnail to Azure
+                upload_success, upload_msg = upload_to_azure(
+                    blob_service_client,
+                    str(thumb_local_path),
+                    thumbs_azure_path,
+                    objectid + "_TN",
+                    ".jpg"
+                )
+                
+                if upload_success:
+                    # Build URL
+                    success_url, url, url_msg = build_object_location(
+                        thumbs_azure_path,
+                        objectid + "_TN",
+                        ".jpg",
+                        azure_connection_string
+                    )
+                    if success_url:
+                        row['image_thumb'] = url
+                        thumb_success += 1
+                        add_log_message(f"  ✓ Thumb: {thumb_filename}")
+                    else:
+                        thumb_fail += 1
+                        add_log_message(f"  ✗ Thumb URL failed: {url_msg}")
+                else:
+                    thumb_fail += 1
+                    add_log_message(f"  ✗ Thumb upload failed: {upload_msg}")
+            else:
+                thumb_fail += 1
+                add_log_message(f"  ✗ Thumb generation failed: {msg_thumb}")
+            
+            processed_count += 1
+        
+        # Clean up temp directory
+        try:
+            shutil.rmtree(temp_dir)
+            logger.info(f"Cleaned up temporary directory: {temp_dir}")
+        except Exception as ex:
+            logger.warning(f"Could not remove temp directory: {ex}")
+        
+        # Write updated CSV
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        output_csv = Path(working_dir) / f"dart_export_with_derivatives_{timestamp}.csv"
+        
+        try:
+            with open(output_csv, 'w', newline='', encoding='utf-8') as f:
+                writer = csv.DictWriter(f, fieldnames=fieldnames)
+                writer.writeheader()
+                for row in rows:
+                    writer.writerow(row)
+            
+            add_log_message(f"[SUCCESS] Updated CSV saved: {output_csv.name}")
+            logger.info(f"Saved updated CSV: {output_csv}")
+            
+            # Show results
+            result_text = f"✅ Derivatives Generated and Uploaded\n\n"
+            result_text += f"Processed: {processed_count} files\n"
+            result_text += f"Skipped: {skipped_count} files\n\n"
+            result_text += f"Small images:\n"
+            result_text += f"  • Success: {small_success}\n"
+            result_text += f"  • Failed: {small_fail}\n\n"
+            result_text += f"Thumbnails:\n"
+            result_text += f"  • Success: {thumb_success}\n"
+            result_text += f"  • Failed: {thumb_fail}\n\n"
+            result_text += f"Updated CSV: {output_csv.name}\n"
+            result_text += f"Location: {working_dir}\n\n"
+            result_text += f"Columns added: image_small, image_thumb"
+            
+            def close_dialog(e):
+                dialog.open = False
+                page.update()
+            
+            dialog = ft.AlertDialog(
+                modal=True,
+                title=ft.Text("Function 3: Generate Derivatives", weight=ft.FontWeight.BOLD),
+                content=ft.Container(
+                    content=ft.Text(result_text, selectable=True),
+                    width=600,
+                    height=400,
+                ),
+                actions=[ft.TextButton("Close", on_click=close_dialog)],
+            )
+            
+            page.overlay.append(dialog)
+            dialog.open = True
+            page.update()
+            
+            update_status(f"Generated {small_success + thumb_success} derivatives")
+            
+        except Exception as ex:
+            update_status(f"Error writing CSV: {ex}", is_error=True)
+            logger.error(f"Error writing updated CSV: {ex}")
+
+    def on_function_4_system_info(e):
+        """Function 4: Display system information."""
+        storage.record_function_usage("Function 4")
 
         info_lines = [
             f"Hostname: {socket.gethostname()}",
@@ -2190,7 +2537,7 @@ def main(page: ft.Page):
 
         dialog = ft.AlertDialog(
             modal=True,
-            title=ft.Text("Function 3: System Info"),
+            title=ft.Text("Function 4: System Info"),
             content=ft.Container(
                 content=ft.Text(result_text, selectable=True),
                 width=600,
@@ -2204,7 +2551,7 @@ def main(page: ft.Page):
         page.update()
 
         update_status("Displayed system information")
-        logger.info("Function 3: Displayed system information")
+        logger.info("Function 4: Displayed system information")
 
     # ------------------------------------------------------------------ function management
 
@@ -2212,7 +2559,8 @@ def main(page: ft.Page):
         "function_0_app_settings",
         "function_1_list_files",
         "function_2_export_csv",
-        "function_3_system_info",
+        "function_3_generate_derivatives",
+        "function_4_system_info",
     ]
 
     functions = {
@@ -2234,11 +2582,17 @@ def main(page: ft.Page):
             "handler": on_function_2_export_csv,
             "help_file": "FUNCTION_2_EXPORT_CSV.md"
         },
-        "function_3_system_info": {
-            "label": "3: System Information",
+        "function_3_generate_derivatives": {
+            "label": "3: Generate Small & Thumbnail Derivatives",
+            "icon": "🖼️",
+            "handler": on_function_3_generate_derivatives,
+            "help_file": "FUNCTION_3_GENERATE_DERIVATIVES.md"
+        },
+        "function_4_system_info": {
+            "label": "4: System Information",
             "icon": "💻",
-            "handler": on_function_3_system_info,
-            "help_file": "FUNCTION_3_SYSTEM_INFO.md"
+            "handler": on_function_4_system_info,
+            "help_file": "FUNCTION_4_SYSTEM_INFO.md"
         },
     }
 

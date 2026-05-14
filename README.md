@@ -55,7 +55,13 @@ DART provides a comprehensive platform for digital asset management workflows:
   - Files uploaded with DG identifiers as filenames (e.g., dg_1715614222.jpg)
   - **Kill Switch**: Emergency stop for long-running Azure uploads (stops cleanly after current file)
   - Timestamped exports to working directory
-- **Function 3** 💻: Display system information
+- **Function 3** �️: Generate Small & Thumbnail Derivatives
+  - Creates small (800x800) and thumbnail (400x400) image derivatives
+  - Uploads derivatives to Azure Blob Storage (/smalls/ and /thumbs/ folders)
+  - Automatically populates image_small and image_thumb CSV columns
+  - Maintains aspect ratios, handles EXIF orientation and transparency
+  - **Kill Switch**: Emergency stop for long-running derivative generation
+- **Function 4** �💻: Display system information
 
 *Additional asset processing functions are added as needed for your specific workflow.*
 

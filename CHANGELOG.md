@@ -7,6 +7,80 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.4.0] - 2026-05-13
+
+### Summary
+Version 1.4.0 adds Function 3 for generating web-optimized image derivatives (small and thumbnail) with automatic Azure upload and CSV metadata population. Previous Function 3 (System Info) becomes Function 4.
+
+### Added
+- **Function 3: Generate Small & Thumbnail Derivatives** 🖼️
+  - Generates small derivatives (800x800px max) for detail pages
+  - Generates thumbnail derivatives (400x400px max) for browse views
+  - Maintains aspect ratios for all processed images
+  - Handles EXIF orientation automatically
+  - Converts transparency to white background
+  - JPEG optimization with 85% quality
+  - Uploads to Azure `/smalls/` and `/thumbs/` folders
+  - Populates `image_small` and `image_thumb` CSV columns
+  - Creates timestamped CSV with new columns
+  - **Kill Switch**: Emergency stop for long-running generation
+  - Processes most recent CSV from Function 2
+  - Skips non-image files and compound parents
+  - Cleans up temporary files automatically
+- **Helper Function**: `generate_derivative()`
+  - Robust image processing with PIL/Pillow
+  - Thumbnail generation with LANCZOS resampling
+  - RGBA/transparency conversion to RGB
+  - Error handling for FileNotFoundError and PermissionError
+  - Returns success/failure tuple with messages
+- **Image Support**: Comprehensive format handling
+  - JPEG, PNG, GIF, TIFF, BMP, WebP
+  - EXIF orientation with ImageOps.exif_transpose()
+  - Transparency handling for PNG/GIF
+  - Consistent JPEG output for all formats
+- **Azure Integration**: Parallel folder structure
+  - Derivatives use same container/base path as originals
+  - Small images: `/smalls/` folder with `_SMALL` suffix
+  - Thumbnails: `/thumbs/` folder with `_TN` suffix
+  - Automatic URL generation for both derivatives
+  - Naming: `dg_<epoch>_SMALL.jpg`, `dg_<epoch>_TN.jpg`
+
+### Changed
+- **Function Numbering**: System Info moved from 3 to 4
+  - `on_function_3_system_info()` → `on_function_4_system_info()`
+  - Updated functions dictionary with new order
+  - Updated active_functions list
+  - Renamed FUNCTION_3_SYSTEM_INFO.md → FUNCTION_4_SYSTEM_INFO.md
+- **Dependencies**: Added PIL/Pillow
+  - `from PIL import Image, ImageOps` in imports
+  - `import io` for image processing
+  - `Pillow>=10.0.0` in python_requirements.txt
+
+### Documentation
+- **FUNCTION_3_GENERATE_DERIVATIVES.md**: Complete new function guide
+  - Purpose and workflow explanation
+  - Azure folder structure details
+  - Image processing specifications
+  - Supported formats and handling
+  - Error messages and troubleshooting
+  - Performance notes and tips
+  - CollectionBuilder integration notes
+  - Kill switch usage
+- **README.md**: Updated workflow functions section
+  - Added Function 3 description with derivative details
+  - Updated Function 3 from System Info to Derivatives
+  - System Info now listed as Function 4
+
+### Technical Details
+- Temporary derivatives stored in `temp_derivatives/` folder
+- Sequential processing (not parallel)
+- Approximate processing time: 1-5 seconds per image
+- Network overhead: 70-280 KB uploaded per image
+- CSV columns added: image_small, image_thumb
+- Output: `dart_export_with_derivatives_YYYYMMDD_HHMMSS.csv`
+
+---
+
 ## [1.3.3] - 2026-05-13
 
 ### Summary
