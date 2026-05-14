@@ -75,19 +75,25 @@ When Azure is configured in Function 0 settings, Function 2 automatically:
    - Tests Azure connection using `azure_connection_string`
    - Fails early if configuration is invalid
 
-2. **Uploads files to Azure** during export
+2. **Creates Azure container if needed**
+   - Automatically checks if target container exists
+   - Creates container if it doesn't exist
+   - Handles concurrent creation gracefully
+   - No manual Azure portal setup required
+
+3. **Uploads files to Azure** during export
    - Each file is uploaded with its `dg_<epoch>` identifier as the filename
    - Original extension is preserved (e.g., `dg_1715614222.jpg`)
    - Files are uploaded to the path specified in settings (e.g., `objs/tdps_archive`)
    - Content-Type headers are set automatically based on file extension
 
-3. **Builds object_location URLs** for each file
+4. **Builds object_location URLs** for each file
    - Complete Azure Blob Storage URL
    - Format: `https://{account}.blob.core.windows.net/{container}/{path}/{objectid}{ext}`
    - Example: `https://collectionbuilder.blob.core.windows.net/objs/tdps/dg_1715614222.jpg`
    - Populated in CSV if `object_location` column exists in template
 
-4. **Reports upload results**
+5. **Reports upload results**
    - Success/failure count shown in results dialog
    - Detailed log messages for each upload
    - CSV is created even if some uploads fail

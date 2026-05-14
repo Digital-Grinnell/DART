@@ -7,6 +7,89 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.4.1] - 2026-05-14
+
+### Summary
+Version 1.4.1 improves Function 2 and Function 3 with automatic Azure container management, intelligent derivative skipping, enhanced logging, and improved user experience with clickable log links.
+
+### Added
+- **Automatic Container Creation**: Both Function 2 and Function 3
+  - Checks if target Azure containers exist before upload operations
+  - Automatically creates containers if they don't exist
+  - Handles concurrent creation and race conditions gracefully
+  - Logs container creation status (created vs. already exists)
+  - No manual Azure Portal setup required for new collections
+  - **Function 2**: Creates `objs` container automatically
+  - **Function 3**: Creates `smalls` and `thumbs` containers automatically
+- **Smart Derivative Skipping**: Function 3 optimization
+  - Checks Azure for existing derivatives before processing each image
+  - Looks for both `_SMALL.jpg` and `_TN.jpg` files
+  - Skips generation when both derivatives already exist in Azure
+  - Builds URLs from existing files and populates CSV columns
+  - Logs skipped files: "⏩ Derivatives already exist in Azure - skipping"
+  - Counts skipped files in success totals
+  - Safe to re-run Function 3 on same CSV (only generates missing derivatives)
+  - Saves processing time and Azure bandwidth on re-runs
+- **Clickable Log Link**: Enhanced results dialog
+  - "see log for details" is now a clickable link/button
+  - Opens complete log file in read-only popup window (800x600px)
+  - Shows log filename in popup title
+  - Scrollable text field with full log content
+  - Supports text selection and copying
+  - Error handling if log file can't be accessed
+- **Enhanced Logging System**: Comprehensive log file writing
+  - `add_log_message()` now writes to both UI and log file
+  - Intelligent log level detection based on message content
+  - ERROR level: `[ERROR]`, `✗`, "Error:" prefix
+  - WARNING level: `[WARN]`, `⚠` prefix
+  - INFO level: `[SUCCESS]`, `✓`, `✅`, and default messages
+  - DEBUG level: `[DEBUG]` prefix
+  - All UI log messages now persisted to log file
+  - Complete audit trail of all operations
+
+### Fixed
+- **Function 3 Container Path Logic**: Derivative upload bug fix
+  - Fixed bug where derivatives uploaded to `objs` instead of `smalls`/`thumbs`
+  - Was replacing "objs" in wrong part of path (searched in `base_path` instead of `container`)
+  - Now correctly replaces container name: `objs` → `smalls` or `thumbs`
+  - Example fix: `objs/TDPS_archive` → `smalls/TDPS_archive` (not `objs/TDPS_archive`)
+  - Derivatives now upload to correct parallel folder structure
+
+### Changed
+- **Function 3 Results Dialog**: Improved layout
+  - Replaced plain text with structured `ft.Column` layout
+  - Individual text elements for better formatting
+  - Clickable button for log access integrated inline
+  - Better spacing and visual hierarchy
+  - Maintains 600x400px dialog size
+
+### Documentation
+- **FUNCTION_2_EXPORT_CSV.md**: Updated Azure section
+  - Added automatic container creation step
+  - Renumbered Azure upload process steps
+  - Explained no manual setup requirement
+- **FUNCTION_3_GENERATE_DERIVATIVES.md**: Major enhancements
+  - Added "Automatic Container Creation" subsection
+  - Added "Smart Processing Features" section with skip logic
+  - Added "Results Dialog" section with clickable log link details
+  - Explained re-run safety and incremental updates
+  - Documented benefits of skip existing derivatives feature
+
+### Technical Details
+- Container creation uses `blob_service_client.get_container_client()` and `create_container()`
+- Derivative existence check uses Azure `blob_client.exists()` API
+- Log popup uses `ft.TextField` with `read_only=True` and `multiline=True`
+- Log level mapping in `add_log_message()` with prefix detection
+- Container path parsing splits on first `/` to separate container from path
+
+### Performance Improvements
+- Function 3 re-runs are faster (skips existing derivatives)
+- No redundant Azure uploads for already-processed images
+- Reduced network bandwidth on partial re-runs
+- Faster log file access (no need to open file manually)
+
+---
+
 ## [1.4.0] - 2026-05-13
 
 ### Summary

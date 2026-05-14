@@ -34,6 +34,10 @@ DART provides a comprehensive platform for digital asset management workflows:
 - **Azure Blob Storage Integration**: Automatic file uploads with encrypted connection strings
 - **Kill Switch**: Emergency stop button for batch operations (stops cleanly without data corruption)
 - **Professional Logging**: Timestamped log files in `{working_folder}/logfiles/` with real-time display
+  - All UI messages automatically written to persistent log files
+  - Intelligent log level detection (ERROR, WARNING, INFO, DEBUG)
+  - Clickable log viewer in results dialogs
+  - Complete audit trail of all operations
 - **Function Management**: Icon-enhanced dropdown with usage tracking and workflow ordering
 - **Help Mode**: Built-in markdown help viewer for each function with copy-to-clipboard
 - **Smart Folder Management**: Collapsible folders section to maximize screen space
@@ -52,14 +56,18 @@ DART provides a comprehensive platform for digital asset management workflows:
   - Supports compound object export with parent/child relationships
   - Maps file types to CollectionBuilder layouts (image/video/audio/pdf/compound_object)
   - **Azure Blob Storage integration**: Automatically uploads files and generates object_location URLs
+  - **Auto-creates Azure containers**: No manual Azure Portal setup required
   - Files uploaded with DG identifiers as filenames (e.g., dg_1715614222.jpg)
   - **Kill Switch**: Emergency stop for long-running Azure uploads (stops cleanly after current file)
   - Timestamped exports to working directory
-- **Function 3** �️: Generate Small & Thumbnail Derivatives
+- **Function 3** 🖼️: Generate Small & Thumbnail Derivatives
   - Creates small (800x800) and thumbnail (400x400) image derivatives
   - Uploads derivatives to Azure Blob Storage (/smalls/ and /thumbs/ folders)
+  - **Auto-creates derivative containers**: Automatic /smalls/ and /thumbs/ container setup
+  - **Smart skip existing**: Checks Azure and skips files with existing derivatives (fast re-runs)
   - Automatically populates image_small and image_thumb CSV columns
   - Maintains aspect ratios, handles EXIF orientation and transparency
+  - **Clickable log viewer**: Results dialog includes link to open detailed log in popup
   - **Kill Switch**: Emergency stop for long-running derivative generation
 - **Function 4** �💻: Display system information
 

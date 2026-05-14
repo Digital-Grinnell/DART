@@ -721,15 +721,32 @@ def main(page: ft.Page):
     # Setup logging in working directory if it exists
     working_dir = storage.get_ui_state("last_output_dir")
     if working_dir:
-        setup_working_dir_logging(working_dir)
+        if Path(working_dir).exists():
+            setup_working_dir_logging(working_dir)
+        else:
+            logger.warning(f"Saved working directory does not exist: {working_dir}")
 
     # ------------------------------------------------------------------ helpers
 
     def add_log_message(text: str):
-        """Prepend a timestamped line to the log output field."""
+        """Prepend a timestamped line to the log output field and write to log file."""
         timestamp = datetime.now().strftime("%H:%M:%S")
         existing = log_output.value or ""
         log_output.value = f"[{timestamp}] {text}\n{existing}"
+        
+        # Also write to log file for persistence
+        # Determine log level based on message prefix
+        if text.startswith("[ERROR]") or text.startswith("✗") or "Error:" in text:
+            logger.error(text)
+        elif text.startswith("[WARN]") or text.startswith("⚠"):
+            logger.warning(text)
+        elif text.startswith("[SUCCESS]") or text.startswith("✓") or text.startswith("✅"):
+            logger.info(text)
+        elif text.startswith("[DEBUG]"):
+            logger.debug(text)
+        else:
+            logger.info(text)
+        
         page.update()
 
     def update_status(message: str, is_error: bool = False):
@@ -765,12 +782,41 @@ def main(page: ft.Page):
         add_log_message("⚠️ KILL SWITCH ACTIVATED - Stopping batch operation")
         update_status("⚠️ Kill switch activated - stopping after current file", True)
 
+    def validate_directories():
+        """Validate that configured directories exist and show warnings if not."""
+        warnings = []
+        
+        # Check input directory
+        input_dir = input_dir_field.value
+        if input_dir:
+            if not Path(input_dir).exists():
+                warnings.append(f"⚠️ Inputs folder does not exist (may be unmounted): {input_dir}")
+                logger.warning(f"Input directory not accessible: {input_dir}")
+        
+        # Check output directory  
+        output_dir = output_dir_field.value
+        if output_dir:
+            if not Path(output_dir).exists():
+                warnings.append(f"⚠️ Working/Outputs folder does not exist (may be unmounted): {output_dir}")
+                logger.warning(f"Output directory not accessible: {output_dir}")
+        
+        # Display warnings if any
+        if warnings:
+            for warning in warnings:
+                add_log_message(warning)
+            update_status(f"{len(warnings)} directory warning(s) - check log", is_error=True)
+        
+        return len(warnings) == 0
+
     # ------------------------------------------------------------------ UI state
 
     current_directory = None
     input_dir = storage.get_ui_state("last_input_dir")
-    if input_dir and Path(input_dir).exists():
-        current_directory = Path(input_dir)
+    if input_dir:
+        if Path(input_dir).exists():
+            current_directory = Path(input_dir)
+        else:
+            logger.warning(f"Saved input directory does not exist (may be unmounted): {input_dir}")
 
     dirs_expanded = True
 
@@ -779,7 +825,11 @@ def main(page: ft.Page):
     def on_input_dir_result(e: ft.FilePickerResultEvent):
         nonlocal current_directory
         if e.path:
-            current_directory = Path(e.path)
+            path = Path(e.path)
+            if not path.exists():
+                update_status(f"Error: Directory does not exist: {e.path}", is_error=True)
+                return
+            current_directory = path
             input_dir_field.value = str(current_directory)
             storage.set_ui_state("last_input_dir", str(current_directory))
             update_status(f"Inputs folder set: {current_directory.name}")
@@ -787,9 +837,13 @@ def main(page: ft.Page):
 
     def on_output_dir_result(e: ft.FilePickerResultEvent):
         if e.path:
+            path = Path(e.path)
+            if not path.exists():
+                update_status(f"Error: Directory does not exist: {e.path}", is_error=True)
+                return
             output_dir_field.value = e.path
             storage.set_ui_state("last_output_dir", e.path)
-            update_status(f"Outputs folder set: {Path(e.path).name}")
+            update_status(f"Outputs folder set: {path.name}")
             
             # Reconfigure logging to use the working directory
             setup_working_dir_logging(e.path)
@@ -2030,54 +2084,75 @@ def main(page: ft.Page):
         upload_fail_count = 0
         
         if azure_enabled and blob_service_client:
-            add_log_message(f"[INFO] Starting Azure uploads for {len(objects)} files...")
+            # Ensure the target Azure container exists
+            normalized_path = azure_path.strip().strip('/')
+            path_parts = normalized_path.split('/', 1)
+            container_name = path_parts[0]
             
-            for obj in objects:
-                # Check kill switch
-                if kill_switch:
-                    logger.warning("Kill switch activated - stopping Azure uploads")
-                    add_log_message("⚠️ Kill switch activated - Azure uploads stopped")
-                    break
+            try:
+                container_client = blob_service_client.get_container_client(container_name)
+                if not container_client.exists():
+                    container_client.create_container()
+                    add_log_message(f"[INFO] Created Azure container: {container_name}")
+                else:
+                    add_log_message(f"[INFO] Azure container exists: {container_name}")
+            except Exception as ex:
+                error_msg = str(ex)
+                if "ContainerAlreadyExists" in error_msg or "already exists" in error_msg.lower():
+                    add_log_message(f"[INFO] Azure container exists: {container_name}")
+                else:
+                    add_log_message(f"[ERROR] Could not verify/create container {container_name}: {error_msg}")
+                    azure_enabled = False  # Disable uploads if container check fails
+            
+            if azure_enabled:
+                add_log_message(f"[INFO] Starting Azure uploads for {len(objects)} files...")
                 
-                object_id = obj['objectid']
-                file_path = obj['filepath']
-                file_extension = Path(file_path).suffix
-                
-                # Build object_location URL
-                success, url, msg = build_object_location(
-                    azure_path,
-                    object_id,
-                    file_extension,
-                    azure_connection_string
-                )
-                
-                if success:
-                    obj['object_location'] = url
+                for obj in objects:
+                    # Check kill switch
+                    if kill_switch:
+                        logger.warning("Kill switch activated - stopping Azure uploads")
+                        add_log_message("⚠️ Kill switch activated - Azure uploads stopped")
+                        break
                     
-                    # Upload file to Azure
-                    upload_success, upload_msg = upload_to_azure(
-                        blob_service_client,
-                        file_path,
+                    object_id = obj['objectid']
+                    file_path = obj['filepath']
+                    file_extension = Path(file_path).suffix
+                    
+                    # Build object_location URL
+                    success, url, msg = build_object_location(
                         azure_path,
                         object_id,
-                        file_extension
+                        file_extension,
+                        azure_connection_string
                     )
                     
-                    if upload_success:
-                        upload_success_count += 1
-                        add_log_message(f"[SUCCESS] {upload_msg}")
+                    if success:
+                        obj['object_location'] = url
+                        
+                        # Upload file to Azure
+                        upload_success, upload_msg = upload_to_azure(
+                            blob_service_client,
+                            file_path,
+                            azure_path,
+                            object_id,
+                            file_extension
+                        )
+                        
+                        if upload_success:
+                            upload_success_count += 1
+                            add_log_message(f"[SUCCESS] {upload_msg}")
+                        else:
+                            upload_fail_count += 1
+                            logger.error(f"Upload failed: {upload_msg}")
+                            add_log_message(f"[ERROR] {upload_msg}")
+                            # Still include object_location in CSV even if upload failed
                     else:
-                        upload_fail_count += 1
-                        logger.error(f"Upload failed: {upload_msg}")
-                        add_log_message(f"[ERROR] {upload_msg}")
-                        # Still include object_location in CSV even if upload failed
-                else:
-                    obj['object_location'] = ''
-                    logger.error(f"Failed to build object_location: {msg}")
-                    add_log_message(f"[ERROR] {msg}")
-            
-            logger.info(f"Azure upload complete: {upload_success_count} succeeded, {upload_fail_count} failed")
-            add_log_message(f"[INFO] Upload complete: {upload_success_count} succeeded, {upload_fail_count} failed")
+                        obj['object_location'] = ''
+                        logger.error(f"Failed to build object_location: {msg}")
+                        add_log_message(f"[ERROR] {msg}")
+                
+                logger.info(f"Azure upload complete: {upload_success_count} succeeded, {upload_fail_count} failed")
+                add_log_message(f"[INFO] Upload complete: {upload_success_count} succeeded, {upload_fail_count} failed")
         else:
             # Azure not enabled - set empty object_location for all objects
             for obj in objects:
@@ -2240,7 +2315,14 @@ def main(page: ft.Page):
         # Check for working directory
         working_dir = output_dir_field.value
         if not working_dir or not Path(working_dir).exists():
-            update_status("Error: Please set a working/outputs folder first", is_error=True)
+            update_status("Error: Please set a valid working/outputs folder first (may be unmounted)", is_error=True)
+            return
+        
+        # Check for input directory
+        input_dir = input_dir_field.value
+        if not input_dir or not Path(input_dir).exists():
+            update_status("Error: Please set a valid inputs folder first (may be unmounted)", is_error=True)
+            add_log_message("[ERROR] Input directory required for Function 3 to locate source files")
             return
 
         # Load settings
@@ -2267,6 +2349,14 @@ def main(page: ft.Page):
             return
         
         add_log_message(f"[INFO] {msg}")
+        
+        # Get input directory for fallback file lookup
+        input_dir = input_dir_field.value
+        input_directory = Path(input_dir) if input_dir and Path(input_dir).exists() else None
+        if input_directory:
+            add_log_message(f"[INFO] Input directory for file lookup: {input_directory}")
+        else:
+            add_log_message("[WARN] No input directory set - files must have valid filepath in CSV")
         
         # Find latest CSV export or let user select
         csv_files = sorted(Path(working_dir).glob("dart_export_*.csv"), reverse=True)
@@ -2305,13 +2395,30 @@ def main(page: ft.Page):
             container = path_parts[0]
             base_path = path_parts[1]
         
-        # Replace /objs/ with /smalls/ and /thumbs/
-        smalls_path = base_path.replace('/objs/', '/smalls/').replace('objs/', 'smalls/')
-        thumbs_path = base_path.replace('/objs/', '/thumbs/').replace('objs/', 'thumbs/')
+        # Create derivative containers by replacing 'objs' with 'smalls'/'thumbs'
+        smalls_container = container.replace('objs', 'smalls')
+        thumbs_container = container.replace('objs', 'thumbs')
         
-        # Rebuild full paths
-        smalls_azure_path = f"{container}/{smalls_path}" if smalls_path else container + "/smalls"
-        thumbs_azure_path = f"{container}/{thumbs_path}" if thumbs_path else container + "/thumbs"
+        # Rebuild full paths with new containers
+        smalls_azure_path = f"{smalls_container}/{base_path}" if base_path else smalls_container
+        thumbs_azure_path = f"{thumbs_container}/{base_path}" if base_path else thumbs_container
+        
+        # Ensure derivative containers exist in Azure
+        for container_name in [smalls_container, thumbs_container]:
+            try:
+                container_client = blob_service_client.get_container_client(container_name)
+                if not container_client.exists():
+                    container_client.create_container()
+                    add_log_message(f"[INFO] Created Azure container: {container_name}")
+                else:
+                    add_log_message(f"[INFO] Azure container exists: {container_name}")
+            except Exception as ex:
+                # Container might already exist (race condition) or other error
+                error_msg = str(ex)
+                if "ContainerAlreadyExists" in error_msg or "already exists" in error_msg.lower():
+                    add_log_message(f"[INFO] Azure container exists: {container_name}")
+                else:
+                    add_log_message(f"[WARN] Could not verify/create container {container_name}: {error_msg}")
         
         add_log_message(f"[INFO] Derivatives will be uploaded to:")
         add_log_message(f"  • Small: {smalls_azure_path}")
@@ -2330,6 +2437,28 @@ def main(page: ft.Page):
         temp_dir = Path(working_dir) / "temp_derivatives"
         temp_dir.mkdir(exist_ok=True)
         
+        # Pre-scan to show what will be processed/skipped
+        processable = 0
+        no_filename = 0
+        non_image = 0
+        for row in rows:
+            filename = row.get('filename', '').strip()
+            if not filename:
+                no_filename += 1
+            else:
+                ext = Path(filename).suffix.lower()
+                if ext not in {'.jpg', '.jpeg', '.png', '.gif', '.tif', '.tiff', '.bmp', '.webp'}:
+                    non_image += 1
+                else:
+                    processable += 1
+        
+        add_log_message(f"[INFO] CSV Analysis: {total_rows} total rows")
+        add_log_message(f"  • {processable} image files to process")
+        if no_filename > 0:
+            add_log_message(f"  • {no_filename} rows with no filename (compound objects or metadata-only)")
+        if non_image > 0:
+            add_log_message(f"  • {non_image} non-image files (will be skipped)")
+        
         add_log_message(f"[INFO] Processing {total_rows} rows...")
         
         for idx, row in enumerate(rows):
@@ -2341,40 +2470,85 @@ def main(page: ft.Page):
             # Skip rows without files (like compound parents)
             filename = row.get('filename', '').strip()
             if not filename:
+                objectid = row.get('objectid', 'unknown')
+                title = row.get('title', '')[:50] if row.get('title') else 'no title'
+                add_log_message(f"[SKIP #{idx+1}] No filename (objectid: {objectid}, title: {title}...)")
                 skipped_count += 1
                 continue
             
             # Skip non-image files
             ext = Path(filename).suffix.lower()
             if ext not in {'.jpg', '.jpeg', '.png', '.gif', '.tif', '.tiff', '.bmp', '.webp'}:
-                add_log_message(f"[SKIP] Non-image file: {filename}")
+                add_log_message(f"[SKIP #{idx+1}] Non-image file: {filename}")
                 skipped_count += 1
                 continue
             
             objectid = row.get('objectid', '')
             if not objectid:
-                add_log_message(f"[ERROR] No object ID for {filename}")
+                add_log_message(f"[ERROR #{idx+1}] No object ID for {filename}")
                 skipped_count += 1
                 continue
             
             # Find source file
             source_path = Path(row.get('filepath', ''))
-            if not source_path.exists():
-                # Try to find it in selected files or input directory
-                if current_directory:
-                    source_path = current_directory / filename
-                if not source_path.exists():
-                    add_log_message(f"[ERROR] Source file not found: {filename}")
+            if not source_path.exists() or not source_path.is_file():
+                # Try to find it in input directory
+                if input_directory:
+                    source_path = input_directory / filename
+                if not source_path.exists() or not source_path.is_file():
+                    add_log_message(f"[ERROR #{idx+1}] Source file not found: {filename} (filepath: {row.get('filepath', 'empty')})")
                     skipped_count += 1
                     continue
             
             add_log_message(f"[{idx+1}/{total_rows}] Processing {filename} ({objectid})")
             
-            # Generate derivatives
+            # Check if derivatives already exist in Azure
             small_filename = f"{objectid}_SMALL.jpg"
             thumb_filename = f"{objectid}_TN.jpg"
             small_local_path = temp_dir / small_filename
             thumb_local_path = temp_dir / thumb_filename
+            
+            # Build blob names for checking existence
+            small_blob_name = f"{base_path}/{objectid}_SMALL.jpg" if base_path else f"{objectid}_SMALL.jpg"
+            thumb_blob_name = f"{base_path}/{objectid}_TN.jpg" if base_path else f"{objectid}_TN.jpg"
+            
+            try:
+                small_blob_client = blob_service_client.get_blob_client(container=smalls_container, blob=small_blob_name)
+                thumb_blob_client = blob_service_client.get_blob_client(container=thumbs_container, blob=thumb_blob_name)
+                small_exists = small_blob_client.exists()
+                thumb_exists = thumb_blob_client.exists()
+            except Exception as ex:
+                # If we can't check existence, assume they don't exist
+                add_log_message(f"  [WARN] Could not check if derivatives exist: {ex}")
+                small_exists = False
+                thumb_exists = False
+            
+            if small_exists and thumb_exists:
+                # Both derivatives already exist - skip generation
+                add_log_message(f"  ⏩ Derivatives already exist in Azure - skipping")
+                # Build URLs for existing derivatives
+                success_small_url, small_url, small_url_msg = build_object_location(
+                    smalls_azure_path,
+                    objectid + "_SMALL",
+                    ".jpg",
+                    azure_connection_string
+                )
+                success_thumb_url, thumb_url, thumb_url_msg = build_object_location(
+                    thumbs_azure_path,
+                    objectid + "_TN",
+                    ".jpg",
+                    azure_connection_string
+                )
+                if success_small_url:
+                    row['image_small'] = small_url
+                    small_success += 1
+                if success_thumb_url:
+                    row['image_thumb'] = thumb_url
+                    thumb_success += 1
+                skipped_count += 1
+                continue
+            
+            processed_count += 1
             
             # Generate small (800x800)
             success_small, msg_small = generate_derivative(
@@ -2453,8 +2627,6 @@ def main(page: ft.Page):
             else:
                 thumb_fail += 1
                 add_log_message(f"  ✗ Thumb generation failed: {msg_thumb}")
-            
-            processed_count += 1
         
         # Clean up temp directory
         try:
@@ -2478,28 +2650,79 @@ def main(page: ft.Page):
             logger.info(f"Saved updated CSV: {output_csv}")
             
             # Show results
-            result_text = f"✅ Derivatives Generated and Uploaded\n\n"
-            result_text += f"Processed: {processed_count} files\n"
-            result_text += f"Skipped: {skipped_count} files\n\n"
-            result_text += f"Small images:\n"
-            result_text += f"  • Success: {small_success}\n"
-            result_text += f"  • Failed: {small_fail}\n\n"
-            result_text += f"Thumbnails:\n"
-            result_text += f"  • Success: {thumb_success}\n"
-            result_text += f"  • Failed: {thumb_fail}\n\n"
-            result_text += f"Updated CSV: {output_csv.name}\n"
-            result_text += f"Location: {working_dir}\n\n"
-            result_text += f"Columns added: image_small, image_thumb"
-            
             def close_dialog(e):
                 dialog.open = False
                 page.update()
+            
+            def show_log(e):
+                """Open log file in read-only popup dialog."""
+                global log_filename
+                try:
+                    with open(log_filename, 'r', encoding='utf-8') as f:
+                        log_content = f.read()
+                    
+                    def close_log_dialog(e):
+                        log_dialog.open = False
+                        page.update()
+                    
+                    log_dialog = ft.AlertDialog(
+                        modal=True,
+                        title=ft.Text(f"Log File: {Path(log_filename).name}", weight=ft.FontWeight.BOLD),
+                        content=ft.Container(
+                            content=ft.TextField(
+                                value=log_content,
+                                multiline=True,
+                                read_only=True,
+                                text_size=11,
+                                border=ft.InputBorder.NONE,
+                            ),
+                            width=800,
+                            height=600,
+                        ),
+                        actions=[ft.TextButton("Close", on_click=close_log_dialog)],
+                    )
+                    
+                    page.overlay.append(log_dialog)
+                    log_dialog.open = True
+                    page.update()
+                except Exception as ex:
+                    logger.error(f"Could not open log file: {ex}")
+                    update_status(f"Error opening log: {ex}", is_error=True)
+            
+            # Build result content with clickable log link
+            result_content = ft.Column([
+                ft.Text("✅ Derivatives Generated and Uploaded", weight=ft.FontWeight.BOLD, size=16),
+                ft.Text(""),
+                ft.Text(f"CSV Rows: {total_rows} total"),
+                ft.Text(f"  • {processed_count} image files processed"),
+                ft.Row([
+                    ft.Text(f"  • {skipped_count} rows skipped "),
+                    ft.TextButton(
+                        "see log for details",
+                        on_click=show_log,
+                        style=ft.ButtonStyle(padding=0),
+                    ),
+                ], spacing=0),
+                ft.Text(""),
+                ft.Text(f"Small images (800x800):"),
+                ft.Text(f"  • Success: {small_success}"),
+                ft.Text(f"  • Failed: {small_fail}"),
+                ft.Text(""),
+                ft.Text(f"Thumbnails (400x400):"),
+                ft.Text(f"  • Success: {thumb_success}"),
+                ft.Text(f"  • Failed: {thumb_fail}"),
+                ft.Text(""),
+                ft.Text(f"Updated CSV: {output_csv.name}"),
+                ft.Text(f"Location: {working_dir}"),
+                ft.Text(""),
+                ft.Text(f"Columns added: image_small, image_thumb"),
+            ], scroll=ft.ScrollMode.AUTO, tight=True)
             
             dialog = ft.AlertDialog(
                 modal=True,
                 title=ft.Text("Function 3: Generate Derivatives", weight=ft.FontWeight.BOLD),
                 content=ft.Container(
-                    content=ft.Text(result_text, selectable=True),
+                    content=result_content,
                     width=600,
                     height=400,
                 ),
@@ -2988,6 +3211,9 @@ def main(page: ft.Page):
 
     logger.info("UI initialised successfully")
     add_log_message("DART application ready. Select a function to begin.")
+    
+    # Validate directories on startup
+    validate_directories()
     
     # Validate CSV structure file on startup if configured
     working_dir = output_dir_field.value

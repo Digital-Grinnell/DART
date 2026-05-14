@@ -108,6 +108,16 @@ Function 3 uses the same container and base path as Function 2 but uploads to pa
 - Small derivatives: `smalls/TDPS_archive`
 - Thumbnails: `thumbs/TDPS_archive`
 
+### Automatic Container Creation
+
+Function 3 automatically manages Azure container creation:
+- **Checks for container existence**: Verifies both `smalls` and `thumbs` containers exist
+- **Creates containers as needed**: No manual Azure Portal setup required
+- **Handles concurrent creation**: Gracefully handles race conditions
+- **Logs container status**: Shows which containers existed vs. were created
+
+This means you can point to a new Azure path and Function 3 will set up the folder structure automatically.
+
 Example full structure:
 ```
 https://collectionbuilder.blob.core.windows.net/
@@ -125,6 +135,37 @@ https://collectionbuilder.blob.core.windows.net/
       └── dg_1715614224_TN.jpg
 ```
 
+## Smart Processing Features
+
+### Skip Existing Derivatives
+
+Function 3 intelligently checks Azure before generating new derivatives:
+
+1. **Checks Azure for existing files** before processing each image
+   - Looks for both `_SMALL.jpg` and `_TN.jpg` files in Azure
+   - Uses Azure Blob Storage API for fast existence checks
+
+2. **Skips generation when both derivatives exist**
+   - No unnecessary image processing
+   - No redundant Azure uploads
+   - Saves processing time on large collections
+
+3. **Builds URLs from existing files**
+   - Populates `image_small` and `image_thumb` columns from existing Azure files
+   - Includes skipped files in success counts
+   - Logs skipped files as "⏩ Derivatives already exist in Azure - skipping"
+
+4. **Re-run safe**
+   - You can safely re-run Function 3 on the same CSV
+   - Only missing derivatives are generated
+   - Useful for interrupted processes or partial failures
+
+**Benefits**:
+- Faster re-runs when only some files need processing
+- Safe to run after Azure issues or interruptions
+- No duplicate storage costs from re-uploading
+- Supports incremental updates to collections
+
 ## Output
 
 **Filename format**: `dart_export_with_derivatives_YYYYMMDD_HHMMSS.csv`
@@ -136,6 +177,26 @@ https://collectionbuilder.blob.core.windows.net/
 **Added Columns**:
 - `image_small` - Azure URL for small derivative
 - `image_thumb` - Azure URL for thumbnail derivative
+
+### Results Dialog
+
+After processing completes, Function 3 shows a detailed results dialog with:
+
+- **Total CSV rows processed**
+- **Count of image files processed**
+- **Count of rows skipped** with clickable **"see log for details"** link
+- **Small images**: Success and failure counts
+- **Thumbnails**: Success and failure counts
+- **Output CSV filename and location**
+
+**Clickable Log Link**: The "see log for details" text is a clickable button that opens the complete log file in a read-only popup window. This allows you to:
+- Review which specific files were skipped and why
+- See detailed error messages for any failures
+- Verify Azure upload confirmations
+- Check processing timestamps
+- Copy log content for troubleshooting
+
+The log file is also saved to `logfiles/` in your working directory for later review.
 
 ## Example Updated CSV
 
