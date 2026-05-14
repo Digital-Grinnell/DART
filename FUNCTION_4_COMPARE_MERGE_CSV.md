@@ -41,10 +41,27 @@ Uses pandas DataFrame merge operations to:
 Uses the csvdiff Python library for comparison:
 - Produces JSON output with detailed diff structure
 - Creates text summary file with counts
+- **Interactive merge viewer**: Select which changes to merge into core CSV
+  - **Checkboxes**: 
+    - New records: One checkbox per record (checked by default)
+    - Changed records: One checkbox per **individual field** change
+    - Normal changes: Checked by default
+    - Data loss changes: **DISABLED (grayed out)** by default
+  - **Blue background**: New records (added) - all checked by default
+  - **Gray background**: Missing records (removed) - read-only, not merged
+  - **Red → Green**: Changed field values (old → new) - checked by default
+  - **⚠️ Orange warning**: Data loss - old value replaced with empty (⃠→ negated arrow)
+    - Checkbox DISABLED (grayed out) by default
+    - Click "⚠️ Enable" button to unlock the checkbox
+    - Requires deliberate action to accept data loss
+  - **Merge Selected button**: Applies only checked field changes to core CSV
+  - **Automatic backup**: Creates timestamped backup before merging
+  - **Granular control**: Accept some field changes in a record while rejecting others
 - Faster for large files
 - Follows csvdiff's native output format
+- **Data Loss Detection**: Automatically warns when fields are being cleared
 
-**Best for**: Programmatic processing, integration with other tools, large datasets
+**Best for**: Selective merging, visual review, rejecting problematic changes
 
 **Note**: Requires `csvdiff` package to be installed: `pip install csvdiff`
 

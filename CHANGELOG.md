@@ -28,6 +28,27 @@ Version 1.5.2 changes Function 4 to use `filename` as the comparison key instead
   - Ignores other CSV files (e.g., core metadata, merge outputs) in working directory
   - Clearer error messages mentioning DART_export files specifically
   - Log messages indicate which DART_export file was auto-selected
+- **Function 4 csvdiff color-coded viewer**: Interactive visual overlay for csvdiff results
+  - "Review & Merge Changes" button in csvdiff result dialog
+  - **Interactive merge capability**:
+    - Checkboxes for each addition (one per record) - checked by default
+    - **Field-level checkboxes** for changes (one per field, not per record)
+    - Normal changes: Checked by default for quick approval
+    - Data loss changes: **DISABLED (grayed out)** requiring "⚠️ Enable" button click
+    - Select which specific field changes to accept
+    - "Merge Selected Changes" button applies only checked field changes
+    - Automatic backup created before merge
+    - Confirmation dialog shows counts (additions + field changes) before merging
+  - Blue background: New records (added) - checked by default
+  - Gray background: Missing records (removed) - read-only, not merged
+  - Red → Green highlight: Changed field values showing old → new
+  - **⚠️ Orange warning**: Data loss detection - highlights when old values are replaced with empty
+    - Uses negated arrow (⃠→) and orange background
+    - Automatically unchecked by default
+    - Warning banner at top shows count of data loss changes
+    - Helps catch unintentional field clearing
+  - Shows all additions and changes (not just first 10/20)
+  - Scrollable view with truncated long values for readability
 
 ### Fixed
 - **Dependencies**: Corrected csvdiff requirement to `csvdiff>=0.3.0` (was incorrectly set to >=1.7.0)

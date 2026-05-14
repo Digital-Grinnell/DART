@@ -78,6 +78,7 @@ DART provides a comprehensive platform for digital asset management workflows:
   - **Detailed change tracking**: Lists which fields changed for each record
   - **Boolean flags per column**: Easy filtering of specific field changes (pandas mode)
   - **Preview in UI**: See first 10 changes with summary counts
+  - **Interactive merge** (csvdiff mode): Field-level checkboxes (checked by default), data loss fields disabled/grayed requiring manual enable
   - Case-sensitive comparison with whitespace normalization
   - Validates unique filenames and reports duplicates
 - **Function 9** 💻: Display system information

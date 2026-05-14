@@ -3010,10 +3010,397 @@ Detailed results: {output_diff.name}
                         add_log_message(f"[SUCCESS] Wrote results: {output_diff.name}")
                         add_log_message(f"[SUCCESS] Wrote summary: {output_summary.name}")
                         
-                        # Show simple result dialog
+                        # Show result dialog with color-coded viewer option
                         def close_csvdiff_dialog(e):
                             csvdiff_dialog.open = False
                             page.update()
+                        
+                        def show_color_coded_view(e):
+                            """Display interactive color-coded diff results with merge capability."""
+                            try:
+                                # Track selections: 
+                                # - added: {record_idx: checkbox_ref}
+                                # - changed: {record_idx: {field_name: checkbox_ref}}
+                                selections = {'added': {}, 'changed': {}}
+                                
+                                # Build color-coded view
+                                view_rows = []
+                                
+                                # Count data loss warnings (old value replaced with empty)
+                                data_loss_count = 0
+                                for change in diff_result.get('changed', []):
+                                    fields = change.get('fields', {})
+                                    for field_name, field_change in fields.items():
+                                        old_val = str(field_change.get('from', '')).strip()
+                                        new_val = str(field_change.get('to', '')).strip()
+                                        if old_val and not new_val:  # Has old value but new is empty
+                                            data_loss_count += 1
+                                
+                                # Show warning banner if data loss detected
+                                if data_loss_count > 0:
+                                    view_rows.append(ft.Container(
+                                        content=ft.Row([
+                                            ft.Text("⚠️", size=20),
+                                            ft.Column([
+                                                ft.Text("DATA LOSS WARNING", weight=ft.FontWeight.BOLD, color=ft.Colors.ORANGE_900, size=14),
+                                                ft.Text(f"{data_loss_count} field(s) being replaced with empty values", size=11, color=ft.Colors.ORANGE_800),
+                                                ft.Text("Data loss checkboxes are DISABLED (grayed out) - click '⚠️ Enable' to allow them", size=10, italic=True),
+                                            ], spacing=2),
+                                        ], spacing=8),
+                                        bgcolor=ft.Colors.ORANGE_100,
+                                        border=ft.border.all(2, ft.Colors.ORANGE_400),
+                                        border_radius=4,
+                                        padding=10,
+                                    ))
+                                    view_rows.append(ft.Divider(height=2, color=ft.Colors.ORANGE_400))
+                                    view_rows.append(ft.Text(""))
+                                
+                                # Selection controls
+                                view_rows.append(ft.Container(
+                                    content=ft.Row([
+                                        ft.Text("✓", size=16, weight=ft.FontWeight.BOLD),
+                                        ft.Column([
+                                            ft.Text("Select changes to merge into core CSV", weight=ft.FontWeight.BOLD, size=12),
+                                            ft.Text("All changes checked by default (except data loss - see warning above)", size=10, italic=True),
+                                        ], spacing=0),
+                                    ], spacing=8),
+                                    bgcolor=ft.Colors.BLUE_50,
+                                    border=ft.border.all(1, ft.Colors.BLUE_200),
+                                    border_radius=4,
+                                    padding=8,
+                                ))
+                                view_rows.append(ft.Text(""))
+                                
+                                # Added records (Blue) with checkboxes
+                                if added > 0:
+                                    view_rows.append(ft.Text(f"✨ NEW RECORDS ({added})", weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE, size=14))
+                                    view_rows.append(ft.Divider(height=1))
+                                    
+                                    for idx, record in enumerate(diff_result.get('added', [])):
+                                        filename = record.get('filename', 'Unknown')
+                                        objectid = record.get('objectid', '')
+                                        title = record.get('title', '')
+                                        
+                                        record_text = f"{filename}"
+                                        if objectid:
+                                            record_text += f" (ID: {objectid})"
+                                        if title:
+                                            record_text += f" - {title}"
+                                        
+                                        checkbox = ft.Checkbox(value=True, label=record_text)
+                                        selections['added'][idx] = checkbox
+                                        
+                                        view_rows.append(ft.Container(
+                                            content=checkbox,
+                                            bgcolor=ft.Colors.BLUE_50,
+                                            padding=4,
+                                            border_radius=2,
+                                        ))
+                                    
+                                    view_rows.append(ft.Text(""))
+                                
+                                # Removed records (Gray) - READ ONLY, no checkbox
+                                if removed > 0:
+                                    view_rows.append(ft.Text(f"⚠️ MISSING IN NEW ({removed}) - READ ONLY", weight=ft.FontWeight.BOLD, color=ft.Colors.GREY_700, size=14))
+                                    view_rows.append(ft.Text("These records are in core but not in new CSV (not merged)", size=10, italic=True))
+                                    view_rows.append(ft.Divider(height=1))
+                                    
+                                    for idx, record in enumerate(diff_result.get('removed', [])[:20]):  # Show first 20
+                                        filename = record.get('filename', 'Unknown')
+                                        objectid = record.get('objectid', '')
+                                        title = record.get('title', '')
+                                        
+                                        record_text = f"• {filename}"
+                                        if objectid:
+                                            record_text += f" (ID: {objectid})"
+                                        if title:
+                                            record_text += f" - {title}"
+                                        
+                                        view_rows.append(ft.Container(
+                                            content=ft.Text(record_text, size=11, color=ft.Colors.GREY_700),
+                                            bgcolor=ft.Colors.GREY_200,
+                                            padding=4,
+                                            border_radius=2,
+                                        ))
+                                    
+                                    if removed > 20:
+                                        view_rows.append(ft.Text(f"... and {removed - 20} more", size=10, italic=True))
+                                    view_rows.append(ft.Text(""))
+                                
+                                # Changed records (Red/Green) with field-level checkboxes
+                                if changed > 0:
+                                    view_rows.append(ft.Text(f"📝 CHANGED RECORDS ({changed})", weight=ft.FontWeight.BOLD, color=ft.Colors.ORANGE, size=14))
+                                    view_rows.append(ft.Text("Each field can be individually selected", size=10, italic=True))
+                                    view_rows.append(ft.Divider(height=1))
+                                    
+                                    for idx, change in enumerate(diff_result.get('changed', [])):
+                                        key = change.get('key', ['Unknown'])[0]
+                                        fields = change.get('fields', {})
+                                        
+                                        # Track has_data_loss for styling
+                                        has_data_loss = any(
+                                            str(fc.get('from', '')).strip() and not str(fc.get('to', '')).strip()
+                                            for fc in fields.values()
+                                        )
+                                        
+                                        # Record header (not a checkbox, just label)
+                                        change_container = ft.Column([
+                                            ft.Text(f"📄 {key} ({len(fields)} fields changed)", 
+                                                   weight=ft.FontWeight.BOLD, size=12)
+                                        ], spacing=4)
+                                        
+                                        # Initialize field checkbox dict for this record
+                                        selections['changed'][idx] = {}
+                                        
+                                        # Create checkbox for each changed field
+                                        for field_name, field_change in fields.items():
+                                            old_val = str(field_change.get('from', ''))[:100]  # Truncate long values
+                                            new_val = str(field_change.get('to', ''))[:100]
+                                            
+                                            # Detect if replacing value with empty (WARNING!)
+                                            old_has_value = old_val and old_val.strip()
+                                            new_is_empty = not new_val or not new_val.strip()
+                                            is_data_loss = old_has_value and new_is_empty
+                                            
+                                            # Create checkbox for this field
+                                            field_checkbox = ft.Checkbox(
+                                                value=True if not is_data_loss else False,  # Checked by default unless data loss
+                                                label="",
+                                                disabled=is_data_loss  # Disable (gray out) data loss checkboxes
+                                            )
+                                            selections['changed'][idx][field_name] = field_checkbox
+                                            
+                                            if is_data_loss:
+                                                # WARNING: Replacing content with empty
+                                                # Create enable button for disabled checkbox
+                                                def make_enable_handler(checkbox):
+                                                    def enable_checkbox(e):
+                                                        checkbox.disabled = False
+                                                        checkbox.value = False  # Keep unchecked when enabled
+                                                        page.update()
+                                                    return enable_checkbox
+                                                
+                                                enable_button = ft.TextButton(
+                                                    "⚠️ Enable",
+                                                    on_click=make_enable_handler(field_checkbox),
+                                                    style=ft.ButtonStyle(
+                                                        color=ft.Colors.ORANGE_700,
+                                                        bgcolor=ft.Colors.ORANGE_100,
+                                                        padding=4,
+                                                    ),
+                                                    height=24,
+                                                )
+                                                
+                                                change_container.controls.append(ft.Container(
+                                                    content=ft.Row([
+                                                        field_checkbox,
+                                                        enable_button,
+                                                        ft.Text("⚠️", size=12),
+                                                        ft.Text(f"{field_name}:", size=10, weight=ft.FontWeight.BOLD, width=100),
+                                                        ft.Container(
+                                                            content=ft.Text(old_val, size=10),
+                                                            bgcolor=ft.Colors.RED_50,
+                                                            padding=2,
+                                                            border_radius=2,
+                                                        ),
+                                                        ft.Text("⃠→", size=12, color=ft.Colors.ORANGE),  # Negated arrow
+                                                        ft.Container(
+                                                            content=ft.Text('(empty)', size=10, italic=True, color=ft.Colors.ORANGE_900),
+                                                            bgcolor=ft.Colors.ORANGE_100,
+                                                            padding=2,
+                                                            border_radius=2,
+                                                            border=ft.border.all(1, ft.Colors.ORANGE_400),
+                                                        ),
+                                                    ], spacing=4, wrap=True),
+                                                    padding=ft.padding.only(left=10, top=2, bottom=2),
+                                                    bgcolor=ft.Colors.ORANGE_50,
+                                                    border_radius=4,
+                                                ))
+                                            else:
+                                                # Normal change
+                                                change_container.controls.append(ft.Container(
+                                                    content=ft.Row([
+                                                        field_checkbox,
+                                                        ft.Text(f"{field_name}:", size=10, weight=ft.FontWeight.BOLD, width=130),
+                                                        ft.Container(
+                                                            content=ft.Text(old_val if old_val else '(empty)', size=10),
+                                                            bgcolor=ft.Colors.RED_50,
+                                                            padding=2,
+                                                            border_radius=2,
+                                                        ),
+                                                        ft.Text("→", size=10),
+                                                        ft.Container(
+                                                            content=ft.Text(new_val if new_val else '(empty)', size=10),
+                                                            bgcolor=ft.Colors.GREEN_50,
+                                                            padding=2,
+                                                            border_radius=2,
+                                                        ),
+                                                    ], spacing=4, wrap=True),
+                                                    padding=ft.padding.only(left=10, top=2, bottom=2),
+                                                ))
+                                        
+                                        view_rows.append(ft.Container(
+                                            content=change_container,
+                                            bgcolor=ft.Colors.ORANGE_50 if has_data_loss else ft.Colors.WHITE,
+                                            padding=6,
+                                            border_radius=4,
+                                            border=ft.border.all(1, ft.Colors.ORANGE_300 if has_data_loss else ft.Colors.GREY_300),
+                                        ))
+                                        view_rows.append(ft.Text(""))
+                                
+                                def close_color_view(e):
+                                    color_view_dialog.open = False
+                                    page.update()
+                                
+                                def merge_selected_changes(e):
+                                    """Merge selected changes into core CSV."""
+                                    try:
+                                        # Count selected changes
+                                        selected_added = [idx for idx, cb in selections['added'].items() if cb.value]
+                                        
+                                        # Count selected field changes
+                                        selected_field_changes = []
+                                        for record_idx, field_checkboxes in selections['changed'].items():
+                                            for field_name, checkbox in field_checkboxes.items():
+                                                if checkbox.value:
+                                                    selected_field_changes.append((record_idx, field_name))
+                                        
+                                        if not selected_added and not selected_field_changes:
+                                            update_status("No changes selected to merge", is_error=True)
+                                            return
+                                        
+                                        # Confirm merge
+                                        def confirm_merge(ev):
+                                            confirm_dialog.open = False
+                                            page.update()
+                                            
+                                            # Perform merge
+                                            update_status("Merging selected changes...")
+                                            
+                                            try:
+                                                # Load core CSV
+                                                import csv
+                                                from datetime import datetime
+                                                import shutil
+                                                
+                                                # Create backup of core CSV
+                                                backup_path = Path(str(old_csv) + f".backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
+                                                shutil.copy2(old_csv, backup_path)
+                                                add_log_message(f"[INFO] Created backup: {backup_path.name}")
+                                                
+                                                # Read core CSV
+                                                with open(old_csv, 'r', encoding='utf-8') as f:
+                                                    reader = csv.DictReader(f)
+                                                    fieldnames = reader.fieldnames
+                                                    core_rows = list(reader)
+                                                
+                                                # Create filename-to-row mapping
+                                                core_by_filename = {row['filename']: row for row in core_rows if row.get('filename')}
+                                                
+                                                # Apply selected additions
+                                                added_records = diff_result.get('added', [])
+                                                for idx in selected_added:
+                                                    if idx < len(added_records):
+                                                        new_record = added_records[idx]
+                                                        core_rows.append(new_record)
+                                                        add_log_message(f"[INFO] Added: {new_record.get('filename', 'Unknown')}")
+                                                
+                                                # Apply selected field changes
+                                                changed_records = diff_result.get('changed', [])
+                                                fields_updated_count = 0
+                                                records_updated = set()
+                                                
+                                                for record_idx, field_name in selected_field_changes:
+                                                    if record_idx < len(changed_records):
+                                                        change = changed_records[record_idx]
+                                                        filename_key = change.get('key', [''])[0]
+                                                        
+                                                        if filename_key in core_by_filename:
+                                                            # Update this specific field only
+                                                            field_change = change.get('fields', {}).get(field_name, {})
+                                                            new_value = field_change.get('to', '')
+                                                            core_by_filename[filename_key][field_name] = new_value
+                                                            fields_updated_count += 1
+                                                            records_updated.add(filename_key)
+                                                
+                                                if records_updated:
+                                                    for filename in records_updated:
+                                                        add_log_message(f"[INFO] Updated fields in: {filename}")
+                                                
+                                                # Write updated CSV
+                                                with open(old_csv, 'w', encoding='utf-8', newline='') as f:
+                                                    writer = csv.DictWriter(f, fieldnames=fieldnames)
+                                                    writer.writeheader()
+                                                    writer.writerows(core_rows)
+                                                
+                                                add_log_message(f"[SUCCESS] Merged {len(selected_added)} additions and {fields_updated_count} field changes across {len(records_updated)} records")
+                                                update_status(f"Successfully merged {len(selected_added)} additions and {fields_updated_count} field changes")
+                                                
+                                                # Close dialogs
+                                                color_view_dialog.open = False
+                                                page.update()
+                                                
+                                            except Exception as merge_ex:
+                                                logger.error(f"Error during merge: {merge_ex}")
+                                                update_status(f"Merge error: {merge_ex}", is_error=True)
+                                                add_log_message(f"[ERROR] Merge failed: {merge_ex}")
+                                        
+                                        def cancel_merge(ev):
+                                            confirm_dialog.open = False
+                                            page.update()
+                                        
+                                        # Count unique records being changed
+                                        unique_records = len(set(record_idx for record_idx, _ in selected_field_changes))
+                                        
+                                        confirm_dialog = ft.AlertDialog(
+                                            modal=True,
+                                            title=ft.Text("⚠️ Confirm Merge", weight=ft.FontWeight.BOLD),
+                                            content=ft.Column([
+                                                ft.Text(f"You are about to merge into the core CSV:", size=12),
+                                                ft.Text(f"  • {len(selected_added)} new records", color=ft.Colors.BLUE),
+                                                ft.Text(f"  • {len(selected_field_changes)} field changes across {unique_records} records", color=ft.Colors.ORANGE),
+                                                ft.Text(""),
+                                                ft.Text(f"Core CSV: {old_csv.name}", size=11, weight=ft.FontWeight.BOLD),
+                                                ft.Text(""),
+                                                ft.Text("A backup will be created automatically.", size=10, italic=True),
+                                                ft.Text(""),
+                                                ft.Text("This action cannot be undone (except by restoring backup).", size=10, color=ft.Colors.RED),
+                                            ], spacing=4, tight=True),
+                                            actions=[
+                                                ft.TextButton("Cancel", on_click=cancel_merge),
+                                                ft.ElevatedButton("Merge Changes", on_click=confirm_merge, bgcolor=ft.Colors.BLUE),
+                                            ],
+                                        )
+                                        
+                                        page.overlay.append(confirm_dialog)
+                                        confirm_dialog.open = True
+                                        page.update()
+                                        
+                                    except Exception as ex:
+                                        logger.error(f"Error preparing merge: {ex}")
+                                        update_status(f"Error: {ex}", is_error=True)
+                                
+                                color_view_dialog = ft.AlertDialog(
+                                    modal=True,
+                                    title=ft.Text("🎨 Interactive Comparison & Merge", weight=ft.FontWeight.BOLD),
+                                    content=ft.Container(
+                                        content=ft.Column(view_rows, spacing=2, scroll=ft.ScrollMode.ALWAYS),
+                                        width=900,
+                                        height=600,
+                                    ),
+                                    actions=[
+                                        ft.TextButton("Cancel", on_click=close_color_view),
+                                        ft.ElevatedButton("Merge Selected Changes", on_click=merge_selected_changes, bgcolor=ft.Colors.GREEN),
+                                    ],
+                                )
+                                
+                                page.overlay.append(color_view_dialog)
+                                color_view_dialog.open = True
+                                page.update()
+                                
+                            except Exception as ex:
+                                logger.error(f"Error showing color-coded view: {ex}")
+                                update_status(f"Error: {ex}", is_error=True)
                         
                         csvdiff_dialog = ft.AlertDialog(
                             modal=True,
@@ -3035,7 +3422,10 @@ Detailed results: {output_diff.name}
                                 width=600,
                                 height=300,
                             ),
-                            actions=[ft.TextButton("Close", on_click=close_csvdiff_dialog)],
+                            actions=[
+                                ft.ElevatedButton("Review & Merge Changes", on_click=show_color_coded_view, bgcolor=ft.Colors.GREEN),
+                                ft.TextButton("Close", on_click=close_csvdiff_dialog),
+                            ],
                         )
                         
                         page.overlay.append(csvdiff_dialog)
