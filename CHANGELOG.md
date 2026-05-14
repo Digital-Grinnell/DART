@@ -7,6 +7,156 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.5.2] - 2026-05-14
+
+### Summary
+Version 1.5.2 changes Function 4 to use `filename` as the comparison key instead of `objectid`, treating filename as the source of truth for record matching.
+
+### Changed
+- **Function 4 comparison key**: Changed from `objectid` to `filename` throughout
+  - Both pandas and csvdiff methods now use `filename` as the unique identifier
+  - Column validation: Now checks for `filename` column (was `objectid`)
+  - Duplicate detection: Checks for duplicate `filename` values (was `objectid`)
+  - Merge operation: `on='filename'` in pandas merge (was `on='objectid'`)
+  - csvdiff: `key="filename"` in load_csv calls (was `key="objectid"`)
+  - Empty filename handling: Multiple rows with empty filenames allowed (used to disable objects from display)
+  - Error messages: Updated to reference "filename" instead of "objectid"
+  - Output columns: First column is now `filename` (was `objectid`)
+
+### Documentation
+- **FUNCTION_4_COMPARE_MERGE_CSV.md**: Updated throughout
+  - Requirements section: Now requires `filename` column
+  - Status classifications: Refer to `filename` matching
+  - Example tables: Use `filename` (e.g., "photo_001.jpg") instead of `objectid`
+  - Validation/error handling: Updated messages
+  - Comparison logic: Updated merge key references
+- **README.md**: Updated Function 4 description
+  - "Compare two CSV files by filename" (was "by objectid")
+  - "Validates unique filenames" (was "unique objectids")
+- **CHANGELOG.md**: Updated v1.5.1 and v1.5.0 entries to reflect filename key
+
+### Technical Details
+- pandas merge: `old_valid.merge(new_valid, on='filename', ...)`
+- csvdiff: `load_csv(open(str(csv_path)), key="filename")`
+- Shared columns detection: `shared_cols.discard('filename')` excludes filename from comparison
+- First data row still skipped (contains duplicate headings)
+- Empty/NaN filename rows handled separately and marked as new/missing_in_new
+
+### Rationale
+- Filename identified as "source of truth" for record identity
+- More intuitive for file-based workflows
+- Aligns with asset management best practices
+
+---
+
+## [1.5.1] - 2026-05-14
+
+### Summary
+Version 1.5.1 adds alternative csvdiff comparison method for Function 4, providing flexibility between detailed pandas-based comparison and fast csvdiff tool processing.
+
+### Added
+- **CSV_review_with_csvdiff setting** (Function 0)
+  - Boolean setting (default: false) to choose comparison method
+  - When false: Uses pandas-based comparison (existing behavior)
+  - When true: Uses csvdiff library for comparison
+- **csvdiff integration** for Function 4
+  - Alternative comparison method using csvdiff Python library
+  - Produces JSON output with detailed diff structure
+  - Creates text summary file with counts
+  - Faster for large datasets
+  - Better for programmatic processing and tool integration
+- **Dependencies**: Added `csvdiff>=1.7.0` to python_requirements.txt
+
+### Changed
+- **Function 4**: Now supports two comparison methods selectable via settings
+  - Pandas-based (default): Excel-friendly CSV outputs with side-by-side columns
+  - csvdiff tool: JSON+text outputs for programmatic use
+- **Function 0 Settings UI**: Added CSV_review_with_csvdiff field in settings dialog
+- **Function 4 workflow**: Auto-detects comparison method from settings
+
+### Documentation
+- **FUNCTION_4_COMPARE_MERGE_CSV.md**: Added "Comparison Methods" section
+  - Describes both pandas and csvdiff approaches
+  - Installation notes for csvdiff
+  - Use case recommendations for each method
+- **README.md**: Updated Function 4 description to mention both methods
+
+### Technical Details
+- pandas-based comparison: Handles empty filenames, skips heading rows, detailed change tracking
+- csvdiff comparison: Uses csvdiff.compare() with filename as key, produces JSON diff
+- Settings system: New boolean field with validation and save/load support
+
+---
+
+## [1.5.0] - 2026-05-14
+
+### Summary
+Version 1.5.0 adds Function 4 for comparing and merging CSV files with intelligent change detection and side-by-side review outputs. This enables metadata workflow auditing and batch processing validation.
+
+### Added
+- **Function 4: Compare and Merge CSV Files** 🔀
+  - Compare two CSV files by unique key (`filename`)
+  - **Uses core_metadata_csv from settings** as baseline "old" file
+  - **User selects "new" CSV** from working directory via dialog
+  - Auto-highlights newest CSV with ⭐ icon (recommended)
+  - "Use Newest" button for quick selection of most recent export
+  - **Four status classifications**: match, new, changed, missing_in_new
+  - **Side-by-side comparison**: Preserves both old and new values with suffixes
+  - **Change tracking**: `changed_fields` column lists which columns differ
+  - **Per-column flags**: Boolean `fieldname_changed` for easy filtering
+  - **Three output files**:
+    1. Full review CSV with all records and both values
+    2. Changes-only CSV (excludes matches)
+    3. Summary CSV with status counts
+  - **Results dialog preview**: Shows first 10 changes with summary
+  - **Clickable log link**: Opens detailed processing log in popup
+  - Case-sensitive comparison with whitespace normalization
+  - Validates unique `filename` in both files (reports duplicates)
+  - Handles missing values (NaN treated as empty string)
+  - Timestamped outputs to prevent overwrites
+  - Pandas-based merge using `outer` join with indicator column
+
+### Changed
+- **Dependencies**: Added `pandas>=2.0.0` to python_requirements.txt
+- **Imports**: Added `import pandas as pd` to app.py
+- **Function Naming**: Updated labels
+  - Function 2: "Export Assets to CSV and Azure"
+  - Function 3: "Generate Derivatives for CSV and Azure"
+
+### Documentation
+- **FUNCTION_4_COMPARE_MERGE_CSV.md**: Complete new function guide
+  - Purpose and when to use
+  - Requirements and workflow
+  - Output file descriptions
+  - Status classifications explained
+  - Side-by-side format example
+  - Validation and error handling
+  - Comparison logic details
+  - Integration with other functions
+  - Tips and example workflow
+- **README.md**: Updated workflow functions section
+  - Added Function 4 description with features
+  - Updated Function 2 and 3 labels to include "and Azure"
+
+### Technical Details
+- Uses pandas `DataFrame.merge()` with `how='outer'`, `indicator=True`, `validate='one_to_one'`
+- Suffixes `_old` and `_new` for overlapping columns
+- Auto-detects shared columns (all non-key columns in both files)
+- Row classification based on merge indicator and value comparison
+- Per-column change flags using vectorized pandas comparison
+- Column reordering: filename, status, _merge, changed_fields, then alphabetical
+- File selection dialog shows modification timestamps
+
+### Use Cases
+- Audit metadata changes between Function 2 exports
+- Track which derivatives were added by Function 3
+- Compare core metadata with new batch exports
+- Verify object IDs match between different processing runs
+- Generate change reports for metadata review
+- Prepare clean merges with full audit trail
+
+---
+
 ## [1.4.1] - 2026-05-14
 
 ### Summary

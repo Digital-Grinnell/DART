@@ -69,6 +69,17 @@ DART provides a comprehensive platform for digital asset management workflows:
   - Maintains aspect ratios, handles EXIF orientation and transparency
   - **Clickable log viewer**: Results dialog includes link to open detailed log in popup
   - **Kill Switch**: Emergency stop for long-running derivative generation
+- **Function 4** 🔀: Compare and Merge CSV Files
+  - **Two comparison methods**: pandas-based (default) or csvdiff tool (configurable)
+  - Compare two CSV files by filename with side-by-side value comparison
+  - Auto-detects newest CSV as "new" file for easy workflow
+  - Classifies records: match, new, changed, missing_in_new
+  - Generates three outputs: full review, changes only, and summary (pandas) or JSON+text (csvdiff)
+  - **Detailed change tracking**: Lists which fields changed for each record
+  - **Boolean flags per column**: Easy filtering of specific field changes (pandas mode)
+  - **Preview in UI**: See first 10 changes with summary counts
+  - Case-sensitive comparison with whitespace normalization
+  - Validates unique filenames and reports duplicates
 - **Function 9** 💻: Display system information
 
 *Additional asset processing functions are added as needed for your specific workflow.*
@@ -125,6 +136,7 @@ DART/
 ├── FUNCTION_1_ANALYZE_ASSETS.md  # Help docs for Function 1
 ├── FUNCTION_2_EXPORT_CSV.md     # Help docs for Function 2 (CSV and Azure export)
 ├── FUNCTION_3_GENERATE_DERIVATIVES.md  # Help docs for Function 3 (Derivatives)
+├── FUNCTION_4_COMPARE_MERGE_CSV.md  # Help docs for Function 4 (Compare/Merge)
 └── README.md                   # This file
 ```
 

@@ -21,6 +21,7 @@ from cryptography.fernet import Fernet, InvalidToken
 from azure.storage.blob import BlobServiceClient, ContentSettings
 from PIL import Image, ImageOps
 import io
+import pandas as pd
 
 # Import common DG utilities
 from common_dg_utilities.dg_utils import generate_unique_id
@@ -100,6 +101,7 @@ DEFAULT_APP_SETTINGS = {
     "use_working_folder_for_file_selection": False,
     "csv_structure_file": "",
     "core_metadata_csv": "",
+    "CSV_review_with_csvdiff": False,
     "azure_blob_storage_path": "",
     "azure_connection_string": "",
     "api_key": "",
@@ -961,6 +963,12 @@ def main(page: ft.Page):
             hint_text="true or false - use working folder as initial directory for file picker",
             width=320,
         )
+        csv_review_with_csvdiff_field = ft.TextField(
+            label="CSV_review_with_csvdiff",
+            value=str(settings.get("CSV_review_with_csvdiff", False)).lower(),
+            hint_text="true or false - use csvdiff tool for Function 4 comparison",
+            width=320,
+        )
         csv_structure_field = ft.TextField(
             label="csv_structure_file",
             value=str(settings.get("csv_structure_file", "")),
@@ -1185,6 +1193,14 @@ def main(page: ft.Page):
                 )
                 return
             
+            parsed_csv_review_with_csvdiff = parse_bool_text(csv_review_with_csvdiff_field.value)
+            if parsed_csv_review_with_csvdiff is None:
+                update_status(
+                    "Error: CSV_review_with_csvdiff must be true/false (or yes/no, 1/0)",
+                    is_error=True,
+                )
+                return
+            
             # Validate CSV structure if provided
             csv_file_path = (csv_structure_field.value or "").strip()
             if csv_file_path:
@@ -1271,6 +1287,7 @@ def main(page: ft.Page):
                 "auto_save_format": (auto_save_format_field.value or "").strip() or "txt",
                 "group_compound_objects": parsed_group_compound,
                 "use_working_folder_for_file_selection": parsed_use_working_folder,
+                "CSV_review_with_csvdiff": parsed_csv_review_with_csvdiff,
                 "csv_structure_file": csv_file_path,
                 "core_metadata_csv": core_csv_path,
                 "azure_blob_storage_path": azure_path_value,
@@ -1305,6 +1322,13 @@ def main(page: ft.Page):
                         auto_save_format_field,
                         group_compound_field,
                         use_working_folder_field,
+                        csv_review_with_csvdiff_field,
+                        ft.Container(height=8),
+                        ft.Text(
+                            "CSV File Settings:",
+                            size=12,
+                            weight=ft.FontWeight.BOLD,
+                        ),
                         ft.Row(
                             controls=[
                                 csv_structure_field,
@@ -2739,6 +2763,584 @@ def main(page: ft.Page):
             update_status(f"Error writing CSV: {ex}", is_error=True)
             logger.error(f"Error writing updated CSV: {ex}")
 
+    def on_function_4_compare_merge(e):
+        """Function 4: Compare and merge CSV files with review output."""
+        storage.record_function_usage("Function 4")
+        
+        # Check for working directory
+        working_dir = output_dir_field.value
+        if not working_dir or not Path(working_dir).exists():
+            update_status("Error: Please set a working/outputs folder first", is_error=True)
+            return
+        
+        working_path = Path(working_dir)
+        
+        # Load settings to get core metadata CSV
+        settings, _ = load_app_settings(working_dir)
+        core_csv_path = settings.get("core_metadata_csv", "")
+        
+        if not core_csv_path or not core_csv_path.strip():
+            update_status("Error: Core metadata CSV not configured in settings", is_error=True)
+            add_log_message("[ERROR] No core metadata CSV configured in Function 0 settings")
+            add_log_message("[INFO] Configure core_metadata_csv in Function 0 to use comparison feature")
+            return
+        
+        old_csv = Path(core_csv_path)
+        if not old_csv.exists():
+            update_status(f"Error: Core CSV file not found: {old_csv.name}", is_error=True)
+            add_log_message(f"[ERROR] Core metadata CSV not found: {core_csv_path}")
+            add_log_message("[INFO] Update core_metadata_csv path in Function 0 settings")
+            return
+        
+        # Find all CSV files in working directory, sorted by modification time (newest first)
+        csv_files = sorted(
+            [f for f in working_path.glob("*.csv") if f.is_file()],
+            key=lambda p: p.stat().st_mtime,
+            reverse=True
+        )
+        
+        if len(csv_files) < 1:
+            update_status("Error: No CSV files found in working directory", is_error=True)
+            add_log_message(f"[ERROR] No CSV files found in {working_dir}")
+            add_log_message("[INFO] Run Function 2 first to generate a CSV export")
+            return
+        
+        # Auto-select newest CSV as "new" file
+        new_csv = csv_files[0]
+        
+        # Check if new CSV is the same as core CSV
+        if new_csv.resolve() == old_csv.resolve():
+            # Find second newest CSV
+            if len(csv_files) < 2:
+                update_status("Error: Only core CSV found in working directory", is_error=True)
+                add_log_message(f"[ERROR] Only one CSV file (core metadata) found in {working_dir}")
+                add_log_message("[INFO] Run Function 2 to generate a new CSV export to compare")
+                return
+            new_csv = csv_files[1]
+        
+        add_log_message(f"[INFO] Using core metadata CSV as 'old': {old_csv.name}")
+        
+        # Define helper functions
+        def show_comparison_results(result):
+            """Display comparison results with preview and summary."""
+            
+            def close_result_dialog(ev):
+                result_dialog.open = False
+                page.update()
+            
+            def show_log(ev):
+                """Open log file in read-only popup dialog."""
+                global log_filename
+                try:
+                    with open(log_filename, 'r', encoding='utf-8') as f:
+                        log_content = f.read()
+                    
+                    def close_log_dialog(ev):
+                        log_dialog.open = False
+                        page.update()
+                    
+                    log_dialog = ft.AlertDialog(
+                        modal=True,
+                        title=ft.Text(f"Log File: {Path(log_filename).name}", weight=ft.FontWeight.BOLD),
+                        content=ft.Container(
+                            content=ft.TextField(
+                                value=log_content,
+                                multiline=True,
+                                read_only=True,
+                                text_size=11,
+                                border=ft.InputBorder.NONE,
+                            ),
+                            width=800,
+                            height=600,
+                        ),
+                        actions=[ft.TextButton("Close", on_click=close_log_dialog)],
+                    )
+                    
+                    page.overlay.append(log_dialog)
+                    log_dialog.open = True
+                    page.update()
+                except Exception as ex:
+                    logger.error(f"Could not open log file: {ex}")
+                    update_status(f"Error opening log: {ex}", is_error=True)
+            
+            # Get preview of changes (first 10 changed/new/missing rows)
+            changes_df = result['merged'][result['merged']['status'].isin(['changed', 'new', 'missing_in_new'])].head(10)
+            
+            preview_rows = []
+            for idx, row in changes_df.iterrows():
+                status_icon = {
+                    'new': '✨',
+                    'changed': '📝',
+                    'missing_in_new': '⚠️'
+                }.get(row['status'], '•')
+                
+                objectid = row['objectid']
+                status = row['status']
+                changed_fields = row['changed_fields']
+                
+                preview_text = f"{status_icon} {objectid} ({status})"
+                if changed_fields:
+                    preview_text += f" - {changed_fields}"
+                
+                preview_rows.append(ft.Text(preview_text, size=11))
+            
+            if not preview_rows:
+                preview_rows.append(ft.Text("All records match!", size=11, italic=True))
+            
+            # Build result content
+            result_content = ft.Column([
+                ft.Text("✅ CSV Comparison Complete", weight=ft.FontWeight.BOLD, size=16),
+                ft.Text(""),
+                ft.Text(f"Compared Files:", weight=ft.FontWeight.BOLD),
+                ft.Text(f"  Old/Core: {result['old_csv_name']}", size=12),
+                ft.Text(f"  New: {result['new_csv_name']}", size=12),
+                ft.Text(""),
+                ft.Text(f"Total Records: {result['total_rows']}", weight=ft.FontWeight.BOLD),
+                ft.Text(f"  • {result['match_count']} matches (identical)", color=ft.Colors.GREEN),
+                ft.Text(f"  • {result['new_count']} new records", color=ft.Colors.BLUE),
+                ft.Text(f"  • {result['changed_count']} changed records", color=ft.Colors.ORANGE),
+                ft.Text(f"  • {result['missing_count']} missing in new", color=ft.Colors.RED),
+                ft.Text(""),
+                ft.Text("Preview (first 10 changes):", weight=ft.FontWeight.BOLD, size=12),
+                ft.Container(
+                    content=ft.Column(preview_rows, spacing=2, scroll=ft.ScrollMode.AUTO),
+                    border=ft.border.all(1, ft.Colors.GREY_400),
+                    border_radius=4,
+                    padding=8,
+                    height=200,
+                ),
+                ft.Text(""),
+                ft.Text("Output Files:", weight=ft.FontWeight.BOLD),
+                ft.Text(f"  • {result['output_all'].name}", size=11),
+                ft.Text(f"  • {result['output_changes'].name}", size=11),
+                ft.Text(f"  • {result['output_summary'].name}", size=11),
+                ft.Row([
+                    ft.Text("  • "),
+                    ft.TextButton("See log for details", on_click=show_log),
+                ], spacing=0),
+            ], spacing=4, scroll=ft.ScrollMode.AUTO)
+            
+            result_dialog = ft.AlertDialog(
+                modal=True,
+                title=ft.Text("📊 Function 4: CSV Comparison Results"),
+                content=ft.Container(
+                    content=result_content,
+                    width=600,
+                    height=500,
+                ),
+                actions=[ft.TextButton("Close", on_click=close_result_dialog)],
+            )
+            
+            page.overlay.append(result_dialog)
+            result_dialog.open = True
+            page.update()
+        
+        # Show comparison result dialog
+        def show_results(comparison_result):
+            show_comparison_results(comparison_result)
+        
+        # Perform comparison directly
+        def perform_comparison(selected_new_csv):
+            try:
+                add_log_message(f"[INFO] Comparing CSV files...")
+                
+                # Check if CSV diff tool should be used
+                use_csvdiff = settings.get("CSV_review_with_csvdiff", False)
+                
+                if use_csvdiff:
+                    # Use csvdiff tool for comparison
+                    add_log_message("[INFO] Using csvdiff tool for comparison")
+                    try:
+                        from csvdiff import load_csv, compare
+                    except ImportError:
+                        update_status("Error: csvdiff not installed. Install with: pip install csvdiff", is_error=True)
+                        add_log_message("[ERROR] csvdiff package not found. Run: pip install csvdiff")
+                        return
+                    
+                    update_status("Running csvdiff comparison...")
+                    
+                    try:
+                        # Load CSVs with csvdiff
+                        old_data = load_csv(open(str(old_csv)), key="filename")
+                        new_data = load_csv(open(str(selected_new_csv)), key="filename")
+                        
+                        # Perform diff
+                        diff_result = compare(old_data, new_data)
+                        
+                        # Convert csvdiff result to our format
+                        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                        output_diff = working_path / f"csvdiff_result_{timestamp}.json"
+                        output_summary = working_path / f"csvdiff_summary_{timestamp}.txt"
+                        
+                        # Write JSON output
+                        import json
+                        with open(output_diff, 'w') as f:
+                            json.dump(diff_result, f, indent=2)
+                        
+                        # Create summary
+                        added = len(diff_result.get('added', []))
+                        removed = len(diff_result.get('removed', []))
+                        changed = len(diff_result.get('changed', []))
+                        
+                        summary_text = f\"\"\"CSV Comparison Summary (csvdiff)\\n\"\"\" + \"=\"*40 + f\"\"\"\\n\\nCore CSV: {old_csv.name}\\nNew CSV: {Path(selected_new_csv).name}\\n\\nResults:\\n  • {added} new records (in new file only)\\n  • {removed} missing in new (in core file only)\\n  • {changed} changed records (different values)\\n\\nDetailed results: {output_diff.name}\\n\"\"\"
+                        
+                        with open(output_summary, 'w') as f:
+                            f.write(summary_text)
+                        
+                        add_log_message(f"[SUCCESS] csvdiff comparison complete:")
+                        add_log_message(f"  • {added} new records")
+                        add_log_message(f"  • {removed} missing in new")
+                        add_log_message(f"  • {changed} changed records")
+                        add_log_message(f"[SUCCESS] Wrote results: {output_diff.name}")
+                        add_log_message(f"[SUCCESS] Wrote summary: {output_summary.name}")
+                        
+                        # Show simple result dialog
+                        def close_csvdiff_dialog(e):
+                            csvdiff_dialog.open = False
+                            page.update()
+                        
+                        csvdiff_dialog = ft.AlertDialog(
+                            modal=True,
+                            title=ft.Text("📊 csvdiff Comparison Results"),
+                            content=ft.Container(
+                                content=ft.Column([
+                                    ft.Text(f"Core CSV: {old_csv.name}", size=11),
+                                    ft.Text(f"New CSV: {Path(selected_new_csv).name}", size=11),
+                                    ft.Text(""),
+                                    ft.Text("Results:", weight=ft.FontWeight.BOLD),
+                                    ft.Text(f"  • {added} new records", color=ft.Colors.BLUE),
+                                    ft.Text(f"  • {changed} changed records", color=ft.Colors.ORANGE),
+                                    ft.Text(f"  • {removed} missing in new", color=ft.Colors.RED),
+                                    ft.Text(""),
+                                    ft.Text("Output Files:", weight=ft.FontWeight.BOLD),
+                                    ft.Text(f"  • {output_diff.name} (detailed JSON)", size=11),
+                                    ft.Text(f"  • {output_summary.name} (summary)", size=11),
+                                ], spacing=4, scroll=ft.ScrollMode.AUTO),
+                                width=600,
+                                height=300,
+                            ),
+                            actions=[ft.TextButton("Close", on_click=close_csvdiff_dialog)],
+                        )
+                        
+                        page.overlay.append(csvdiff_dialog)
+                        csvdiff_dialog.open = True
+                        page.update()
+                        
+                        update_status(f"csvdiff comparison complete: {added} new, {changed} changed, {removed} missing")
+                        return
+                        
+                    except Exception as csvdiff_err:
+                        update_status(f"Error running csvdiff: {csvdiff_err}", is_error=True)
+                        add_log_message(f"[ERROR] csvdiff failed: {csvdiff_err}")
+                        return
+                
+                # Otherwise use pandas-based comparison (existing implementation)
+                add_log_message("[INFO] Using pandas-based comparison")
+                
+                # Load both CSV files (skip first data row - it contains headings)
+                update_status("Loading CSV files...")
+                old_df = pd.read_csv(old_csv, dtype=str, skiprows=[1])
+                new_df = pd.read_csv(selected_new_csv, dtype=str, skiprows=[1])
+                
+                add_log_message(f"[DEBUG] Core CSV: {len(old_df)} rows, {len(old_df.columns)} columns (first row skipped)")
+                add_log_message(f"[DEBUG] New CSV: {len(new_df)} rows, {len(new_df.columns)} columns (first row skipped)")
+                
+                # Validate filename column exists in both
+                if 'filename' not in old_df.columns:
+                    update_status("Error: Core CSV missing 'filename' column", is_error=True)
+                    add_log_message("[ERROR] Core CSV must have 'filename' column")
+                    return
+                
+                if 'filename' not in new_df.columns:
+                    update_status("Error: New CSV missing 'filename' column", is_error=True)
+                    add_log_message("[ERROR] New CSV must have 'filename' column")
+                    return
+                
+                # Normalize filename (strip whitespace)
+                old_df['filename'] = old_df['filename'].astype(str).str.strip()
+                new_df['filename'] = new_df['filename'].astype(str).str.strip()
+                
+                # Replace empty strings and 'nan' literals with actual NaN for proper filtering
+                old_df.loc[old_df['filename'].str.lower().isin(['', 'nan']), 'filename'] = pd.NA
+                new_df.loc[new_df['filename'].str.lower().isin(['', 'nan']), 'filename'] = pd.NA
+                
+                # Check for duplicate filenames WITHIN each file (excluding empty/NaN filenames)
+                # Empty filenames are allowed (used to disable objects from display)
+                old_non_empty = old_df[old_df['filename'].notna()]
+                old_dupes = old_non_empty[old_non_empty.duplicated(subset=['filename'], keep=False)]
+                if not old_dupes.empty:
+                    dupe_ids = old_dupes['filename'].unique()[:5]
+                    update_status(f"Error: Core CSV has duplicate filenames within the file", is_error=True)
+                    add_log_message(f"[ERROR] Core CSV contains {len(old_dupes)} rows with duplicate filename values")
+                    add_log_message(f"[ERROR] Each filename should appear only ONCE within the core CSV file")
+                    add_log_message(f"[ERROR] Example duplicate filenames: {', '.join(str(x) for x in dupe_ids)}")
+                    for oid in dupe_ids:
+                        count = (old_non_empty['filename'] == oid).sum()
+                        add_log_message(f"  • '{oid}' appears {count} times in core CSV")
+                    return
+                
+                new_non_empty = new_df[new_df['filename'].notna()]
+                new_dupes = new_non_empty[new_non_empty.duplicated(subset=['filename'], keep=False)]
+                if not new_dupes.empty:
+                    dupe_ids = new_dupes['filename'].unique()[:5]
+                    update_status(f"Error: New CSV has duplicate filenames within the file", is_error=True)
+                    add_log_message(f"[ERROR] New CSV contains {len(new_dupes)} rows with duplicate filename values")
+                    add_log_message(f"[ERROR] Each filename should appear only ONCE within the new CSV file")
+                    add_log_message(f"[ERROR] Example duplicate filenames: {', '.join(str(x) for x in dupe_ids)}")
+                    for oid in dupe_ids:
+                        count = (new_non_empty['filename'] == oid).sum()
+                        add_log_message(f"  • '{oid}' appears {count} times in new CSV")
+                    return
+                
+                # Auto-detect shared columns to compare (exclude filename)
+                shared_cols = set(old_df.columns).intersection(new_df.columns)
+                shared_cols.discard('filename')
+                compare_cols = sorted(shared_cols)
+                
+                add_log_message(f"[INFO] Comparing {len(compare_cols)} shared columns")
+                
+                # Separate rows with valid filenames from those with empty/NaN filenames
+                # Empty filename rows can't be matched between files, so handle them separately
+                old_valid = old_df[old_df['filename'].notna()].copy()
+                new_valid = new_df[new_df['filename'].notna()].copy()
+                old_empty = old_df[old_df['filename'].isna()].copy()
+                new_empty = new_df[new_df['filename'].isna()].copy()
+                
+                add_log_message(f"[DEBUG] Core CSV: {len(old_valid)} with filename, {len(old_empty)} without")
+                add_log_message(f"[DEBUG] New CSV: {len(new_valid)} with filename, {len(new_empty)} without")
+                
+                # Perform outer merge only on rows with valid filenames
+                update_status("Merging CSV files...")
+                if len(old_valid) > 0 or len(new_valid) > 0:
+                    merged = old_valid.merge(
+                        new_valid,
+                        on='filename',
+                        how='outer',
+                        suffixes=('_old', '_new'),
+                        indicator=True,
+                        validate='one_to_one'
+                    )
+                else:
+                    # No valid filenames in either file
+                    merged = pd.DataFrame()
+                
+                # Add rows with empty filenames (can't be matched between files)
+                # Mark old empty rows as "missing_in_new" and new empty rows as "new"
+                if len(old_empty) > 0:
+                    for col in compare_cols:
+                        old_empty[f'{col}_old'] = old_empty[col] if col in old_empty.columns else pd.NA
+                        old_empty[f'{col}_new'] = pd.NA
+                    old_empty['_merge'] = 'left_only'
+                    # Keep only filename and suffixed columns
+                    keep_cols = ['filename'] + [f'{col}_old' for col in compare_cols] + [f'{col}_new' for col in compare_cols] + ['_merge']
+                    old_empty = old_empty[[c for c in keep_cols if c in old_empty.columns]]
+                    merged = pd.concat([merged, old_empty], ignore_index=True)
+                
+                if len(new_empty) > 0:
+                    for col in compare_cols:
+                        new_empty[f'{col}_old'] = pd.NA
+                        new_empty[f'{col}_new'] = new_empty[col] if col in new_empty.columns else pd.NA
+                    new_empty['_merge'] = 'right_only'
+                    # Keep only filename and suffixed columns
+                    keep_cols = ['filename'] + [f'{col}_old' for col in compare_cols] + [f'{col}_new' for col in compare_cols] + ['_merge']
+                    new_empty = new_empty[[c for c in keep_cols if c in new_empty.columns]]
+                    merged = pd.concat([merged, new_empty], ignore_index=True)
+                
+                # Classify each row and track changed fields
+                update_status("Analyzing differences...")
+                statuses = []
+                changed_fields_list = []
+                
+                for idx, row in merged.iterrows():
+                    if row['_merge'] == 'left_only':
+                        statuses.append('missing_in_new')
+                        changed_fields_list.append('')
+                    elif row['_merge'] == 'right_only':
+                        statuses.append('new')
+                        # For new rows, list all compared columns as "new"
+                        changed_fields_list.append(','.join(compare_cols))
+                    else:
+                        # Both sides exist - compare values
+                        changed = []
+                        for col in compare_cols:
+                            old_col = f"{col}_old" if f"{col}_old" in merged.columns else col
+                            new_col = f"{col}_new" if f"{col}_new" in merged.columns else col
+                            
+                            old_val = row.get(old_col, '')
+                            new_val = row.get(new_col, '')
+                            
+                            # Treat NaN and empty strings as equivalent
+                            if pd.isna(old_val):
+                                old_val = ''
+                            if pd.isna(new_val):
+                                new_val = ''
+                            
+                            # Case-sensitive comparison (per user requirement)
+                            if str(old_val).strip() != str(new_val).strip():
+                                changed.append(col)
+                        
+                        if changed:
+                            statuses.append('changed')
+                            changed_fields_list.append(','.join(changed))
+                        else:
+                            statuses.append('match')
+                            changed_fields_list.append('')
+                
+                merged['status'] = statuses
+                merged['changed_fields'] = changed_fields_list
+                
+                # Add per-column change flags
+                for col in compare_cols:
+                    old_col = f"{col}_old" if f"{col}_old" in merged.columns else col
+                    new_col = f"{col}_new" if f"{col}_new" in merged.columns else col
+                    flag_col = f"{col}_changed"
+                    
+                    if old_col in merged.columns and new_col in merged.columns:
+                        old_vals = merged[old_col].fillna('').astype(str).str.strip()
+                        new_vals = merged[new_col].fillna('').astype(str).str.strip()
+                        merged[flag_col] = old_vals != new_vals
+                
+                # Reorder columns: filename, status, _merge, changed_fields, then rest
+                base_cols = ['filename', 'status', '_merge', 'changed_fields']
+                other_cols = [c for c in merged.columns if c not in base_cols]
+                merged = merged[base_cols + other_cols]
+                
+                # Count by status
+                status_counts = merged['status'].value_counts().to_dict()
+                match_count = status_counts.get('match', 0)
+                new_count = status_counts.get('new', 0)
+                changed_count = status_counts.get('changed', 0)
+                missing_count = status_counts.get('missing_in_new', 0)
+                
+                add_log_message(f"[SUCCESS] Comparison complete:")
+                add_log_message(f"  • {match_count} matches (identical in both files)")
+                add_log_message(f"  • {new_count} new records (only in new file)")
+                add_log_message(f"  • {changed_count} changed records (different values)")
+                add_log_message(f"  • {missing_count} missing in new (only in core file)")
+                
+                # Save output files
+                update_status("Writing output files...")
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                
+                output_all = working_path / f"merged_review_{timestamp}.csv"
+                output_changes = working_path / f"merged_changes_only_{timestamp}.csv"
+                output_summary = working_path / f"merge_summary_{timestamp}.csv"
+                
+                merged.to_csv(output_all, index=False)
+                add_log_message(f"[SUCCESS] Wrote full review: {output_all.name}")
+                
+                changes_only = merged[merged['status'].isin(['changed', 'new', 'missing_in_new'])].copy()
+                changes_only.to_csv(output_changes, index=False)
+                add_log_message(f"[SUCCESS] Wrote changes only: {output_changes.name} ({len(changes_only)} rows)")
+                
+                summary_df = pd.DataFrame({
+                    'status': ['match', 'new', 'changed', 'missing_in_new'],
+                    'count': [match_count, new_count, changed_count, missing_count]
+                })
+                summary_df.to_csv(output_summary, index=False)
+                add_log_message(f"[SUCCESS] Wrote summary: {output_summary.name}")
+                
+                # Store result for display
+                comparison_result = {
+                    'merged': merged,
+                    'match_count': match_count,
+                    'new_count': new_count,
+                    'changed_count': changed_count,
+                    'missing_count': missing_count,
+                    'total_rows': len(merged),
+                    'output_all': output_all,
+                    'output_changes': output_changes,
+                    'output_summary': output_summary,
+                    'old_csv_name': old_csv.name,
+                    'new_csv_name': selected_new_csv.name
+                }
+                
+                # Show results dialog
+                show_comparison_results(comparison_result)
+                
+                update_status(f"CSV comparison complete: {len(changes_only)} changes found")
+                
+            except Exception as ex:
+                update_status(f"Error comparing CSVs: {ex}", is_error=True)
+                add_log_message(f"[ERROR] Comparison failed: {ex}")
+                logger.error(f"CSV comparison error: {ex}", exc_info=True)
+        
+        # Build CSV selection dialog for "new" file
+        def close_select_dialog(ev):
+            select_dialog.open = False
+            page.update()
+        
+        def on_csv_selected(selected_file):
+            select_dialog.open = False
+            page.update()
+            add_log_message(f"[INFO] User selected new CSV: {selected_file.name}")
+            perform_comparison(selected_file)
+        
+        def use_default(ev):
+            select_dialog.open = False
+            page.update()
+            add_log_message(f"[INFO] Using default (newest) CSV: {new_csv.name}")
+            perform_comparison(new_csv)
+        
+        # Build CSV selection list
+        csv_choices = []
+        for i, csv_file in enumerate(csv_files, 1):
+            mod_time = datetime.fromtimestamp(csv_file.stat().st_mtime).strftime('%Y-%m-%d %H:%M')
+            is_newest = csv_file == new_csv
+            is_core = csv_file.resolve() == old_csv.resolve()
+            
+            label = f"{i}. {csv_file.name}\n   Modified: {mod_time}"
+            if is_newest:
+                label += " ⭐ (newest)"
+            if is_core:
+                label += " (core)"
+            
+            csv_choices.append(
+                ft.Container(
+                    content=ft.TextButton(
+                        label,
+                        on_click=lambda e, f=csv_file: on_csv_selected(f),
+                    ),
+                    padding=4,
+                    bgcolor=ft.Colors.GREEN_50 if is_newest else None,
+                    border_radius=4,
+                )
+            )
+        
+        select_dialog = ft.AlertDialog(
+            modal=True,
+            title=ft.Text("📊 Select New CSV to Compare", weight=ft.FontWeight.BOLD),
+            content=ft.Container(
+                content=ft.Column([
+                    ft.Text(
+                        f"Core metadata CSV (from settings):\n  {old_csv.name}",
+                        size=12,
+                        weight=ft.FontWeight.BOLD,
+                        color=ft.Colors.BLUE_700
+                    ),
+                    ft.Divider(),
+                    ft.Text("Select the new CSV file to compare against core:", size=13),
+                    ft.Text("⭐ Newest file is recommended (highlighted)", size=11, italic=True),
+                    ft.Container(height=8),
+                    ft.Column(csv_choices, spacing=2, scroll=ft.ScrollMode.AUTO),
+                ], spacing=4),
+                width=600,
+                height=450,
+            ),
+            actions=[
+                ft.ElevatedButton("Use Newest", on_click=use_default, icon=ft.Icons.STAR),
+                ft.TextButton("Cancel", on_click=close_select_dialog),
+            ],
+        )
+        
+        page.overlay.append(select_dialog)
+        select_dialog.open = True
+        page.update()
+        
+        add_log_message(f"[INFO] Function 4: Found {len(csv_files)} CSV files in working directory")
+        add_log_message(f"[INFO] Newest CSV: {new_csv.name}")
+        update_status(f"Function 4: Select new CSV to compare with core ({old_csv.name})")
+
     def on_function_9_system_info(e):
         """Function 9: Display system information."""
         storage.record_function_usage("Function 9")
@@ -2783,6 +3385,7 @@ def main(page: ft.Page):
         "function_1_list_files",
         "function_2_export_csv",
         "function_3_generate_derivatives",
+        "function_4_compare_merge",
         "function_9_system_info",
     ]
 
@@ -2810,6 +3413,12 @@ def main(page: ft.Page):
             "icon": "🖼️",
             "handler": on_function_3_generate_derivatives,
             "help_file": "FUNCTION_3_GENERATE_DERIVATIVES.md"
+        },
+        "function_4_compare_merge": {
+            "label": "4: Compare and Merge CSV Files",
+            "icon": "🔀",
+            "handler": on_function_4_compare_merge,
+            "help_file": "FUNCTION_4_COMPARE_MERGE_CSV.md"
         },
         "function_9_system_info": {
             "label": "9: System Information",
