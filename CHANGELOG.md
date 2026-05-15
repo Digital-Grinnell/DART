@@ -7,6 +7,97 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.5.3] - 2026-05-15
+
+### Summary
+Version 1.5.3 implements underscore-prefixed filename indexing for compound parent objects, establishing filename as the universal source of truth for ALL objects and eliminating the need for objectid fallback logic. Also adds automatic derivative URL population for compound parents in Function 3.
+
+### Changed
+- **Compound parent filename indexing**: Compound parents now use underscore-prefixed first child filename
+  - Before: Compound parents had blank filename (required objectid fallback for indexing)
+  - After: Compound parents have `_<first_child_filename>` (e.g., `_photo_001.jpg`)
+  - Maintains filename as source of truth for ALL objects (children, standalone, and compound parents)
+  - Underscore prefix clearly differentiates compound parents from actual files
+  - First child is determined deterministically (numbered files first by sequence, then unnumbered alphabetically)
+- **Function 1 compound analysis**: Enhanced to capture first child's filename
+  - Sorts children (numbered first, then unnumbered) before compound creation
+  - Stores `first_child_filename` in compound object data structure
+  - Ensures consistent "first child" selection across multiple runs
+- **Function 2 CSV export**: Updated to write underscore-prefixed filenames for compound parents
+  - CSV filename column: `_photo_001.jpg` for compound parent, `photo_001.jpg` for first child
+  - Eliminates need for special handling of blank filenames
+  - Simplifies downstream processing (no dual-path logic needed)
+  - Compound parents do not receive `object_location` values (no physical file to reference)
+- **Function 3 derivative generation**: Enhanced to populate compound parent derivative URLs
+  - Still skips compound parents during derivative generation (no physical file)
+  - After processing all children, automatically populates compound parent derivatives
+  - Finds first child by removing underscore from parent filename
+  - Copies `image_small` and `image_thumb` URLs from first child to parent
+  - Avoids duplicate uploads to Azure (derivatives already exist for first child)
+  - Log messages show which compound parents received derivative URLs
+  - Pre-scan correctly counts compound parents as skipped files
+
+### Added
+- **ARCHITECTURE.md**: New documentation file
+  - Comprehensive explanation of compound filename indexing decision
+  - Technical rationale and benefits
+  - Implementation details across all functions
+  - Example CSV structure showing underscore-prefixed filenames
+- **Compound parent derivative inheritance** (Function 3)
+  - Automatic URL population after child processing completes
+  - Matches parent filename (without underscore) to child filename
+  - Inherits both image_small and image_thumb from first child
+  - Eliminates redundant Azure storage of identical derivatives
+
+### Documentation
+- **FUNCTION_2_EXPORT_CSV.md**: Updated compound object examples
+  - CSV examples now show `_wit_001.jpg` for compound parent
+  - Note explains underscore prefix maintains filename as source of truth
+  - Updated field descriptions to reflect new approach
+- **FUNCTION_3_GENERATE_DERIVATIVES.md**: Added compound object derivative handling section
+  - Explains automatic derivative URL inheritance
+  - Documents that no derivatives are generated for compound parents
+  - Clarifies that derivatives already exist in Azure for first child
+  - Example CSV showing parent and child with shared derivative URLs
+  - Updated "What Gets Processed" and "What Gets Skipped" sections
+- **FUNCTION_4_COMPARE_MERGE_CSV.md**: Updated note about compound parent filenames
+  - Now mentions underscore-prefixed filenames instead of blank filenames
+- **Code comments**: Updated throughout for clarity
+  - Function 1: "Use first child's filename as compound's filename index"
+  - Function 2: "Use first child's filename with underscore prefix for indexing"
+  - Function 3: "Compound parent (no physical file) - will populate derivatives after children processed"
+
+### Technical Details
+**analyze_compound_objects() function**:
+- Sorts parsed_items: `numbered_items.sort(key=lambda x: x['number'])`, then `unnumbered_items.sort(key=lambda x: x['filename'])`
+- Extracts first: `first_child_filename = sorted_items[0]['filename']`
+- Stores in compound: `"first_child_filename": first_child_filename`
+
+**CSV Export (Function 2)**:
+- Compound parent filename: `row[col] = f"_{first_child}" if first_child else ''`
+- Writes underscore-prefixed value to filename column
+- No object_location populated for compound parents
+
+**Derivative Generation (Function 3)**:
+- Processing loop: `if filename.startswith('_'): skipped_count += 1; continue`
+- After processing: Loop through rows to find compound parents (underscore-prefixed)
+- For each: Remove underscore, find matching child row, copy image_small and image_thumb
+- Logs success/warnings for each compound parent processed
+
+### Rationale
+This unified indexing approach:
+1. **Eliminates complexity**: No need for 2-pronged approach (filename vs objectid)
+2. **Maintains consistency**: Filename is always the index - no exceptions
+3. **Clear differentiation**: Underscore prefix visually distinguishes compound parents
+4. **Deterministic**: First child selection is repeatable across runs
+5. **Simpler code**: Fewer conditionals, easier to maintain
+6. **Efficient derivatives**: No duplicate Azure storage, compound parents reference existing child derivatives
+
+### Breaking Changes
+None - this is an internal implementation detail. Existing workflows continue unchanged.
+
+---
+
 ## [1.5.2] - 2026-05-14
 
 ### Summary

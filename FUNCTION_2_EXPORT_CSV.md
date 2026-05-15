@@ -36,7 +36,10 @@ Use this function when you want to:
 The function automatically populates these CollectionBuilder fields from your assets:
 
 - **objectid**: Unique DG identifier (format: `dg_<epoch>`)
-- **filename**: Original filename (blank for compound parent objects)
+- **filename**: Original filename for files; underscore-prefixed first child filename for compound parents
+  - Example: `photo_001.jpg` for a regular file
+  - Example: `_photo_001.jpg` for a compound parent (no physical file, just an index)
+  - The underscore prefix differentiates compound parents from actual files
 - **parentid**: Parent object ID for child objects (if column exists and compound grouping enabled)
   - Blank for standalone objects and compound parents
   - Set to parent's objectid for child objects in a compound
@@ -220,16 +223,17 @@ With files: `wit_001.jpg`, `wit_002.jpg`, `wit_003.jpg`
 
 ```csv
 objectid,parentid,filename,title,display_template,format,object_location
-dg_1715614220,,,Wit,compound_object,,
+dg_1715614220,,_wit_001.jpg,Wit,compound_object,,
 dg_1715614221,dg_1715614220,wit_001.jpg,,image,jpg,https://account.blob.core.windows.net/objs/collection/dg_1715614221.jpg
 dg_1715614222,dg_1715614220,wit_002.jpg,,image,jpg,https://account.blob.core.windows.net/objs/collection/dg_1715614222.jpg
 dg_1715614223,dg_1715614220,wit_003.jpg,,image,jpg,https://account.blob.core.windows.net/objs/collection/dg_1715614223.jpg
 ```
 
 **Note**: 
-- Compound parent object (first row) has no filename and no object_location (no physical file)
+- Compound parent (first row) has underscore-prefixed filename `_wit_001.jpg` (no physical file, just an index based on first child)
+- This maintains filename as the source of truth for ALL objects, eliminating the need for objectid fallback
 - Child objects have Azure URLs in their object_location field 
-- Compound parent object (first row) has no filename, has suggested title, display_template is `compound_object`
+- Compound parent has suggested title, display_template is `compound_object`
 - Child objects (following rows) have the parent's objectid in their `parentid` field
 - The `display_template`, `format`, and `parentid` columns are only populated if they exist in your template
 

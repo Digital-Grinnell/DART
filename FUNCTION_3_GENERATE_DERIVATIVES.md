@@ -68,7 +68,7 @@ The following image formats are processed:
 - **BMP**: `.bmp`
 - **WebP**: `.webp`
 
-**Note**: Only image files are processed. PDFs, videos, and audio files are skipped. Rows in the CSV without filenames (like compound parent objects) are also skipped.
+**Note**: Only image files are processed. PDFs, videos, and audio files are skipped. Compound parent objects (underscore-prefixed filenames) don't need derivative generation—they automatically inherit their first child's derivative URLs.
 
 ## Image Processing Details
 
@@ -97,6 +97,29 @@ Examples:
 - JPEG quality set to 85% (good balance between quality and file size)
 - LANCZOS resampling for high-quality resizing
 - Optimized JPEG encoding enabled
+
+### Compound Object Derivative Handling
+
+**Compound parent objects** (those with underscore-prefixed filenames like `_photo_001.jpg`) receive special handling:
+
+1. **No derivative generation**: Compound parents have no physical files, so no derivatives are generated
+2. **Automatic URL population**: After all child files are processed, compound parents automatically inherit their first child's derivative URLs
+3. **URL inheritance logic**: 
+   - Compound parent filename: `_photo_001.jpg`
+   - First child filename: `photo_001.jpg` (underscore removed)
+   - DART finds the child row and copies its `image_small` and `image_thumb` values to the parent
+4. **Derivatives already exist**: The first child's derivatives were already generated and uploaded to Azure, so the parent simply references the same URLs
+5. **No duplicate uploads**: This approach avoids uploading duplicate files to Azure while ensuring compound parents have proper derivative references
+
+**Example**:
+```csv
+objectid,filename,parentid,image_small,image_thumb
+dg_1234,_photo_001.jpg,,https://.../smalls/.../dg_1235_SMALL.jpg,https://.../thumbs/.../dg_1235_TN.jpg
+dg_1235,photo_001.jpg,dg_1234,https://.../smalls/.../dg_1235_SMALL.jpg,https://.../thumbs/.../dg_1235_TN.jpg
+dg_1236,photo_002.jpg,dg_1234,https://.../smalls/.../dg_1236_SMALL.jpg,https://.../thumbs/.../dg_1236_TN.jpg
+```
+
+The compound parent (dg_1234) shares the same derivative URLs as its first child (dg_1235), eliminating redundant storage.
 
 ## Azure Folder Structure
 
@@ -242,9 +265,9 @@ The kill switch is useful when:
 - ✓ Image files with valid extensions (jpg, png, gif, tif, bmp, webp)
 - ✓ Rows with both objectid and filename populated
 - ✓ Files where source can be located
+- ✓ Compound parent objects (automatically inherit first child's derivative URLs)
 
 ### What Gets Skipped
-- ⊘ Rows without filenames (compound parent objects)
 - ⊘ Non-image files (PDF, video, audio, archives)
 - ⊘ Files that can't be found on disk
 - ⊘ Rows without object IDs

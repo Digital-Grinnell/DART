@@ -96,7 +96,8 @@ DART automatically:
 - Normalizes whitespace (strips leading/trailing spaces)
 - Treats empty strings and missing values (NaN) as equivalent
 - Validates that `filename` is unique in both files
-- For display purposes: Uses `filename` to identify records, falls back to `objectid` when filename is blank (e.g., for compound parent objects)
+- For display purposes: Uses `filename` to identify records
+  - Note: Compound parent objects now have underscore-prefixed filenames (e.g., `_photo_001.jpg`) rather than blank
 
 ## Output Files
 

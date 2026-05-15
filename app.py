@@ -751,17 +751,54 @@ def main(page: ft.Page):
         
         page.update()
 
-    def update_status(message: str, is_error: bool = False):
-        """Update the status text field."""
-        status_text.value = message
-        status_text.color = ft.Colors.RED_700 if is_error else ft.Colors.BLACK
+    def update_status(message: str, is_error: bool = False, log_clickable: bool = False):
+        """Update the status, optionally with clickable log link."""
+        color = ft.Colors.RED_700 if is_error else ft.Colors.BLACK
+        
+        if log_clickable:
+            # Create a row with message and clickable "check log" link
+            status_container.content = ft.Row(
+                controls=[
+                    ft.Text(
+                        message,
+                        color=color,
+                        size=14,
+                    ),
+                    ft.TextButton(
+                        "check log",
+                        on_click=on_view_full_log_click,
+                        style=ft.ButtonStyle(padding=0),
+                    ),
+                ],
+                spacing=5,
+                wrap=True,
+            )
+        else:
+            # Simple text status
+            status_container.content = ft.Text(
+                message,
+                color=color,
+                size=14,
+            )
+        
         add_log_message(message)
         page.update()
 
     def on_copy_status_click(e):
         """Copy status text to clipboard."""
-        if status_text.value:
-            page.set_clipboard(status_text.value)
+        # Extract text from status_container content
+        status_text_value = ""
+        if isinstance(status_container.content, ft.Text):
+            status_text_value = status_container.content.value or ""
+        elif isinstance(status_container.content, ft.Row):
+            # Get text from first control (Text widget)
+            if status_container.content.controls:
+                first_control = status_container.content.controls[0]
+                if isinstance(first_control, ft.Text):
+                    status_text_value = first_control.value or ""
+        
+        if status_text_value:
+            page.set_clipboard(status_text_value)
             add_log_message("Status copied to clipboard")
 
     def on_copy_log_click(e):
@@ -775,6 +812,41 @@ def main(page: ft.Page):
         log_output.value = ""
         page.update()
         logger.info("Log cleared")
+    
+    def on_view_full_log_click(e):
+        """Open full log file in read-only popup dialog."""
+        global log_filename
+        try:
+            with open(log_filename, 'r', encoding='utf-8') as f:
+                log_content = f.read()
+            
+            def close_log_dialog(e):
+                log_dialog.open = False
+                page.update()
+            
+            log_dialog = ft.AlertDialog(
+                modal=True,
+                title=ft.Text(f"Full Log File: {Path(log_filename).name}", weight=ft.FontWeight.BOLD),
+                content=ft.Container(
+                    content=ft.TextField(
+                        value=log_content,
+                        multiline=True,
+                        read_only=True,
+                        text_size=11,
+                        border=ft.InputBorder.NONE,
+                    ),
+                    width=800,
+                    height=600,
+                ),
+                actions=[ft.TextButton("Close", on_click=close_log_dialog)],
+            )
+            
+            page.overlay.append(log_dialog)
+            log_dialog.open = True
+            page.update()
+        except Exception as ex:
+            logger.error(f"Could not open log file: {ex}")
+            update_status(f"Error opening log: {ex}", is_error=True)
 
     def on_kill_switch_click(e):
         """Handle Kill Switch button click - emergency stop for batch operations."""
@@ -806,7 +878,7 @@ def main(page: ft.Page):
         if warnings:
             for warning in warnings:
                 add_log_message(warning)
-            update_status(f"{len(warnings)} directory warning(s) - check log", is_error=True)
+            update_status(f"{len(warnings)} directory warning(s) -", is_error=True, log_clickable=True)
         
         return len(warnings) == 0
 
@@ -1645,19 +1717,32 @@ def main(page: ft.Page):
                     add_log_message(f"[DEBUG] Created new compound {compound_id} for '{text_base}' in {folder_path}")
                     logger.info(f"[DEBUG] New compound: {compound_id} | Folder: {folder_path} | Base: '{text_base}'")
                 
+                # Sort children to determine the deterministic "first" child for filename indexing
+                # Numbered children first (by sequence), then unnumbered (alphabetically)
+                parsed_items = group_data['items']
+                numbered_items = [item for item in parsed_items if item.get('number') is not None]
+                unnumbered_items = [item for item in parsed_items if item.get('number') is None]
+                numbered_items.sort(key=lambda x: x['number'])
+                unnumbered_items.sort(key=lambda x: x['filename'])
+                sorted_items = numbered_items + unnumbered_items
+                
+                # Use first child's filename as the compound's filename index (will be prefixed with _ in CSV)
+                first_child_filename = sorted_items[0]['filename']
+                
                 compound_objects.append({
                     "objectid": compound_id,
                     "text_base": text_base,
                     "child_count": len(group_files),
                     "folder_path": folder_path,
                     "zero_pad_width": zero_pad_width,
-                    "type": "compound"
+                    "type": "compound",
+                    "first_child_filename": first_child_filename
                 })
                 
                 # Assign this compound ID as parentid to all children
                 # Also store sequence numbers from parsed data for display
-                parsed_items = group_data['items']
-                for parsed_item in parsed_items:
+                # Use sorted_items to maintain consistent ordering
+                for parsed_item in sorted_items:
                     child_obj = parsed_item['obj']
                     child_obj["parentid"] = compound_id
                     child_obj["type"] = "child"
@@ -1810,7 +1895,7 @@ def main(page: ft.Page):
             add_log_message(f"[DEBUG] {error_msg}")
             logger.error(f"[DEBUG] {error_msg}")
             logger.error(f"[DEBUG] Objects with duplicates: {[obj for obj in objects if obj['objectid'] in duplicates]}")
-            update_status("Error: Duplicate object IDs detected - check log for details", is_error=True)
+            update_status("Error: Duplicate object IDs detected -", is_error=True, log_clickable=True)
             
             # Show error dialog with details
             dup_details = []
@@ -2201,8 +2286,10 @@ def main(page: ft.Page):
                             if col == 'objectid':
                                 row[col] = compound.get('objectid', '')
                             elif col == 'filename':
-                                # Compound objects don't have a filename
-                                row[col] = ''
+                                # Use first child's filename with underscore prefix for indexing
+                                # This maintains filename as source of truth for ALL objects
+                                first_child = compound.get('first_child_filename', '')
+                                row[col] = f"_{first_child}" if first_child else ''
                             elif col == 'parentid':
                                 # Compound objects have no parent
                                 row[col] = ''
@@ -2469,6 +2556,9 @@ def main(page: ft.Page):
             filename = row.get('filename', '').strip()
             if not filename:
                 no_filename += 1
+            elif filename.startswith('_'):
+                # Compound parent (underscore-prefixed first child filename)
+                no_filename += 1
             else:
                 ext = Path(filename).suffix.lower()
                 if ext not in {'.jpg', '.jpeg', '.png', '.gif', '.tif', '.tiff', '.bmp', '.webp'}:
@@ -2479,7 +2569,7 @@ def main(page: ft.Page):
         add_log_message(f"[INFO] CSV Analysis: {total_rows} total rows")
         add_log_message(f"  • {processable} image files to process")
         if no_filename > 0:
-            add_log_message(f"  • {no_filename} rows with no filename (compound objects or metadata-only)")
+            add_log_message(f"  • {no_filename} rows with no file (compound parents or metadata-only)")
         if non_image > 0:
             add_log_message(f"  • {non_image} non-image files (will be skipped)")
         
@@ -2491,12 +2581,17 @@ def main(page: ft.Page):
                 add_log_message("⚠️ Kill switch activated - stopping derivative generation")
                 break
             
-            # Skip rows without files (like compound parents)
+            # Skip rows without files (compound parents have underscore-prefixed filenames)
             filename = row.get('filename', '').strip()
             if not filename:
                 objectid = row.get('objectid', 'unknown')
                 title = row.get('title', '')[:50] if row.get('title') else 'no title'
                 add_log_message(f"[SKIP #{idx+1}] No filename (objectid: {objectid}, title: {title}...)")
+                skipped_count += 1
+                continue
+            
+            if filename.startswith('_'):
+                # Compound parent (no physical file) - will populate derivatives after children processed
                 skipped_count += 1
                 continue
             
@@ -2651,6 +2746,49 @@ def main(page: ft.Page):
             else:
                 thumb_fail += 1
                 add_log_message(f"  ✗ Thumb generation failed: {msg_thumb}")
+        
+        # Populate derivatives for compound parents
+        # Compound parents use their first child's derivative URLs (based on filename without underscore)
+        add_log_message(f"[INFO] Populating compound parent derivatives...")
+        compound_derivatives_populated = 0
+        
+        for row in rows:
+            filename = row.get('filename', '').strip()
+            if filename.startswith('_'):
+                # Compound parent - find matching first child
+                child_filename = filename[1:]  # Remove leading underscore
+                
+                # Find the child row with this filename
+                child_row = None
+                for potential_child in rows:
+                    if potential_child.get('filename', '').strip() == child_filename:
+                        child_row = potential_child
+                        break
+                
+                if child_row:
+                    # Copy derivative URLs from child to parent
+                    child_small = child_row.get('image_small', '').strip()
+                    child_thumb = child_row.get('image_thumb', '').strip()
+                    
+                    if child_small:
+                        row['image_small'] = child_small
+                    if child_thumb:
+                        row['image_thumb'] = child_thumb
+                    
+                    if child_small and child_thumb:
+                        compound_derivatives_populated += 1
+                        objectid = row.get('objectid', 'unknown')
+                        title = row.get('title', '')[:30] if row.get('title') else 'no title'
+                        add_log_message(f"  ✓ Compound parent {objectid} ({title}...) derivatives from {child_filename}")
+                    elif child_small or child_thumb:
+                        add_log_message(f"  ⚠️ Compound parent {row.get('objectid', 'unknown')}: partial derivatives from {child_filename}")
+                    else:
+                        add_log_message(f"  ⚠️ Compound parent {row.get('objectid', 'unknown')}: no derivatives found for child {child_filename}")
+                else:
+                    add_log_message(f"  ⚠️ Compound parent {row.get('objectid', 'unknown')}: child file {child_filename} not found in CSV")
+        
+        if compound_derivatives_populated > 0:
+            add_log_message(f"[SUCCESS] Populated derivatives for {compound_derivatives_populated} compound parent(s)")
         
         # Clean up temp directory
         try:
@@ -3954,12 +4092,14 @@ Detailed results: {output_diff.name}
         expand=True,
     )
 
-    status_text = ft.TextField(
-        value="Ready",
-        multiline=True,
-        min_lines=2,
-        max_lines=3,
-        read_only=True,
+    # Container for status - can hold either simple text or row with clickable link
+    status_container = ft.Container(
+        content=ft.Text(
+            "Ready",
+            size=14,
+            color=ft.Colors.BLACK,
+        ),
+        padding=ft.padding.all(8),
     )
 
     log_output = ft.TextField(
@@ -4175,7 +4315,7 @@ Detailed results: {output_diff.name}
                                     ),
                                 ],
                             ),
-                            status_text,
+                            status_container,
                         ],
                         spacing=5,
                     ),
@@ -4194,6 +4334,12 @@ Detailed results: {output_diff.name}
                                         "Log Output",
                                         size=18,
                                         weight=ft.FontWeight.BOLD,
+                                    ),
+                                    ft.IconButton(
+                                        icon=ft.Icons.OPEN_IN_NEW,
+                                        tooltip="View full log file",
+                                        on_click=on_view_full_log_click,
+                                        icon_size=20,
                                     ),
                                     ft.IconButton(
                                         icon=ft.Icons.DELETE_SWEEP,
