@@ -2545,7 +2545,9 @@ def main(page: ft.Page):
             add_log_message("[WARN] No input directory set - files must have valid filepath in CSV")
         
         # Find latest CSV export or let user select
-        csv_files = sorted(Path(working_dir).glob("DART_export_*.csv"), reverse=True)
+        # Exclude derivative CSVs (which contain "with_derivatives") to avoid processing output as input
+        all_csv_files = sorted(Path(working_dir).glob("DART_export_*.csv"), reverse=True)
+        csv_files = [f for f in all_csv_files if "with_derivatives" not in f.name]
         if not csv_files:
             update_status("Error: No CSV exports found. Run Function 2 first.", is_error=True)
             return
