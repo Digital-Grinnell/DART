@@ -13,6 +13,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Version 1.5.3 implements underscore-prefixed filename indexing for compound parent objects, establishing filename as the universal source of truth for ALL objects and eliminating the need for objectid fallback logic. Also adds automatic derivative URL population for compound parents in Function 3, implements clickable status messages for log access, enforces row order preservation in Function 4 CSV merge operations, and introduces network-mount-agnostic file-to-ID mapping.
 
 ### Changed
+- **Function 2 Azure uploads**: Now skips files that already exist in Azure
+  - Before: Re-uploaded all files on every run (overwrote existing files)
+  - After: Checks if file exists before uploading, skips if already present
+  - Matches Function 3 derivative behavior (idempotent - safe to re-run)
+  - Tracks separately: uploaded (new), skipped (already exist), failed
+  - Results dialog shows breakdown of upload activity
+  - Log messages show both original and Azure filenames: "⏩ Wit 100.JPG (dg_1778853759.JPG) already exists in Azure - skipping upload"
+  - Function 3 derivatives also show Azure names: "⏩ Derivatives (dg_123_SMALL.jpg, dg_123_TN.jpg) already exist in Azure - skipping"
+- **Case preservation from filenames**: Original case now preserved when generating titles and display names
+  - Before: "SSWB001.jpg" → title "Sswb" (title case applied)
+  - After: "SSWB001.jpg" → title "SSWB" (original case preserved)
+  - Compound objects now store both `text_base` (lowercase for grouping) and `display_text_base` (original case)
+  - Display names extracted from first child's raw filename stem before normalization
+  - Applies to titles in CSV exports and compound object display in Function 1 results
+  - Underscores and hyphens still converted to spaces for readability
 - **File-to-ID mapping**: Network-mount-agnostic using stable relative paths
   - File-to-ID mappings now use stable paths (everything after `/Volumes/<mount>/`) as keys
   - IDs persist when network mounts change names or paths

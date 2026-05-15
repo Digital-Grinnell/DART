@@ -1752,9 +1752,21 @@ def main(page: ft.Page):
                 # Use first child's filename as the compound's filename index (will be prefixed with _ in CSV)
                 first_child_filename = sorted_items[0]['filename']
                 
+                # Extract display text_base from first child's raw stem (preserves original case)
+                # The lowercase text_base is used for grouping, but display_text_base preserves case
+                first_raw_stem = sorted_items[0]['raw_stem']
+                prefix_length = len(text_base)
+                
+                # Extract the first prefix_length characters from raw_stem to get original case
+                if len(first_raw_stem) >= prefix_length:
+                    display_text_base = first_raw_stem[:prefix_length]
+                else:
+                    display_text_base = first_raw_stem
+                
                 compound_objects.append({
                     "objectid": compound_id,
-                    "text_base": text_base,
+                    "text_base": text_base,  # Lowercase version for internal use
+                    "display_text_base": display_text_base,  # Original case for display/titles
                     "child_count": len(group_files),
                     "folder_path": folder_path,
                     "zero_pad_width": zero_pad_width,
@@ -1984,7 +1996,8 @@ def main(page: ft.Page):
             # Display compound objects with their children
             for compound in compound_objects:
                 zero_pad = compound.get('zero_pad_width', 0)
-                result_lines.append(f"📦 COMPOUND: {compound['objectid']} ('{compound['text_base']}' - {compound['child_count']} children)")
+                display_name = compound.get('display_text_base', compound.get('text_base', ''))
+                result_lines.append(f"📦 COMPOUND: {compound['objectid']} ('{display_name}' - {compound['child_count']} children)")
                 result_lines.append(f"    Folder: {compound['folder_path']}")
                 
                 # Show children indented, sorted by sequence number
@@ -2219,6 +2232,7 @@ def main(page: ft.Page):
 
         # Build object_location URLs and upload files to Azure if enabled
         upload_success_count = 0
+        upload_skip_count = 0
         upload_fail_count = 0
         
         if azure_enabled and blob_service_client:
@@ -2267,30 +2281,58 @@ def main(page: ft.Page):
                     if success:
                         obj['object_location'] = url
                         
-                        # Upload file to Azure
-                        upload_success, upload_msg = upload_to_azure(
-                            blob_service_client,
-                            file_path,
-                            azure_path,
-                            object_id,
-                            file_extension
-                        )
+                        # Check if file already exists in Azure before uploading
+                        # Build blob name to check existence
+                        normalized_path = azure_path.strip().strip('/')
+                        path_parts = normalized_path.split('/', 1)
+                        container_name = path_parts[0]
+                        blob_path = path_parts[1] if len(path_parts) > 1 else ""
                         
-                        if upload_success:
-                            upload_success_count += 1
-                            add_log_message(f"[SUCCESS] {upload_msg}")
+                        if blob_path:
+                            blob_name = f"{blob_path}/{object_id}{file_extension}"
                         else:
-                            upload_fail_count += 1
-                            logger.error(f"Upload failed: {upload_msg}")
-                            add_log_message(f"[ERROR] {upload_msg}")
-                            # Still include object_location in CSV even if upload failed
+                            blob_name = f"{object_id}{file_extension}"
+                        
+                        try:
+                            blob_client = blob_service_client.get_blob_client(container=container_name, blob=blob_name)
+                            file_exists = blob_client.exists()
+                        except Exception as ex:
+                            # If we can't check existence, assume it doesn't exist
+                            add_log_message(f"  [WARN] Could not check if file exists in Azure: {ex}")
+                            file_exists = False
+                        
+                        if file_exists:
+                            # File already exists - skip upload
+                            azure_filename = f"{object_id}{file_extension}"
+                            add_log_message(f"  ⏩ {obj['filename']} ({azure_filename}) already exists in Azure - skipping upload")
+                            logger.info(f"Skipped upload (file exists): {obj['filename']} → {blob_name}")
+                            # Count as skipped
+                            upload_skip_count += 1
+                        else:
+                            # Upload file to Azure
+                            upload_success, upload_msg = upload_to_azure(
+                                blob_service_client,
+                                file_path,
+                                azure_path,
+                                object_id,
+                                file_extension
+                            )
+                            
+                            if upload_success:
+                                upload_success_count += 1
+                                add_log_message(f"[SUCCESS] {upload_msg}")
+                            else:
+                                upload_fail_count += 1
+                                logger.error(f"Upload failed: {upload_msg}")
+                                add_log_message(f"[ERROR] {upload_msg}")
+                                # Still include object_location in CSV even if upload failed
                     else:
                         obj['object_location'] = ''
                         logger.error(f"Failed to build object_location: {msg}")
                         add_log_message(f"[ERROR] {msg}")
                 
-                logger.info(f"Azure upload complete: {upload_success_count} succeeded, {upload_fail_count} failed")
-                add_log_message(f"[INFO] Upload complete: {upload_success_count} succeeded, {upload_fail_count} failed")
+                logger.info(f"Azure upload complete: {upload_success_count} uploaded, {upload_skip_count} skipped (already exist), {upload_fail_count} failed")
+                add_log_message(f"[INFO] Upload complete: {upload_success_count} uploaded, {upload_skip_count} skipped, {upload_fail_count} failed")
         else:
             # Azure not enabled - set empty object_location for all objects
             for obj in objects:
@@ -2326,8 +2368,8 @@ def main(page: ft.Page):
                                 # Set compound_object layout for parent
                                 row[col] = 'compound_object'
                             elif col == 'title':
-                                # Use text_base as suggested title (title case)
-                                row[col] = compound.get('text_base', '').replace('_', ' ').replace('-', ' ').title()
+                                # Use display_text_base for title (preserves original case from filename)
+                                row[col] = compound.get('display_text_base', '').replace('_', ' ').replace('-', ' ')
                             else:
                                 row[col] = ''
                         
@@ -2381,8 +2423,12 @@ def main(page: ft.Page):
             # Add Azure upload information if enabled
             if azure_enabled:
                 result_text += f"Azure uploads: {'ENABLED' if azure_enabled else 'DISABLED'}\n"
-                if upload_success_count > 0 or upload_fail_count > 0:
-                    result_text += f"  • Uploaded: {upload_success_count} succeeded, {upload_fail_count} failed\n"
+                if upload_success_count > 0 or upload_skip_count > 0 or upload_fail_count > 0:
+                    result_text += f"  • Uploaded: {upload_success_count} new files\n"
+                    if upload_skip_count > 0:
+                        result_text += f"  • Skipped: {upload_skip_count} (already exist in Azure)\n"
+                    if upload_fail_count > 0:
+                        result_text += f"  • Failed: {upload_fail_count}\n"
                     result_text += f"  • Azure path: {azure_path}\n"
             else:
                 result_text += f"Azure uploads: DISABLED (configure in Function 0)\n"
@@ -2673,7 +2719,7 @@ def main(page: ft.Page):
             
             if small_exists and thumb_exists:
                 # Both derivatives already exist - skip generation
-                add_log_message(f"  ⏩ Derivatives already exist in Azure - skipping")
+                add_log_message(f"  ⏩ Derivatives ({small_filename}, {thumb_filename}) already exist in Azure - skipping")
                 # Build URLs for existing derivatives
                 success_small_url, small_url, small_url_msg = build_object_location(
                     smalls_azure_path,

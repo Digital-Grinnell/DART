@@ -84,20 +84,24 @@ When Azure is configured in Function 0 settings, Function 2 automatically:
    - Handles concurrent creation gracefully
    - No manual Azure portal setup required
 
-3. **Uploads files to Azure** during export
+3. **Uploads files to Azure** during export (skips files that already exist)
    - Each file is uploaded with its `dg_<epoch>` identifier as the filename
    - Original extension is preserved (e.g., `dg_1715614222.jpg`)
    - Files are uploaded to the path specified in settings (e.g., `objs/tdps_archive`)
    - Content-Type headers are set automatically based on file extension
+   - **Safe to re-run**: Checks if file exists before uploading, skips if already present
+   - Only uploads new or changed files, never overwrites existing files
 
 4. **Builds object_location URLs** for each file
    - Complete Azure Blob Storage URL
    - Format: `https://{account}.blob.core.windows.net/{container}/{path}/{objectid}{ext}`
    - Example: `https://collectionbuilder.blob.core.windows.net/objs/tdps/dg_1715614222.jpg`
    - Populated in CSV if `object_location` column exists in template
+   - URL is generated even if upload was skipped (file already exists)
 
 5. **Reports upload results**
-   - Success/failure count shown in results dialog
+   - Shows count of uploaded (new files), skipped (already exist), and failed
+   - Safe to re-run Function 2 multiple times without re-uploading existing files
    - Detailed log messages for each upload
    - CSV is created even if some uploads fail
    - object_location URLs are included for all files (successful or not)
