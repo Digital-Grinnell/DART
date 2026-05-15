@@ -99,6 +99,43 @@ DART automatically:
 - For display purposes: Uses `filename` to identify records
   - Note: Compound parent objects now have underscore-prefixed filenames (e.g., `_photo_001.jpg`) rather than blank
 
+## Row Order Preservation
+
+**CRITICAL: Core CSV row order is NEVER changed during comparison or merge.**
+
+DART strictly enforces this rule:
+- ✅ **Preserves**: Original row order from core CSV file
+- ✅ **Updates**: Cell values only for matching records
+- ✅ **Appends**: New records to the bottom of the file
+- ❌ **Never**: Reorders, sorts, or rearranges existing rows
+
+**Why this matters:**
+- Manual curation and ordering is preserved
+- Complex multi-level hierarchies stay intact
+- User-controlled groupings remain unchanged
+- Record position has meaning and won't be disrupted
+
+**Example:**
+If your core CSV has records in this order:
+```
+1. photo_005.jpg  (your featured image)
+2. photo_001.jpg
+3. photo_003.jpg
+...
+```
+
+After merge, the order remains:
+```
+1. photo_005.jpg  (values may be updated)
+2. photo_001.jpg  (values may be updated)
+3. photo_003.jpg  (values may be updated)
+...
+145. photo_new_001.jpg  (NEW - appended)
+146. photo_new_002.jpg  (NEW - appended)
+```
+
+You retain full control of row ordering and can manually reorder records as needed after the merge.
+
 ## Output Files
 
 Function 4 generates three timestamped CSV files in your working directory:

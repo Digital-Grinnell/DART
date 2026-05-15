@@ -10,9 +10,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.5.3] - 2026-05-15
 
 ### Summary
-Version 1.5.3 implements underscore-prefixed filename indexing for compound parent objects, establishing filename as the universal source of truth for ALL objects and eliminating the need for objectid fallback logic. Also adds automatic derivative URL population for compound parents in Function 3.
+Version 1.5.3 implements underscore-prefixed filename indexing for compound parent objects, establishing filename as the universal source of truth for ALL objects and eliminating the need for objectid fallback logic. Also adds automatic derivative URL population for compound parents in Function 3, implements clickable status messages for log access, and enforces row order preservation in Function 4 CSV merge operations.
 
 ### Changed
+- **Function 4 CSV merge**: Row order preservation strictly enforced
+  - Core CSV row order is NEVER changed during comparison or merge
+  - Updates cell values only for matching records (by filename)
+  - New records are appended to the bottom of the file
+  - Manual curation, hierarchies, and user-controlled ordering are preserved
+  - Changed from pandas outer merge to custom merge logic that maintains row position
+  - Critical for collections where record order has semantic meaning
+- **Status messages**: Enhanced with clickable log links
+  - Status messages can now include clickable "check log" button
+  - Replaced simple TextField with flexible Container that holds Text or Row with TextButton
+  - Used for directory warnings and duplicate object ID errors
+  - Clicking "check log" opens full log file in popup dialog (800x600px)
+  - Consistent with pattern used in Function 3 and Function 4 result dialogs
+  - Fixed `on_copy_status_click()` to extract text from both simple and clickable status formats
 - **Compound parent filename indexing**: Compound parents now use underscore-prefixed first child filename
   - Before: Compound parents had blank filename (required objectid fallback for indexing)
   - After: Compound parents have `_<first_child_filename>` (e.g., `_photo_001.jpg`)

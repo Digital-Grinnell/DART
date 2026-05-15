@@ -3653,42 +3653,72 @@ Detailed results: {output_diff.name}
                 add_log_message(f"[DEBUG] Core CSV: {len(old_valid)} with filename, {len(old_empty)} without")
                 add_log_message(f"[DEBUG] New CSV: {len(new_valid)} with filename, {len(new_empty)} without")
                 
-                # Perform outer merge only on rows with valid filenames
+                # Perform merge while PRESERVING CORE CSV ROW ORDER
+                # IMPORTANT: Never reorder rows from core CSV - only update cells and append new rows
                 update_status("Merging CSV files...")
-                if len(old_valid) > 0 or len(new_valid) > 0:
-                    merged = old_valid.merge(
-                        new_valid,
-                        on='filename',
-                        how='outer',
-                        suffixes=('_old', '_new'),
-                        indicator=True,
-                        validate='one_to_one'
-                    )
-                else:
-                    # No valid filenames in either file
-                    merged = pd.DataFrame()
                 
-                # Add rows with empty filenames (can't be matched between files)
-                # Mark old empty rows as "missing_in_new" and new empty rows as "new"
-                if len(old_empty) > 0:
-                    for col in compare_cols:
-                        old_empty[f'{col}_old'] = old_empty[col] if col in old_empty.columns else pd.NA
-                        old_empty[f'{col}_new'] = pd.NA
-                    old_empty['_merge'] = 'left_only'
-                    # Keep only filename and suffixed columns
-                    keep_cols = ['filename'] + [f'{col}_old' for col in compare_cols] + [f'{col}_new' for col in compare_cols] + ['_merge']
-                    old_empty = old_empty[[c for c in keep_cols if c in old_empty.columns]]
-                    merged = pd.concat([merged, old_empty], ignore_index=True)
+                # Create filename index for new CSV for fast lookup
+                new_valid_dict = new_valid.set_index('filename').to_dict('index') if len(new_valid) > 0 else {}
                 
-                if len(new_empty) > 0:
+                # Start with core CSV rows in original order
+                merged_rows = []
+                
+                # Process core CSV rows (preserves order)
+                for idx, old_row in old_df.iterrows():
+                    filename = old_row['filename']
+                    merge_indicator = None
+                    
+                    # Create row dict with old and new columns
+                    row_dict = {'filename': filename}
+                    
+                    if pd.notna(filename):
+                        # Valid filename - check if it exists in new CSV
+                        if filename in new_valid_dict:
+                            # Match found - copy values from both
+                            merge_indicator = 'both'
+                            new_row_data = new_valid_dict[filename]
+                            for col in compare_cols:
+                                row_dict[f'{col}_old'] = old_row.get(col, pd.NA)
+                                row_dict[f'{col}_new'] = new_row_data.get(col, pd.NA)
+                        else:
+                            # Only in core CSV (missing from new)
+                            merge_indicator = 'left_only'
+                            for col in compare_cols:
+                                row_dict[f'{col}_old'] = old_row.get(col, pd.NA)
+                                row_dict[f'{col}_new'] = pd.NA
+                    else:
+                        # Empty filename in core CSV (can't match)
+                        merge_indicator = 'left_only'
+                        for col in compare_cols:
+                            row_dict[f'{col}_old'] = old_row.get(col, pd.NA)
+                            row_dict[f'{col}_new'] = pd.NA
+                    
+                    row_dict['_merge'] = merge_indicator
+                    merged_rows.append(row_dict)
+                
+                # Append new rows that don't exist in core CSV (only rows with valid filenames)
+                for idx, new_row in new_valid.iterrows():
+                    filename = new_row['filename']
+                    if filename not in old_valid['filename'].values:
+                        # New row - append to bottom
+                        row_dict = {'filename': filename}
+                        for col in compare_cols:
+                            row_dict[f'{col}_old'] = pd.NA
+                            row_dict[f'{col}_new'] = new_row.get(col, pd.NA)
+                        row_dict['_merge'] = 'right_only'
+                        merged_rows.append(row_dict)
+                
+                # Append new rows with empty filenames (can't match, treated as new)
+                for idx, new_empty_row in new_empty.iterrows():
+                    row_dict = {'filename': pd.NA}
                     for col in compare_cols:
-                        new_empty[f'{col}_old'] = pd.NA
-                        new_empty[f'{col}_new'] = new_empty[col] if col in new_empty.columns else pd.NA
-                    new_empty['_merge'] = 'right_only'
-                    # Keep only filename and suffixed columns
-                    keep_cols = ['filename'] + [f'{col}_old' for col in compare_cols] + [f'{col}_new' for col in compare_cols] + ['_merge']
-                    new_empty = new_empty[[c for c in keep_cols if c in new_empty.columns]]
-                    merged = pd.concat([merged, new_empty], ignore_index=True)
+                        row_dict[f'{col}_old'] = pd.NA
+                        row_dict[f'{col}_new'] = new_empty_row.get(col, pd.NA)
+                    row_dict['_merge'] = 'right_only'
+                    merged_rows.append(row_dict)
+                
+                # Convert to DataFrame
+                merged = pd.DataFrame(merged_rows)
                 
                 # Classify each row and track changed fields
                 update_status("Analyzing differences...")
