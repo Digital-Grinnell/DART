@@ -848,6 +848,28 @@ def main(page: ft.Page):
             logger.error(f"Could not open log file: {ex}")
             update_status(f"Error opening log: {ex}", is_error=True)
 
+    def get_stable_path(full_path: str) -> str:
+        """Extract stable path by removing /Volumes/<mount>/ prefix for network-agnostic ID mapping.
+        
+        This allows file-to-ID mappings to persist across network mount changes.
+        
+        Examples:
+            /Volumes/OldMount/photos/image.jpg -> photos/image.jpg
+            /Volumes/NewMount/photos/image.jpg -> photos/image.jpg (same stable path!)
+            /Users/local/photos/image.jpg -> /Users/local/photos/image.jpg (unchanged)
+        """
+        path_obj = Path(full_path)
+        
+        # Check if path starts with /Volumes/ (network mount on macOS)
+        if len(path_obj.parts) >= 3 and path_obj.parts[0] == '/' and path_obj.parts[1] == 'Volumes':
+            # Remove /Volumes/<mount_name>/ and return the rest
+            stable = Path(*path_obj.parts[3:])  # Skip /, Volumes, and mount name
+            logger.debug(f"[STABLE PATH] {full_path} → {stable}")
+            return str(stable)
+        
+        # For local paths, return as-is
+        return full_path
+    
     def on_kill_switch_click(e):
         """Handle Kill Switch button click - emergency stop for batch operations."""
         nonlocal kill_switch
@@ -1699,8 +1721,9 @@ def main(page: ft.Page):
                 # Get the folder path from the first child (all children should be in same folder)
                 folder_path = str(Path(group_files[0]['filepath']).parent)
                 
-                # Create a compound key: folder + text_base for mapping
-                compound_key = f"{folder_path}::COMPOUND::{text_base}"
+                # Create a compound key using stable path (folder + text_base) for network-agnostic mapping
+                stable_folder = get_stable_path(folder_path)
+                compound_key = f"{stable_folder}::COMPOUND::{text_base}"
                 
                 # Check if this compound already has an assigned ID
                 if compound_key in file_to_id_map:
@@ -1839,23 +1862,26 @@ def main(page: ft.Page):
         reused_mappings = 0
         
         for file_path_str in files:
-            # Check if this file already has an assigned ID (using full path as key)
-            if file_path_str in file_to_id_map:
+            # Use stable path (without /Volumes/<mount>/) as lookup key for network-agnostic mapping
+            stable_path = get_stable_path(file_path_str)
+            
+            # Check if this file already has an assigned ID (using stable path as key)
+            if stable_path in file_to_id_map:
                 # Reuse existing ID - never change once assigned!
-                unique_id = file_to_id_map[file_path_str]
+                unique_id = file_to_id_map[stable_path]
                 reused_mappings += 1
-                logger.info(f"[DEBUG] Reusing existing: {unique_id} → {file_path_str}")
+                logger.info(f"[DEBUG] Reusing existing: {unique_id} → {stable_path} (full: {file_path_str})")
             else:
                 # Generate new unique DG identifier
                 unique_id = generate_unique_id(page)
-                file_to_id_map[file_path_str] = unique_id
+                file_to_id_map[stable_path] = unique_id
                 new_mappings += 1
-                logger.info(f"[DEBUG] Generated new: {unique_id} → {file_path_str}")
+                logger.info(f"[DEBUG] Generated new: {unique_id} → {stable_path} (full: {file_path_str})")
             
             # Store both full path and display name
             objects.append({
                 "objectid": unique_id,
-                "filepath": file_path_str,
+                "filepath": file_path_str,  # Keep full current path for file access
                 "filename": Path(file_path_str).name,
             })
 
@@ -2159,18 +2185,21 @@ def main(page: ft.Page):
         reused_mappings = 0
         
         for file_path_str in files:
-            if file_path_str in file_to_id_map:
-                unique_id = file_to_id_map[file_path_str]
+            # Use stable path (without /Volumes/<mount>/) as lookup key for network-agnostic mapping
+            stable_path = get_stable_path(file_path_str)
+            
+            if stable_path in file_to_id_map:
+                unique_id = file_to_id_map[stable_path]
                 reused_mappings += 1
             else:
                 unique_id = generate_unique_id(page)
-                file_to_id_map[file_path_str] = unique_id
+                file_to_id_map[stable_path] = unique_id
                 new_mappings += 1
             
             file_path = Path(file_path_str)
             objects.append({
                 "objectid": unique_id,
-                "filepath": file_path_str,
+                "filepath": file_path_str,  # Keep full current path for file access
                 "filename": file_path.name,
                 "display_template": get_display_template(file_path.suffix),
                 "format": file_path.suffix.lower().lstrip('.'),

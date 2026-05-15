@@ -10,9 +10,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.5.3] - 2026-05-15
 
 ### Summary
-Version 1.5.3 implements underscore-prefixed filename indexing for compound parent objects, establishing filename as the universal source of truth for ALL objects and eliminating the need for objectid fallback logic. Also adds automatic derivative URL population for compound parents in Function 3, implements clickable status messages for log access, and enforces row order preservation in Function 4 CSV merge operations.
+Version 1.5.3 implements underscore-prefixed filename indexing for compound parent objects, establishing filename as the universal source of truth for ALL objects and eliminating the need for objectid fallback logic. Also adds automatic derivative URL population for compound parents in Function 3, implements clickable status messages for log access, enforces row order preservation in Function 4 CSV merge operations, and introduces network-mount-agnostic file-to-ID mapping.
 
 ### Changed
+- **File-to-ID mapping**: Network-mount-agnostic using stable relative paths
+  - File-to-ID mappings now use stable paths (everything after `/Volumes/<mount>/`) as keys
+  - IDs persist when network mounts change names or paths
+  - Example: `/Volumes/OldServer/photos/img.jpg` and `/Volumes/NewServer/photos/img.jpg` map to same ID
+  - Local paths (not under `/Volumes/`) continue using full paths as keys
+  - Full current paths still tracked in object data for file access
+  - Applies to both individual files and compound object folder paths
+  - Eliminates "145 new, 0 reused" problem when working directory path changes
 - **Function 4 CSV merge**: Row order preservation strictly enforced
   - Core CSV row order is NEVER changed during comparison or merge
   - Updates cell values only for matching records (by filename)
