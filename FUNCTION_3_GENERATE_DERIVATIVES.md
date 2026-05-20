@@ -58,9 +58,11 @@ Use this function after Function 2 (Export Assets to CSV and Azure) when you wan
 - **CSV Column**: `image_thumb`
 - **URL Format**: `https://account.blob.core.windows.net/container/thumbs/path/dg_1234567890_TN.jpg`
 
-## Supported Image Formats
+## Supported File Formats
 
-The following image formats are processed:
+The following file formats are processed:
+
+### Image Formats
 - **JPEG**: `.jpg`, `.jpeg`
 - **PNG**: `.png` (converted to JPEG with white background for transparency)
 - **GIF**: `.gif`
@@ -68,7 +70,14 @@ The following image formats are processed:
 - **BMP**: `.bmp`
 - **WebP**: `.webp`
 
-**Note**: Only image files are processed. PDFs, videos, and audio files are skipped. Compound parent objects (underscore-prefixed filenames) don't need derivative generation—they automatically inherit their first child's derivative URLs.
+### PDF Documents
+- **PDF**: `.pdf` (first page rendered to JPEG at 150 DPI)
+  - Uses PyMuPDF (fitz) for high-quality rendering
+  - Automatically converts first page to image
+  - Maintains aspect ratio for derivatives
+  - Ideal for document collections, scanned materials, reports
+
+**Note**: Videos and audio files are not supported. Compound parent objects (underscore-prefixed filenames) don't need derivative generation—they automatically inherit their first child's derivative URLs.
 
 ## Image Processing Details
 
@@ -97,6 +106,13 @@ Examples:
 - JPEG quality set to 85% (good balance between quality and file size)
 - LANCZOS resampling for high-quality resizing
 - Optimized JPEG encoding enabled
+
+### PDF Processing
+- First page of PDF is rendered at 150 DPI
+- Converted to high-quality raster image
+- Then processed like any other image (resized, compressed)
+- PyMuPDF provides fast and accurate rendering
+- No external dependencies required (pure Python)
 
 ### Compound Object Derivative Handling
 

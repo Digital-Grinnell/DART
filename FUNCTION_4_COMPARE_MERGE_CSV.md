@@ -54,6 +54,16 @@ Uses the csvdiff Python library for comparison:
     - Checkbox DISABLED (grayed out) by default
     - Click "⚠️ Enable" button to unlock the checkbox
     - Requires deliberate action to accept data loss
+  - **📦 Compound Object Grouping**: Families displayed together with blanket controls
+    - Purple-bordered container wraps parent + all children
+    - **Parent Blanket Controls** at top: Master toggles for each changed field
+      - Checking/unchecking blanket toggle affects parent + all children simultaneously
+      - Label: "(controls parent + children)"
+      - Provides efficient bulk accept/reject for entire family
+    - Parent's changes shown below blanket controls
+    - Children listed with `↳` indentation, each with individual field checkboxes
+    - Blanket toggles synchronize with individual checkboxes
+    - Fine-grained override: Can still adjust individual children after using blanket
   - **Merge Selected button**: Applies only checked field changes to core CSV
   - **Automatic backup**: Creates timestamped backup before merging
   - **Granular control**: Accept some field changes in a record while rejecting others
@@ -212,7 +222,11 @@ After comparison completes, a dialog displays:
 2. **Summary Counts**: Total records and breakdown by status
 3. **Preview**: First 10 changed records with:
    - Status icon (✨ new, 📝 changed, ⚠️ missing)
-   - Object ID
+   - **Compound object grouping**: When children have changes, parent is shown first
+     - Parent displayed with 📦 icon and **[COMPOUND PARENT]** label in bold purple
+     - Children indented with `↳` arrow under their parent
+     - Family members grouped together for easier review
+   - Object ID or filename
    - List of fields that changed
 4. **Output Files**: Names of the three generated files
 5. **Log Link**: Clickable button to view detailed processing log

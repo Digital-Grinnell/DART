@@ -7,6 +7,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.5.4] - 2026-05-20
+
+### Summary
+Version 1.5.4 adds PDF derivative generation support using PyMuPDF, enabling derivative creation from the first page of PDF documents. Also implements compound object grouping in CSV comparison/merge review with blanket field toggles for efficient bulk operations on compound families.
+
+### Added
+- **PDF derivative generation**: Function 3 now processes PDF files alongside images
+  - Renders first page of PDF at 150 DPI using PyMuPDF (fitz)
+  - Converts to high-quality JPEG derivatives (small 800x800, thumbnail 400x400)
+  - Uploads to Azure with same structure as image derivatives
+  - Populates `image_small` and `image_thumb` columns in CSV
+  - Pure Python implementation with no external dependencies
+  - Ideal for document collections, scanned materials, reports, manuscript pages
+  - PyMuPDF>=1.24.0 added to python_requirements.txt
+- **Compound object grouping in CSV comparison**: Function 4 preview and merge dialogs now group compound families
+  - When compound children have changes, parent is automatically included and shown first
+  - Parent displayed with 📦 icon and **[COMPOUND PARENT]** label in purple
+  - Children indented with `↳` arrow for visual hierarchy
+  - Entire family wrapped in purple-bordered container
+  - Makes it clear which records belong to the same compound object
+- **Blanket field toggles for compound objects**: Interactive merge viewer (csvdiff mode) provides master controls
+  - "Parent Blanket Controls" section at top of each compound family
+  - One master checkbox per changed field affecting parent + all children
+  - Checking/unchecking blanket toggle synchronizes all family members for that field
+  - Efficient bulk accept/reject for entire compound families
+  - Individual child checkboxes can still be adjusted for fine-grained control
+  - Blanket toggles respect data loss warnings (disabled by default when clearing values)
+  - Label: "(controls parent + children)" clarifies scope of each toggle
+
+### Changed
+- **Function 3 file type handling**: Updated to include PDF files in processable formats
+  - Pre-scan counts now show "image/PDF files to process"
+  - Skip messages updated to "non-image/PDF file"
+  - Derivative generation detects PDF files and routes to PDF-specific handler
+  - Both small and thumbnail derivatives generated from same PDF first page render
+
+### Technical Details
+- Added `import fitz` (PyMuPDF) to app.py imports
+- New function `generate_pdf_derivative()` handles PDF-to-JPEG conversion with error handling
+  - Opens PDF with fitz.open()
+  - Validates page count (must have at least one page)
+  - Renders first page using matrix scaling (zoom = dpi/72.0)
+  - Converts pixmap to PIL Image via BytesIO
+  - Applies same thumbnail resizing and quality settings as images
+  - Catches fitz.FileDataError for corrupted PDFs
+- Compound grouping logic builds parent-child relationship maps from merged DataFrame
+  - Identifies parents by underscore-prefixed filenames
+  - Links children via `parentid_new` and `parentid_old` columns
+  - Processes changes in order, grouping families together
+  - Tracks which records have been displayed to avoid duplicates
+- Blanket toggle handlers use closures to capture field names and child checkbox references
+  - `make_blanket_handler()` creates synchronized change handlers
+  - Updates parent checkbox and all children checkboxes for that field
+  - Respects disabled state (won't change disabled checkboxes)
+  - Triggers page.update() to refresh UI immediately
+
 ## [1.5.3] - 2026-05-15
 
 ### Summary
