@@ -24,7 +24,7 @@ import io
 import fitz  # PyMuPDF for PDF processing
 
 # Import common DG utilities
-from common_dg_utilities.dg_utils import generate_unique_id, get_mime_type
+from common_dg_utilities.dg_utils import generate_unique_id
 
 # Configure logging
 DATA_DIR = Path.home() / "DART-data"
@@ -2449,9 +2449,6 @@ def main(page: ft.Page):
                             elif col == 'title':
                                 # Use display_text_base for title (preserves original case from filename)
                                 row[col] = compound.get('display_text_base', '').replace('_', ' ').replace('-', ' ')
-                            elif col == 'originating_system_id':
-                                # Use display_text_base (common portion of compound family filenames)
-                                row[col] = compound.get('display_text_base', '')
                             else:
                                 row[col] = ''
                         
@@ -2474,27 +2471,9 @@ def main(page: ft.Page):
                         elif col == 'display_template':
                             row[col] = obj.get('display_template', '')
                         elif col == 'format':
-                            # Auto-populate format with MIME type based on file extension
-                            filename = obj.get('filename', '')
-                            if filename:
-                                row[col] = get_mime_type(filename)
-                            else:
-                                row[col] = obj.get('format', '')
+                            row[col] = obj.get('format', '')
                         elif col == 'object_location':
                             row[col] = obj.get('object_location', '')
-                        elif col == 'originating_system_id':
-                            # Extract common portion of filename (prefix before numbers)
-                            filename = obj.get('filename', '')
-                            stem = Path(filename).stem
-                            # Match pattern: text before last number
-                            match = re.match(r'^(.+?)[\s_\-]*\d+$', stem)
-                            if match:
-                                # Preserve original case for originating_system_id
-                                prefix = match.group(1).strip()
-                                row[col] = prefix
-                            else:
-                                # No number found, use whole stem
-                                row[col] = stem
                         else:
                             # Leave other columns empty for manual population
                             row[col] = ''
@@ -3500,10 +3479,6 @@ Detailed results: {output_diff.name}
                             # Build color-coded view
                             view_rows = []
                             
-                            # Create field order based on new CSV columns (for consistent display)
-                            # Remove 'filename' since it's the key, not a changed field
-                            field_order = [f for f in new_fieldnames if f != 'filename']
-                            
                             # Count data loss warnings (old value replaced with empty)
                             data_loss_count = 0
                             for change in diff_result.get('changed', []):
@@ -3514,716 +3489,724 @@ Detailed results: {output_diff.name}
                                     if old_val and not new_val:  # Has old value but new is empty
                                         data_loss_count += 1
                             
-                            # Checkbox behavior explanation
-                            view_rows.append(ft.Container(
-                                content=ft.Row([
-                                    ft.Text("ℹ️", size=18),
-                                    ft.Column([
-                                        ft.Text("How Checkboxes Work", weight=ft.FontWeight.BOLD, size=12, color=ft.Colors.BLUE_900),
-                                        ft.Text("• CHECKED: Merge this change into the core CSV (accept the new value)", size=10),
-                                        ft.Text("• UNCHECKED: Skip this change (keep the existing core CSV value)", size=10),
-                                        ft.Text("• Most changes are checked by default, except data loss fields (highlighted in orange)", size=10, italic=True),
-                                    ], spacing=2),
-                                ], spacing=8),
-                                bgcolor=ft.Colors.BLUE_50,
-                                border=ft.border.all(1, ft.Colors.BLUE_300),
-                                border_radius=4,
-                                padding=10,
-                                margin=ft.margin.only(bottom=10),
-                            ))
-                            
                             # Show warning banner if data loss detected
                             if data_loss_count > 0:
                                 view_rows.append(ft.Container(
+                                        content=ft.Row([
+                                            ft.Text("⚠️", size=20),
+                                            ft.Column([
+                                                ft.Text("DATA LOSS WARNING", weight=ft.FontWeight.BOLD, color=ft.Colors.ORANGE_900, size=14),
+                                                ft.Text(f"{data_loss_count} field(s) being replaced with empty values", size=11, color=ft.Colors.ORANGE_800),
+                                                ft.Text("Data loss checkboxes are DISABLED (grayed out) - click '⚠️ Enable' to allow them", size=10, italic=True),
+                                            ], spacing=2),
+                                        ], spacing=8),
+                                        bgcolor=ft.Colors.ORANGE_100,
+                                        border=ft.border.all(2, ft.Colors.ORANGE_400),
+                                        border_radius=4,
+                                        padding=10,
+                                    ))
+                                    view_rows.append(ft.Divider(height=2, color=ft.Colors.ORANGE_400))
+                                    view_rows.append(ft.Text(""))
+                                
+                                # Selection controls
+                                view_rows.append(ft.Container(
                                     content=ft.Row([
-                                        ft.Text("⚠️", size=20),
+                                        ft.Text("✓", size=16, weight=ft.FontWeight.BOLD),
                                         ft.Column([
-                                            ft.Text("DATA LOSS WARNING", weight=ft.FontWeight.BOLD, color=ft.Colors.ORANGE_900, size=14),
-                                            ft.Text(f"{data_loss_count} field(s) being replaced with empty values (highlighted in orange below)", size=11, color=ft.Colors.ORANGE_800),
-                                            ft.Text("These fields are UNCHECKED by default to prevent accidental data loss - review carefully before enabling", size=10, italic=True),
-                                        ], spacing=2),
+                                            ft.Text("Select changes to merge into core CSV", weight=ft.FontWeight.BOLD, size=12),
+                                            ft.Text("All changes checked by default (except data loss - see warning above)", size=10, italic=True),
+                                        ], spacing=0),
                                     ], spacing=8),
-                                    bgcolor=ft.Colors.ORANGE_100,
-                                    border=ft.border.all(2, ft.Colors.ORANGE_400),
+                                    bgcolor=ft.Colors.BLUE_50,
+                                    border=ft.border.all(1, ft.Colors.BLUE_200),
                                     border_radius=4,
-                                    padding=10,
+                                    padding=8,
                                 ))
-                                view_rows.append(ft.Divider(height=2, color=ft.Colors.ORANGE_400))
                                 view_rows.append(ft.Text(""))
-                            
-                            # Added records (Blue) with checkboxes
-                            if added > 0:
-                                view_rows.append(ft.Text(f"✨ NEW RECORDS ({added})", weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE, size=14))
-                                view_rows.append(ft.Divider(height=1))
                                 
-                                for idx, record in enumerate(diff_result.get('added', [])):
-                                    filename = record.get('filename', 'Unknown')
-                                    objectid = record.get('objectid', '')
-                                    title = record.get('title', '')
+                                # Added records (Blue) with checkboxes
+                                if added > 0:
+                                    view_rows.append(ft.Text(f"✨ NEW RECORDS ({added})", weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE, size=14))
+                                    view_rows.append(ft.Divider(height=1))
                                     
-                                    record_header = f"{filename}"
-                                    if objectid:
-                                        record_header += f" (ID: {objectid})"
-                                    if title:
-                                        record_header += f" - {title}"
-                                    
-                                    # Record header with larger text
-                                    view_rows.append(ft.Text(record_header, weight=ft.FontWeight.BOLD, size=14, color=ft.Colors.BLUE_800))
-                                    view_rows.append(ft.Divider(height=1, color=ft.Colors.BLUE_200))
-                                    
-                                    # Checkbox for adding this record
-                                    checkbox = ft.Checkbox(value=True, label="Add this record")
-                                    selections['added'][idx] = checkbox
-                                    
-                                    view_rows.append(ft.Container(
-                                        content=checkbox,
-                                        bgcolor=ft.Colors.BLUE_50,
-                                        padding=4,
-                                        border_radius=2,
-                                    ))
-                                    view_rows.append(ft.Container(height=8))
-                                
-                                view_rows.append(ft.Text(""))
-                            
-                            # Removed records (Gray) - READ ONLY, no checkbox
-                            if removed > 0:
-                                view_rows.append(ft.Text(f"⚠️ MISSING IN NEW ({removed}) - READ ONLY", weight=ft.FontWeight.BOLD, color=ft.Colors.GREY_700, size=14))
-                                view_rows.append(ft.Text("These records are in core but not in new CSV (not merged)", size=10, italic=True))
-                                view_rows.append(ft.Divider(height=1))
-                                
-                                for idx, record in enumerate(diff_result.get('removed', [])[:20]):  # Show first 20
-                                    filename = record.get('filename', 'Unknown')
-                                    objectid = record.get('objectid', '')
-                                    title = record.get('title', '')
-                                    
-                                    record_text = f"• {filename}"
-                                    if objectid:
-                                        record_text += f" (ID: {objectid})"
-                                    if title:
-                                        record_text += f" - {title}"
-                                    
-                                    view_rows.append(ft.Container(
-                                        content=ft.Text(record_text, size=11, color=ft.Colors.GREY_700),
-                                        bgcolor=ft.Colors.GREY_200,
-                                        padding=4,
-                                        border_radius=2,
-                                    ))
-                                
-                                if removed > 20:
-                                    view_rows.append(ft.Text(f"... and {removed - 20} more", size=10, italic=True))
-                                view_rows.append(ft.Text(""))
-                            
-                            # Changed records (Red/Green) with field-level checkboxes
-                            # Group compound families together
-                            if changed > 0:
-                                view_rows.append(ft.Text(f"📝 CHANGED RECORDS ({changed})", weight=ft.FontWeight.BOLD, color=ft.Colors.ORANGE, size=14))
-                                view_rows.append(ft.Text("Each field can be individually selected. Compound families grouped with parent blanket toggles.", size=10, italic=True))
-                                view_rows.append(ft.Divider(height=1))
-                                
-                                # Build parent-child map for compound objects
-                                parent_child_map = {}  # parentid -> [child_indices]
-                                parent_records = {}  # parentid -> parent_record (from added or changed)
-                                processed_children = set()
-                                
-                                # First pass: identify parents from added records
-                                for idx, record in enumerate(diff_result.get('added', [])):
-                                    filename = record.get('filename', '')
-                                    if filename and filename.startswith('_'):
-                                        # This is a parent
-                                        parent_id = record.get('objectid', '')
-                                        if parent_id:
-                                            parent_records[parent_id] = {'idx': idx, 'type': 'added', 'record': record}
-                                
-                                # Identify parents from changed records
-                                for idx, change in enumerate(diff_result.get('changed', [])):
-                                    key = change.get('key', ['Unknown'])[0]
-                                    if key and key.startswith('_'):
-                                        # Extract objectid from the record (check fields for objectid if available)
-                                        parent_id = None
-                                        # Try to get objectid from changed fields or original record
-                                        # For csvdiff, the key is typically the filename
-                                        # We need to look through all records to find matching objectid
-                                        # For now, use the key as parent identifier
-                                        parent_records[key] = {'idx': idx, 'type': 'changed', 'change': change}
-                                
-                                # Second pass: identify children and link to parents
-                                for idx, change in enumerate(diff_result.get('changed', [])):
-                                    key = change.get('key', ['Unknown'])[0]
-                                    fields = change.get('fields', {})
-                                    
-                                    # Check if has parentid field
-                                    parentid_change = fields.get('parentid', {})
-                                    parent_id = parentid_change.get('to', parentid_change.get('from', ''))
-                                    
-                                    if parent_id and str(parent_id).strip():
-                                        # This is a child - map it to parent
-                                        parent_id_str = str(parent_id).strip()
-                                        if parent_id_str not in parent_child_map:
-                                            parent_child_map[parent_id_str] = []
-                                        parent_child_map[parent_id_str].append(idx)
-                                
-                                # Third pass: render records, grouping compound families
-                                processed_change_indices = set()
-                                
-                                for idx, change in enumerate(diff_result.get('changed', [])):
-                                    if idx in processed_change_indices:
-                                        continue
-                                    
-                                    key = change.get('key', ['Unknown'])[0]
-                                    fields = change.get('fields', {})
-                                    
-                                    # Check if this record has children
-                                    # For csvdiff, we need to extract objectid from the record
-                                    record_objectid = None
-                                    if 'objectid' in fields:
-                                        record_objectid = fields['objectid'].get('to', fields['objectid'].get('from', ''))
-                                    
-                                    # Check if this is a parent with children
-                                    is_compound_parent = record_objectid and record_objectid in parent_child_map
-                                    
-                                    if is_compound_parent:
-                                        # This is a compound parent with children - create grouped container
-                                        compound_container = ft.Column([], spacing=6)
+                                    for idx, record in enumerate(diff_result.get('added', [])):
+                                        filename = record.get('filename', 'Unknown')
+                                        objectid = record.get('objectid', '')
+                                        title = record.get('title', '')
                                         
-                                        # Parent header
-                                        compound_container.controls.append(ft.Text(
-                                            f"📦 COMPOUND OBJECT: {key} ({record_objectid})",
-                                            weight=ft.FontWeight.BOLD,
-                                            size=14,
-                                            color=ft.Colors.PURPLE_700
-                                        ))
-                                        compound_container.controls.append(ft.Divider(height=2, color=ft.Colors.PURPLE_400))
+                                        record_text = f"{filename}"
+                                        if objectid:
+                                            record_text += f" (ID: {objectid})"
+                                        if title:
+                                            record_text += f" - {title}"
                                         
-                                        # Get all children for this parent
-                                        children_indices = parent_child_map[record_objectid]
+                                        checkbox = ft.Checkbox(value=True, label=record_text)
+                                        selections['added'][idx] = checkbox
                                         
-                                        # Collect all unique fields that changed across parent and children
-                                        all_changed_fields = set(fields.keys())
-                                        for child_idx in children_indices:
-                                            if child_idx < len(diff_result.get('changed', [])):
-                                                child_change = diff_result['changed'][child_idx]
-                                                all_changed_fields.update(child_change.get('fields', {}).keys())
-                                        
-                                        # Create blanket toggles for parent
-                                        blanket_toggles = {}  # field_name -> blanket_checkbox
-                                        parent_blanket_container = ft.Column([
-                                            ft.Text("Parent Blanket Controls (affect all children):", 
-                                                   weight=ft.FontWeight.BOLD, size=10, color=ft.Colors.PURPLE_900)
-                                        ], spacing=2)
-                                        
-                                        # Initialize field checkbox dict for parent
-                                        selections['changed'][idx] = {}
-                                        
-                                        # Initialize storage for children checkboxes (for blanket control)
-                                        children_checkboxes = {}  # field_name -> [child_checkboxes]
-                                        
-                                        # Iterate fields in new CSV column order for consistent display
-                                        ordered_changed_fields = [f for f in field_order if f in all_changed_fields]
-                                        for field_name in ordered_changed_fields:
-                                            if field_name not in fields:
-                                                continue  # Parent doesn't have this field changed
-                                            
-                                            field_change = fields[field_name]
-                                            old_val = str(field_change.get('from', ''))[:60]
-                                            new_val = str(field_change.get('to', ''))[:60]
-                                            
-                                            # Detect data loss
-                                            is_data_loss = old_val.strip() and not new_val.strip()
-                                            
-                                            # Default to checked unless data loss detected or title field
-                                            # Title fields always default to unchecked to prevent accidental overwrites
-                                            default_checked = False if field_name == 'title' else (not is_data_loss)
-                                            
-                                            # Create parent's own checkbox (always enabled, visual warning for data loss)
-                                            parent_checkbox = ft.Checkbox(
-                                                value=default_checked,
-                                                label=""
-                                            )
-                                            selections['changed'][idx][field_name] = parent_checkbox
-                                            
-                                            # Create blanket checkbox
-                                            def make_blanket_handler(field, p_cb, children_cbs_dict):
-                                                def on_blanket_change(e):
-                                                    # Update parent and all children checkboxes for this field
-                                                    new_value = e.control.value
-                                                    p_cb.value = new_value
-                                                    if field in children_cbs_dict:
-                                                        for child_cb in children_cbs_dict[field]:
-                                                            if not child_cb.disabled:
-                                                                child_cb.value = new_value
-                                                    page.update()
-                                                return on_blanket_change
-                                            
-                                            blanket_checkbox = ft.Checkbox(
-                                                value=default_checked,
-                                                label=""
-                                            )
-                                            blanket_toggles[field_name] = blanket_checkbox
-                                            blanket_checkbox.on_change = make_blanket_handler(field_name, parent_checkbox, children_checkboxes)
-                                            
-                                            # Show blanket toggle (without Enable button for compound objects)
-                                            if is_data_loss:
-                                                parent_blanket_container.controls.append(ft.Container(
-                                                    content=ft.Row([
-                                                        blanket_checkbox,
-                                                        ft.Text("⚠️", size=10),
-                                                        ft.Text(f"{field_name}:", size=9, weight=ft.FontWeight.BOLD, width=90),
-                                                        ft.Text("(controls parent + children)", size=9, italic=True, color=ft.Colors.GREY_600),
-                                                    ], spacing=4, wrap=True),
-                                                    padding=4,
-                                                    bgcolor=ft.Colors.ORANGE_50,
-                                                    border_radius=2,
-                                                ))
-                                            else:
-                                                parent_blanket_container.controls.append(ft.Container(
-                                                    content=ft.Row([
-                                                        blanket_checkbox,
-                                                        ft.Text(f"{field_name}:", size=9, weight=ft.FontWeight.BOLD, width=90),
-                                                        ft.Text("(controls parent + children)", size=9, italic=True, color=ft.Colors.GREY_600),
-                                                    ], spacing=4),
-                                                    padding=2,
-                                                ))
-                                        
-                                        compound_container.controls.append(ft.Container(
-                                            content=parent_blanket_container,
-                                            bgcolor=ft.Colors.PURPLE_50,
-                                            padding=6,
-                                            border_radius=4,
-                                            border=ft.border.all(2, ft.Colors.PURPLE_300),
-                                        ))
-                                        
-                                        # Show parent's own changes
-                                        parent_change_container = ft.Column([
-                                            ft.Text(f"📄 Parent: {key}", weight=ft.FontWeight.BOLD, size=13),
-                                            ft.Divider(height=1, color=ft.Colors.PURPLE_200)
-                                        ], spacing=2)
-                                        
-                                        # Display fields in new CSV column order
-                                        ordered_parent_fields = [f for f in field_order if f in fields]
-                                        for field_name in ordered_parent_fields:
-                                            field_change = fields[field_name]
-                                            old_val = str(field_change.get('from', ''))[:100]
-                                            new_val = str(field_change.get('to', ''))[:100]
-                                            is_data_loss = old_val.strip() and not new_val.strip()
-                                            
-                                            field_checkbox = selections['changed'][idx][field_name]
-                                            
-                                            if is_data_loss:
-                                                parent_change_container.controls.append(ft.Container(
-                                                    content=ft.Row([
-                                                        field_checkbox,
-                                                        ft.Text("⚠️", size=12),
-                                                        ft.Text(f"{field_name}:", size=10, weight=ft.FontWeight.BOLD, width=100),
-                                                        ft.Container(
-                                                            content=ft.Text(old_val, size=10),
-                                                            bgcolor=ft.Colors.RED_50,
-                                                            padding=2,
-                                                            border_radius=2,
-                                                        ),
-                                                        ft.Text("←⃠", size=12, color=ft.Colors.ORANGE),
-                                                        ft.Container(
-                                                            content=ft.Text('(empty)', size=10, italic=True, color=ft.Colors.ORANGE_900),
-                                                            bgcolor=ft.Colors.ORANGE_100,
-                                                            padding=2,
-                                                            border_radius=2,
-                                                            border=ft.border.all(1, ft.Colors.ORANGE_400),
-                                                        ),
-                                                    ], spacing=4, wrap=True),
-                                                    padding=ft.padding.only(left=10, top=2, bottom=2),
-                                                    bgcolor=ft.Colors.ORANGE_50,
-                                                    border_radius=4,
-                                                ))
-                                            else:
-                                                parent_change_container.controls.append(ft.Container(
-                                                    content=ft.Row([
-                                                        field_checkbox,
-                                                        ft.Text(f"{field_name}:", size=10, weight=ft.FontWeight.BOLD, width=130),
-                                                        ft.Container(
-                                                            content=ft.Text(old_val if old_val else '(empty)', size=10),
-                                                            bgcolor=ft.Colors.RED_50,
-                                                            padding=2,
-                                                            border_radius=2,
-                                                        ),
-                                                        ft.Text("←", size=10),
-                                                        ft.Container(
-                                                            content=ft.Text(new_val if new_val else '(empty)', size=10),
-                                                            bgcolor=ft.Colors.GREEN_50,
-                                                            padding=2,
-                                                            border_radius=2,
-                                                        ),
-                                                    ], spacing=4, wrap=True),
-                                                    padding=ft.padding.only(left=10, top=2, bottom=2),
-                                                ))
-                                        
-                                        compound_container.controls.append(parent_change_container)
-                                        
-                                        # Show children
-                                        children_container = ft.Column([
-                                            ft.Text(f"Children ({len(children_indices)}):", weight=ft.FontWeight.BOLD, size=10, color=ft.Colors.PURPLE_700)
-                                        ], spacing=4)
-                                        
-                                        for child_idx in children_indices:
-                                            if child_idx >= len(diff_result.get('changed', [])):
-                                                continue
-                                            
-                                            processed_change_indices.add(child_idx)
-                                            child_change = diff_result['changed'][child_idx]
-                                            child_key = child_change.get('key', ['Unknown'])[0]
-                                            child_fields = child_change.get('fields', {})
-                                            
-                                            child_change_container = ft.Column([
-                                                ft.Text(f"  ↳ {child_key}", weight=ft.FontWeight.BOLD, size=12),
-                                                ft.Divider(height=1, color=ft.Colors.PURPLE_100)
-                                            ], spacing=2)
-                                            
-                                            # Initialize field checkbox dict for child
-                                            selections['changed'][child_idx] = {}
-                                            
-                                            # Show each changed field for this child in column order
-                                            ordered_child_fields = [f for f in field_order if f in child_fields]
-                                            for field_name in ordered_child_fields:
-                                                field_change = child_fields[field_name]
-                                                old_val = str(field_change.get('from', ''))[:100]
-                                                new_val = str(field_change.get('to', ''))[:100]
-                                                is_data_loss = old_val.strip() and not new_val.strip()
-                                                
-                                                # Default to checked unless data loss detected or title field
-                                                # Title fields always default to unchecked to prevent accidental overwrites
-                                                default_checked = False if field_name == 'title' else (not is_data_loss)
-                                                
-                                                child_checkbox = ft.Checkbox(
-                                                    value=default_checked,
-                                                    label=""
-                                                )
-                                                selections['changed'][child_idx][field_name] = child_checkbox
-                                                
-                                                # Add to children checkboxes for blanket control
-                                                if field_name not in children_checkboxes:
-                                                    children_checkboxes[field_name] = []
-                                                children_checkboxes[field_name].append(child_checkbox)
-                                                
-                                                if is_data_loss:
-                                                    child_change_container.controls.append(ft.Container(
-                                                        content=ft.Row([
-                                                            child_checkbox,
-                                                            ft.Text("⚠️", size=12),
-                                                            ft.Text(f"{field_name}:", size=9, width=90),
-                                                            ft.Container(
-                                                                content=ft.Text(old_val, size=9),
-                                                                bgcolor=ft.Colors.RED_50,
-                                                                padding=2,
-                                                                border_radius=2,
-                                                            ),
-                                                            ft.Text("←⃠", size=10, color=ft.Colors.ORANGE),
-                                                            ft.Container(
-                                                                content=ft.Text('(empty)', size=9, italic=True),
-                                                                bgcolor=ft.Colors.ORANGE_100,
-                                                                padding=2,
-                                                                border_radius=2,
-                                                            ),
-                                                        ], spacing=3, wrap=True),
-                                                        padding=ft.padding.only(left=20, top=1, bottom=1),
-                                                        bgcolor=ft.Colors.ORANGE_50,
-                                                        border_radius=2,
-                                                    ))
-                                                else:
-                                                    child_change_container.controls.append(ft.Container(
-                                                        content=ft.Row([
-                                                            child_checkbox,
-                                                            ft.Text(f"{field_name}:", size=9, width=90),
-                                                            ft.Container(
-                                                                content=ft.Text(old_val if old_val else '(empty)', size=9),
-                                                                bgcolor=ft.Colors.RED_50,
-                                                                padding=2,
-                                                                border_radius=2,
-                                                            ),
-                                                            ft.Text("←", size=9),
-                                                            ft.Container(
-                                                                content=ft.Text(new_val if new_val else '(empty)', size=9),
-                                                                bgcolor=ft.Colors.GREEN_50,
-                                                                padding=2,
-                                                                border_radius=2,
-                                                            ),
-                                                        ], spacing=3, wrap=True),
-                                                        padding=ft.padding.only(left=20, top=1, bottom=1),
-                                                    ))
-                                            
-                                            children_container.controls.append(child_change_container)
-                                        
-                                        compound_container.controls.append(ft.Container(
-                                            content=children_container,
-                                            bgcolor=ft.Colors.PURPLE_50,
-                                            padding=6,
-                                            border_radius=4,
-                                            border=ft.border.all(1, ft.Colors.PURPLE_200),
-                                        ))
-                                        
-                                        # Add the complete compound container
                                         view_rows.append(ft.Container(
-                                            content=compound_container,
-                                            bgcolor=ft.Colors.WHITE,
-                                            padding=8,
-                                            border_radius=6,
-                                            border=ft.border.all(2, ft.Colors.PURPLE_400),
+                                            content=checkbox,
+                                            bgcolor=ft.Colors.BLUE_50,
+                                            padding=4,
+                                            border_radius=2,
                                         ))
-                                        view_rows.append(ft.Text(""))
+                                    
+                                    view_rows.append(ft.Text(""))
+                                
+                                # Removed records (Gray) - READ ONLY, no checkbox
+                                if removed > 0:
+                                    view_rows.append(ft.Text(f"⚠️ MISSING IN NEW ({removed}) - READ ONLY", weight=ft.FontWeight.BOLD, color=ft.Colors.GREY_700, size=14))
+                                    view_rows.append(ft.Text("These records are in core but not in new CSV (not merged)", size=10, italic=True))
+                                    view_rows.append(ft.Divider(height=1))
+                                    
+                                    for idx, record in enumerate(diff_result.get('removed', [])[:20]):  # Show first 20
+                                        filename = record.get('filename', 'Unknown')
+                                        objectid = record.get('objectid', '')
+                                        title = record.get('title', '')
                                         
-                                        processed_change_indices.add(idx)
+                                        record_text = f"• {filename}"
+                                        if objectid:
+                                            record_text += f" (ID: {objectid})"
+                                        if title:
+                                            record_text += f" - {title}"
                                         
-                                    else:
-                                        # Standalone record (not a compound parent with children)
-                                        # Check if it's a child (will be handled with its parent)
+                                        view_rows.append(ft.Container(
+                                            content=ft.Text(record_text, size=11, color=ft.Colors.GREY_700),
+                                            bgcolor=ft.Colors.GREY_200,
+                                            padding=4,
+                                            border_radius=2,
+                                        ))
+                                    
+                                    if removed > 20:
+                                        view_rows.append(ft.Text(f"... and {removed - 20} more", size=10, italic=True))
+                                    view_rows.append(ft.Text(""))
+                                
+                                # Changed records (Red/Green) with field-level checkboxes
+                                # Group compound families together
+                                if changed > 0:
+                                    view_rows.append(ft.Text(f"📝 CHANGED RECORDS ({changed})", weight=ft.FontWeight.BOLD, color=ft.Colors.ORANGE, size=14))
+                                    view_rows.append(ft.Text("Each field can be individually selected. Compound families grouped with parent blanket toggles.", size=10, italic=True))
+                                    view_rows.append(ft.Divider(height=1))
+                                    
+                                    # Build parent-child map for compound objects
+                                    parent_child_map = {}  # parentid -> [child_indices]
+                                    parent_records = {}  # parentid -> parent_record (from added or changed)
+                                    processed_children = set()
+                                    
+                                    # First pass: identify parents from added records
+                                    for idx, record in enumerate(diff_result.get('added', [])):
+                                        filename = record.get('filename', '')
+                                        if filename and filename.startswith('_'):
+                                            # This is a parent
+                                            parent_id = record.get('objectid', '')
+                                            if parent_id:
+                                                parent_records[parent_id] = {'idx': idx, 'type': 'added', 'record': record}
+                                    
+                                    # Identify parents from changed records
+                                    for idx, change in enumerate(diff_result.get('changed', [])):
+                                        key = change.get('key', ['Unknown'])[0]
+                                        if key and key.startswith('_'):
+                                            # Extract objectid from the record (check fields for objectid if available)
+                                            parent_id = None
+                                            # Try to get objectid from changed fields or original record
+                                            # For csvdiff, the key is typically the filename
+                                            # We need to look through all records to find matching objectid
+                                            # For now, use the key as parent identifier
+                                            parent_records[key] = {'idx': idx, 'type': 'changed', 'change': change}
+                                    
+                                    # Second pass: identify children and link to parents
+                                    for idx, change in enumerate(diff_result.get('changed', [])):
+                                        key = change.get('key', ['Unknown'])[0]
+                                        fields = change.get('fields', {})
+                                        
+                                        # Check if has parentid field
                                         parentid_change = fields.get('parentid', {})
                                         parent_id = parentid_change.get('to', parentid_change.get('from', ''))
                                         
                                         if parent_id and str(parent_id).strip():
-                                            # This is a child - it will be rendered with its parent
-                                            # Skip it here if parent hasn't been processed yet
+                                            # This is a child - map it to parent
+                                            parent_id_str = str(parent_id).strip()
+                                            if parent_id_str not in parent_child_map:
+                                                parent_child_map[parent_id_str] = []
+                                            parent_child_map[parent_id_str].append(idx)
+                                    
+                                    # Third pass: render records, grouping compound families
+                                    processed_change_indices = set()
+                                    
+                                    for idx, change in enumerate(diff_result.get('changed', [])):
+                                        if idx in processed_change_indices:
                                             continue
                                         
-                                        # Regular standalone record
-                                        has_data_loss = any(
-                                            str(fc.get('from', '')).strip() and not str(fc.get('to', '')).strip()
-                                            for fc in fields.values()
-                                        )
+                                        key = change.get('key', ['Unknown'])[0]
+                                        fields = change.get('fields', {})
                                         
-                                        change_container = ft.Column([
-                                            ft.Text(f"📄 {key} ({len(fields)} fields changed)", 
-                                                   weight=ft.FontWeight.BOLD, size=14),
-                                            ft.Divider(height=1, color=ft.Colors.ORANGE_200)
-                                        ], spacing=4)
+                                        # Check if this record has children
+                                        # For csvdiff, we need to extract objectid from the record
+                                        record_objectid = None
+                                        if 'objectid' in fields:
+                                            record_objectid = fields['objectid'].get('to', fields['objectid'].get('from', ''))
                                         
-                                        # Initialize field checkbox dict for this record
-                                        selections['changed'][idx] = {}
+                                        # Check if this is a parent with children
+                                        is_compound_parent = record_objectid and record_objectid in parent_child_map
                                         
-                                        # Create checkbox for each changed field in column order
-                                        ordered_fields = [f for f in field_order if f in fields]
-                                        for field_name in ordered_fields:
-                                            field_change = fields[field_name]
-                                            old_val = str(field_change.get('from', ''))[:100]
-                                            new_val = str(field_change.get('to', ''))[:100]
+                                        if is_compound_parent:
+                                            # This is a compound parent with children - create grouped container
+                                            compound_container = ft.Column([], spacing=6)
                                             
-                                            old_has_value = old_val and old_val.strip()
-                                            new_is_empty = not new_val or not new_val.strip()
-                                            is_data_loss = old_has_value and new_is_empty
+                                            # Parent header
+                                            compound_container.controls.append(ft.Text(
+                                                f"📦 COMPOUND OBJECT: {key} ({record_objectid})",
+                                                weight=ft.FontWeight.BOLD,
+                                                size=12,
+                                                color=ft.Colors.PURPLE_700
+                                            ))
                                             
-                                            # Default to checked unless data loss detected or title field
-                                            # Title fields always default to unchecked to prevent accidental overwrites
-                                            default_checked = False if field_name == 'title' else (not is_data_loss)
+                                            # Get all children for this parent
+                                            children_indices = parent_child_map[record_objectid]
                                             
-                                            field_checkbox = ft.Checkbox(
-                                                value=default_checked,
-                                                label=""
-                                            )
-                                            selections['changed'][idx][field_name] = field_checkbox
+                                            # Collect all unique fields that changed across parent and children
+                                            all_changed_fields = set(fields.keys())
+                                            for child_idx in children_indices:
+                                                if child_idx < len(diff_result.get('changed', [])):
+                                                    child_change = diff_result['changed'][child_idx]
+                                                    all_changed_fields.update(child_change.get('fields', {}).keys())
                                             
-                                            if is_data_loss:
-                                                change_container.controls.append(ft.Container(
-                                                    content=ft.Row([
-                                                        field_checkbox,
-                                                        ft.Text("⚠️", size=12),
-                                                        ft.Text(f"{field_name}:", size=10, weight=ft.FontWeight.BOLD, width=100),
-                                                        ft.Container(
-                                                            content=ft.Text(old_val, size=10),
-                                                            bgcolor=ft.Colors.RED_50,
-                                                            padding=2,
-                                                            border_radius=2,
-                                                        ),
-                                                        ft.Text("←⃠", size=12, color=ft.Colors.ORANGE),
-                                                        ft.Container(
-                                                            content=ft.Text('(empty)', size=10, italic=True, color=ft.Colors.ORANGE_900),
-                                                            bgcolor=ft.Colors.ORANGE_100,
-                                                            padding=2,
-                                                            border_radius=2,
-                                                            border=ft.border.all(1, ft.Colors.ORANGE_400),
-                                                        ),
-                                                    ], spacing=4, wrap=True),
-                                                    padding=ft.padding.only(left=10, top=2, bottom=2),
-                                                    bgcolor=ft.Colors.ORANGE_50,
-                                                    border_radius=4,
-                                                ))
-                                            else:
-                                                change_container.controls.append(ft.Container(
-                                                    content=ft.Row([
-                                                        field_checkbox,
-                                                        ft.Text(f"{field_name}:", size=10, weight=ft.FontWeight.BOLD, width=130),
-                                                        ft.Container(
-                                                            content=ft.Text(old_val if old_val else '(empty)', size=10),
-                                                            bgcolor=ft.Colors.RED_50,
-                                                            padding=2,
-                                                            border_radius=2,
-                                                        ),
-                                                        ft.Text("←", size=10),
-                                                        ft.Container(
-                                                            content=ft.Text(new_val if new_val else '(empty)', size=10),
-                                                            bgcolor=ft.Colors.GREEN_50,
-                                                            padding=2,
-                                                            border_radius=2,
-                                                        ),
-                                                    ], spacing=4, wrap=True),
-                                                    padding=ft.padding.only(left=10, top=2, bottom=2),
-                                                ))
-                                        
-                                        view_rows.append(ft.Container(
-                                            content=change_container,
-                                            bgcolor=ft.Colors.ORANGE_50 if has_data_loss else ft.Colors.WHITE,
-                                            padding=6,
-                                            border_radius=4,
-                                            border=ft.border.all(1, ft.Colors.ORANGE_300 if has_data_loss else ft.Colors.GREY_300),
-                                        ))
-                                        view_rows.append(ft.Text(""))
-                                        
-                                        processed_change_indices.add(idx)
-                            
-                            def close_color_view(e):
-                                color_view_dialog.open = False
-                                page.update()
-                            
-                            def merge_selected_changes(e):
-                                """Merge selected changes into core CSV."""
-                                try:
-                                    # Count selected changes
-                                    selected_added = [idx for idx, cb in selections['added'].items() if cb.value]
-                                    
-                                    # Count selected field changes
-                                    selected_field_changes = []
-                                    for record_idx, field_checkboxes in selections['changed'].items():
-                                        for field_name, checkbox in field_checkboxes.items():
-                                            if checkbox.value:
-                                                selected_field_changes.append((record_idx, field_name))
-                                    
-                                    if not selected_added and not selected_field_changes:
-                                        update_status("No changes selected to merge", is_error=True)
-                                        return
-                                    
-                                    # Confirm merge
-                                    def confirm_merge(ev):
-                                        confirm_dialog.open = False
-                                        page.update()
-                                        
-                                        # Perform merge
-                                        update_status("Merging selected changes...")
-                                        
-                                        try:
-                                            # Load core CSV
-                                            import csv
-                                            from datetime import datetime
-                                            import shutil
+                                            # Create blanket toggles for parent
+                                            blanket_toggles = {}  # field_name -> blanket_checkbox
+                                            parent_blanket_container = ft.Column([
+                                                ft.Text("Parent Blanket Controls (affect all children):", 
+                                                       weight=ft.FontWeight.BOLD, size=10, color=ft.Colors.PURPLE_900)
+                                            ], spacing=2)
                                             
-                                            # Create backup of core CSV
-                                            backup_path = Path(str(old_csv) + f".backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
-                                            shutil.copy2(old_csv, backup_path)
-                                            add_log_message(f"[INFO] Created backup: {backup_path.name}")
+                                            # Initialize field checkbox dict for parent
+                                            selections['changed'][idx] = {}
                                             
-                                            # Read core CSV
-                                            with open(old_csv, 'r', encoding='utf-8') as f:
-                                                reader = csv.DictReader(f)
-                                                fieldnames = reader.fieldnames
-                                                core_rows = list(reader)
+                                            # Initialize storage for children checkboxes (for blanket control)
+                                            children_checkboxes = {}  # field_name -> [child_checkboxes]
                                             
-                                            # Create filename-to-row mapping
-                                            core_by_filename = {row['filename']: row for row in core_rows if row.get('filename')}
-                                            
-                                            # Apply selected additions
-                                            added_records = diff_result.get('added', [])
-                                            for idx in selected_added:
-                                                if idx < len(added_records):
-                                                    new_record = added_records[idx]
-                                                    core_rows.append(new_record)
-                                                    add_log_message(f"[INFO] Added: {new_record.get('filename', 'Unknown')}")
-                                            
-                                            # Apply selected field changes
-                                            changed_records = diff_result.get('changed', [])
-                                            fields_updated_count = 0
-                                            records_updated = set()
-                                            
-                                            for record_idx, field_name in selected_field_changes:
-                                                if record_idx < len(changed_records):
-                                                    change = changed_records[record_idx]
-                                                    filename_key = change.get('key', [''])[0]
+                                            for field_name in sorted(all_changed_fields):
+                                                if field_name not in fields:
+                                                    continue  # Parent doesn't have this field changed
+                                                
+                                                field_change = fields[field_name]
+                                                old_val = str(field_change.get('from', ''))[:60]
+                                                new_val = str(field_change.get('to', ''))[:60]
+                                                
+                                                # Detect data loss
+                                                is_data_loss = old_val.strip() and not new_val.strip()
+                                                
+                                                # Create parent's own checkbox
+                                                parent_checkbox = ft.Checkbox(
+                                                    value=True if not is_data_loss else False,
+                                                    label="",
+                                                    disabled=is_data_loss
+                                                )
+                                                selections['changed'][idx][field_name] = parent_checkbox
+                                                
+                                                # Create blanket checkbox
+                                                def make_blanket_handler(field, p_cb, children_cbs_dict):
+                                                    def on_blanket_change(e):
+                                                        # Update parent and all children checkboxes for this field
+                                                        new_value = e.control.value
+                                                        p_cb.value = new_value
+                                                        if field in children_cbs_dict:
+                                                            for child_cb in children_cbs_dict[field]:
+                                                                if not child_cb.disabled:
+                                                                    child_cb.value = new_value
+                                                        page.update()
+                                                    return on_blanket_change
+                                                
+                                                blanket_checkbox = ft.Checkbox(
+                                                    value=True if not is_data_loss else False,
+                                                    label="",
+                                                    disabled=is_data_loss
+                                                )
+                                                blanket_toggles[field_name] = blanket_checkbox
+                                                blanket_checkbox.on_change = make_blanket_handler(field_name, parent_checkbox, children_checkboxes)
+                                                
+                                                # Show blanket toggle
+                                                if is_data_loss:
+                                                    def make_enable_handler(checkbox):
+                                                        def enable_checkbox(e):
+                                                            checkbox.disabled = False
+                                                            checkbox.value = False
+                                                            page.update()
+                                                        return enable_checkbox
                                                     
-                                                    if filename_key in core_by_filename:
-                                                        # Update this specific field only
-                                                        field_change = change.get('fields', {}).get(field_name, {})
-                                                        new_value = field_change.get('to', '')
-                                                        core_by_filename[filename_key][field_name] = new_value
-                                                        fields_updated_count += 1
-                                                        records_updated.add(filename_key)
+                                                    enable_button = ft.TextButton(
+                                                        "⚠️ Enable",
+                                                        on_click=make_enable_handler(blanket_checkbox),
+                                                        style=ft.ButtonStyle(
+                                                            color=ft.Colors.ORANGE_700,
+                                                            bgcolor=ft.Colors.ORANGE_100,
+                                                            padding=4,
+                                                        ),
+                                                        height=24,
+                                                    )
+                                                    
+                                                    parent_blanket_container.controls.append(ft.Container(
+                                                        content=ft.Row([
+                                                            blanket_checkbox,
+                                                            enable_button,
+                                                            ft.Text("⚠️", size=10),
+                                                            ft.Text(f"{field_name}:", size=9, weight=ft.FontWeight.BOLD, width=90),
+                                                            ft.Text("(controls parent + children)", size=9, italic=True, color=ft.Colors.GREY_600),
+                                                        ], spacing=4, wrap=True),
+                                                        padding=4,
+                                                        bgcolor=ft.Colors.ORANGE_50,
+                                                        border_radius=2,
+                                                    ))
+                                                else:
+                                                    parent_blanket_container.controls.append(ft.Container(
+                                                        content=ft.Row([
+                                                            blanket_checkbox,
+                                                            ft.Text(f"{field_name}:", size=9, weight=ft.FontWeight.BOLD, width=90),
+                                                            ft.Text("(controls parent + children)", size=9, italic=True, color=ft.Colors.GREY_600),
+                                                        ], spacing=4),
+                                                        padding=2,
+                                                    ))
                                             
-                                            if records_updated:
-                                                for filename in records_updated:
-                                                    add_log_message(f"[INFO] Updated fields in: {filename}")
+                                            compound_container.controls.append(ft.Container(
+                                                content=parent_blanket_container,
+                                                bgcolor=ft.Colors.PURPLE_50,
+                                                padding=6,
+                                                border_radius=4,
+                                                border=ft.border.all(2, ft.Colors.PURPLE_300),
+                                            ))
                                             
-                                            # Write updated CSV
-                                            with open(old_csv, 'w', encoding='utf-8', newline='') as f:
-                                                writer = csv.DictWriter(f, fieldnames=fieldnames)
-                                                writer.writeheader()
-                                                writer.writerows(core_rows)
+                                            # Show parent's own changes
+                                            parent_change_container = ft.Column([
+                                                ft.Text(f"📄 Parent: {key}", weight=ft.FontWeight.BOLD, size=11)
+                                            ], spacing=2)
                                             
-                                            add_log_message(f"[SUCCESS] Merged {len(selected_added)} additions and {fields_updated_count} field changes across {len(records_updated)} records")
-                                            update_status(f"Successfully merged {len(selected_added)} additions and {fields_updated_count} field changes")
+                                            for field_name, field_change in fields.items():
+                                                old_val = str(field_change.get('from', ''))[:100]
+                                                new_val = str(field_change.get('to', ''))[:100]
+                                                is_data_loss = old_val.strip() and not new_val.strip()
+                                                
+                                                field_checkbox = selections['changed'][idx][field_name]
+                                                
+                                                if is_data_loss:
+                                                    parent_change_container.controls.append(ft.Container(
+                                                        content=ft.Row([
+                                                            field_checkbox,
+                                                            ft.Text("⚠️", size=12),
+                                                            ft.Text(f"{field_name}:", size=10, weight=ft.FontWeight.BOLD, width=100),
+                                                            ft.Container(
+                                                                content=ft.Text(old_val, size=10),
+                                                                bgcolor=ft.Colors.RED_50,
+                                                                padding=2,
+                                                                border_radius=2,
+                                                            ),
+                                                            ft.Text("⃠→", size=12, color=ft.Colors.ORANGE),
+                                                            ft.Container(
+                                                                content=ft.Text('(empty)', size=10, italic=True, color=ft.Colors.ORANGE_900),
+                                                                bgcolor=ft.Colors.ORANGE_100,
+                                                                padding=2,
+                                                                border_radius=2,
+                                                                border=ft.border.all(1, ft.Colors.ORANGE_400),
+                                                            ),
+                                                        ], spacing=4, wrap=True),
+                                                        padding=ft.padding.only(left=10, top=2, bottom=2),
+                                                        bgcolor=ft.Colors.ORANGE_50,
+                                                        border_radius=4,
+                                                    ))
+                                                else:
+                                                    parent_change_container.controls.append(ft.Container(
+                                                        content=ft.Row([
+                                                            field_checkbox,
+                                                            ft.Text(f"{field_name}:", size=10, weight=ft.FontWeight.BOLD, width=130),
+                                                            ft.Container(
+                                                                content=ft.Text(old_val if old_val else '(empty)', size=10),
+                                                                bgcolor=ft.Colors.RED_50,
+                                                                padding=2,
+                                                                border_radius=2,
+                                                            ),
+                                                            ft.Text("→", size=10),
+                                                            ft.Container(
+                                                                content=ft.Text(new_val if new_val else '(empty)', size=10),
+                                                                bgcolor=ft.Colors.GREEN_50,
+                                                                padding=2,
+                                                                border_radius=2,
+                                                            ),
+                                                        ], spacing=4, wrap=True),
+                                                        padding=ft.padding.only(left=10, top=2, bottom=2),
+                                                    ))
                                             
-                                            # Close dialogs
-                                            color_view_dialog.open = False
+                                            compound_container.controls.append(parent_change_container)
+                                            
+                                            # Show children
+                                            children_container = ft.Column([
+                                                ft.Text(f"Children ({len(children_indices)}):", weight=ft.FontWeight.BOLD, size=10, color=ft.Colors.PURPLE_700)
+                                            ], spacing=4)
+                                            
+                                            for child_idx in children_indices:
+                                                if child_idx >= len(diff_result.get('changed', [])):
+                                                    continue
+                                                
+                                                processed_change_indices.add(child_idx)
+                                                child_change = diff_result['changed'][child_idx]
+                                                child_key = child_change.get('key', ['Unknown'])[0]
+                                                child_fields = child_change.get('fields', {})
+                                                
+                                                child_change_container = ft.Column([
+                                                    ft.Text(f"  ↳ {child_key}", weight=ft.FontWeight.BOLD, size=10)
+                                                ], spacing=2)
+                                                
+                                                # Initialize field checkbox dict for child
+                                                selections['changed'][child_idx] = {}
+                                                
+                                                for field_name, field_change in child_fields.items():
+                                                    old_val = str(field_change.get('from', ''))[:100]
+                                                    new_val = str(field_change.get('to', ''))[:100]
+                                                    is_data_loss = old_val.strip() and not new_val.strip()
+                                                    
+                                                    child_checkbox = ft.Checkbox(
+                                                        value=True if not is_data_loss else False,
+                                                        label="",
+                                                        disabled=is_data_loss
+                                                    )
+                                                    selections['changed'][child_idx][field_name] = child_checkbox
+                                                    
+                                                    # Add to children checkboxes for blanket control
+                                                    if field_name not in children_checkboxes:
+                                                        children_checkboxes[field_name] = []
+                                                    children_checkboxes[field_name].append(child_checkbox)
+                                                    
+                                                    if is_data_loss:
+                                                        child_change_container.controls.append(ft.Container(
+                                                            content=ft.Row([
+                                                                child_checkbox,
+                                                                ft.Text("⚠️", size=12),
+                                                                ft.Text(f"{field_name}:", size=9, width=90),
+                                                                ft.Container(
+                                                                    content=ft.Text(old_val, size=9),
+                                                                    bgcolor=ft.Colors.RED_50,
+                                                                    padding=2,
+                                                                    border_radius=2,
+                                                                ),
+                                                                ft.Text("⃠→", size=10, color=ft.Colors.ORANGE),
+                                                                ft.Container(
+                                                                    content=ft.Text('(empty)', size=9, italic=True),
+                                                                    bgcolor=ft.Colors.ORANGE_100,
+                                                                    padding=2,
+                                                                    border_radius=2,
+                                                                ),
+                                                            ], spacing=3, wrap=True),
+                                                            padding=ft.padding.only(left=20, top=1, bottom=1),
+                                                            bgcolor=ft.Colors.ORANGE_50,
+                                                            border_radius=2,
+                                                        ))
+                                                    else:
+                                                        child_change_container.controls.append(ft.Container(
+                                                            content=ft.Row([
+                                                                child_checkbox,
+                                                                ft.Text(f"{field_name}:", size=9, width=90),
+                                                                ft.Container(
+                                                                    content=ft.Text(old_val if old_val else '(empty)', size=9),
+                                                                    bgcolor=ft.Colors.RED_50,
+                                                                    padding=2,
+                                                                    border_radius=2,
+                                                                ),
+                                                                ft.Text("→", size=9),
+                                                                ft.Container(
+                                                                    content=ft.Text(new_val if new_val else '(empty)', size=9),
+                                                                    bgcolor=ft.Colors.GREEN_50,
+                                                                    padding=2,
+                                                                    border_radius=2,
+                                                                ),
+                                                            ], spacing=3, wrap=True),
+                                                            padding=ft.padding.only(left=20, top=1, bottom=1),
+                                                        ))
+                                                
+                                                children_container.controls.append(child_change_container)
+                                            
+                                            compound_container.controls.append(ft.Container(
+                                                content=children_container,
+                                                bgcolor=ft.Colors.PURPLE_50,
+                                                padding=6,
+                                                border_radius=4,
+                                                border=ft.border.all(1, ft.Colors.PURPLE_200),
+                                            ))
+                                            
+                                            # Add the complete compound container
+                                            view_rows.append(ft.Container(
+                                                content=compound_container,
+                                                bgcolor=ft.Colors.WHITE,
+                                                padding=8,
+                                                border_radius=6,
+                                                border=ft.border.all(2, ft.Colors.PURPLE_400),
+                                            ))
+                                            view_rows.append(ft.Text(""))
+                                            
+                                            processed_change_indices.add(idx)
+                                            
+                                        else:
+                                            # Standalone record (not a compound parent with children)
+                                            # Check if it's a child (will be handled with its parent)
+                                            parentid_change = fields.get('parentid', {})
+                                            parent_id = parentid_change.get('to', parentid_change.get('from', ''))
+                                            
+                                            if parent_id and str(parent_id).strip():
+                                                # This is a child - it will be rendered with its parent
+                                                # Skip it here if parent hasn't been processed yet
+                                                continue
+                                            
+                                            # Regular standalone record
+                                            has_data_loss = any(
+                                                str(fc.get('from', '')).strip() and not str(fc.get('to', '')).strip()
+                                                for fc in fields.values()
+                                            )
+                                            
+                                            change_container = ft.Column([
+                                                ft.Text(f"📄 {key} ({len(fields)} fields changed)", 
+                                                       weight=ft.FontWeight.BOLD, size=12)
+                                            ], spacing=4)
+                                            
+                                            # Initialize field checkbox dict for this record
+                                            selections['changed'][idx] = {}
+                                            
+                                            # Create checkbox for each changed field
+                                            for field_name, field_change in fields.items():
+                                                old_val = str(field_change.get('from', ''))[:100]
+                                                new_val = str(field_change.get('to', ''))[:100]
+                                                
+                                                old_has_value = old_val and old_val.strip()
+                                                new_is_empty = not new_val or not new_val.strip()
+                                                is_data_loss = old_has_value and new_is_empty
+                                                
+                                                field_checkbox = ft.Checkbox(
+                                                    value=True if not is_data_loss else False,
+                                                    label="",
+                                                    disabled=is_data_loss
+                                                )
+                                                selections['changed'][idx][field_name] = field_checkbox
+                                                
+                                                if is_data_loss:
+                                                    def make_enable_handler(checkbox):
+                                                        def enable_checkbox(e):
+                                                            checkbox.disabled = False
+                                                            checkbox.value = False
+                                                            page.update()
+                                                        return enable_checkbox
+                                                    
+                                                    enable_button = ft.TextButton(
+                                                        "⚠️ Enable",
+                                                        on_click=make_enable_handler(field_checkbox),
+                                                        style=ft.ButtonStyle(
+                                                            color=ft.Colors.ORANGE_700,
+                                                            bgcolor=ft.Colors.ORANGE_100,
+                                                            padding=4,
+                                                        ),
+                                                        height=24,
+                                                    )
+                                                    
+                                                    change_container.controls.append(ft.Container(
+                                                        content=ft.Row([
+                                                            field_checkbox,
+                                                            enable_button,
+                                                            ft.Text("⚠️", size=12),
+                                                            ft.Text(f"{field_name}:", size=10, weight=ft.FontWeight.BOLD, width=100),
+                                                            ft.Container(
+                                                                content=ft.Text(old_val, size=10),
+                                                                bgcolor=ft.Colors.RED_50,
+                                                                padding=2,
+                                                                border_radius=2,
+                                                            ),
+                                                            ft.Text("⃠→", size=12, color=ft.Colors.ORANGE),
+                                                            ft.Container(
+                                                                content=ft.Text('(empty)', size=10, italic=True, color=ft.Colors.ORANGE_900),
+                                                                bgcolor=ft.Colors.ORANGE_100,
+                                                                padding=2,
+                                                                border_radius=2,
+                                                                border=ft.border.all(1, ft.Colors.ORANGE_400),
+                                                            ),
+                                                        ], spacing=4, wrap=True),
+                                                        padding=ft.padding.only(left=10, top=2, bottom=2),
+                                                        bgcolor=ft.Colors.ORANGE_50,
+                                                        border_radius=4,
+                                                    ))
+                                                else:
+                                                    change_container.controls.append(ft.Container(
+                                                        content=ft.Row([
+                                                            field_checkbox,
+                                                            ft.Text(f"{field_name}:", size=10, weight=ft.FontWeight.BOLD, width=130),
+                                                            ft.Container(
+                                                                content=ft.Text(old_val if old_val else '(empty)', size=10),
+                                                                bgcolor=ft.Colors.RED_50,
+                                                                padding=2,
+                                                                border_radius=2,
+                                                            ),
+                                                            ft.Text("→", size=10),
+                                                            ft.Container(
+                                                                content=ft.Text(new_val if new_val else '(empty)', size=10),
+                                                                bgcolor=ft.Colors.GREEN_50,
+                                                                padding=2,
+                                                                border_radius=2,
+                                                            ),
+                                                        ], spacing=4, wrap=True),
+                                                        padding=ft.padding.only(left=10, top=2, bottom=2),
+                                                    ))
+                                            
+                                            view_rows.append(ft.Container(
+                                                content=change_container,
+                                                bgcolor=ft.Colors.ORANGE_50 if has_data_loss else ft.Colors.WHITE,
+                                                padding=6,
+                                                border_radius=4,
+                                                border=ft.border.all(1, ft.Colors.ORANGE_300 if has_data_loss else ft.Colors.GREY_300),
+                                            ))
+                                            view_rows.append(ft.Text(""))
+                                            
+                                            processed_change_indices.add(idx)
+                                
+                                def close_color_view(e):
+                                    color_view_dialog.open = False
+                                    page.update()
+                                
+                                def merge_selected_changes(e):
+                                    """Merge selected changes into core CSV."""
+                                    try:
+                                        # Count selected changes
+                                        selected_added = [idx for idx, cb in selections['added'].items() if cb.value]
+                                        
+                                        # Count selected field changes
+                                        selected_field_changes = []
+                                        for record_idx, field_checkboxes in selections['changed'].items():
+                                            for field_name, checkbox in field_checkboxes.items():
+                                                if checkbox.value:
+                                                    selected_field_changes.append((record_idx, field_name))
+                                        
+                                        if not selected_added and not selected_field_changes:
+                                            update_status("No changes selected to merge", is_error=True)
+                                            return
+                                        
+                                        # Confirm merge
+                                        def confirm_merge(ev):
+                                            confirm_dialog.open = False
                                             page.update()
                                             
-                                        except Exception as merge_ex:
-                                            logger.error(f"Error during merge: {merge_ex}")
-                                            update_status(f"Merge error: {merge_ex}", is_error=True)
-                                            add_log_message(f"[ERROR] Merge failed: {merge_ex}")
-                                    
-                                    def cancel_merge(ev):
-                                        confirm_dialog.open = False
+                                            # Perform merge
+                                            update_status("Merging selected changes...")
+                                            
+                                            try:
+                                                # Load core CSV
+                                                import csv
+                                                from datetime import datetime
+                                                import shutil
+                                                
+                                                # Create backup of core CSV
+                                                backup_path = Path(str(old_csv) + f".backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
+                                                shutil.copy2(old_csv, backup_path)
+                                                add_log_message(f"[INFO] Created backup: {backup_path.name}")
+                                                
+                                                # Read core CSV
+                                                with open(old_csv, 'r', encoding='utf-8') as f:
+                                                    reader = csv.DictReader(f)
+                                                    fieldnames = reader.fieldnames
+                                                    core_rows = list(reader)
+                                                
+                                                # Create filename-to-row mapping
+                                                core_by_filename = {row['filename']: row for row in core_rows if row.get('filename')}
+                                                
+                                                # Apply selected additions
+                                                added_records = diff_result.get('added', [])
+                                                for idx in selected_added:
+                                                    if idx < len(added_records):
+                                                        new_record = added_records[idx]
+                                                        core_rows.append(new_record)
+                                                        add_log_message(f"[INFO] Added: {new_record.get('filename', 'Unknown')}")
+                                                
+                                                # Apply selected field changes
+                                                changed_records = diff_result.get('changed', [])
+                                                fields_updated_count = 0
+                                                records_updated = set()
+                                                
+                                                for record_idx, field_name in selected_field_changes:
+                                                    if record_idx < len(changed_records):
+                                                        change = changed_records[record_idx]
+                                                        filename_key = change.get('key', [''])[0]
+                                                        
+                                                        if filename_key in core_by_filename:
+                                                            # Update this specific field only
+                                                            field_change = change.get('fields', {}).get(field_name, {})
+                                                            new_value = field_change.get('to', '')
+                                                            core_by_filename[filename_key][field_name] = new_value
+                                                            fields_updated_count += 1
+                                                            records_updated.add(filename_key)
+                                                
+                                                if records_updated:
+                                                    for filename in records_updated:
+                                                        add_log_message(f"[INFO] Updated fields in: {filename}")
+                                                
+                                                # Write updated CSV
+                                                with open(old_csv, 'w', encoding='utf-8', newline='') as f:
+                                                    writer = csv.DictWriter(f, fieldnames=fieldnames)
+                                                    writer.writeheader()
+                                                    writer.writerows(core_rows)
+                                                
+                                                add_log_message(f"[SUCCESS] Merged {len(selected_added)} additions and {fields_updated_count} field changes across {len(records_updated)} records")
+                                                update_status(f"Successfully merged {len(selected_added)} additions and {fields_updated_count} field changes")
+                                                
+                                                # Close dialogs
+                                                color_view_dialog.open = False
+                                                page.update()
+                                                
+                                            except Exception as merge_ex:
+                                                logger.error(f"Error during merge: {merge_ex}")
+                                                update_status(f"Merge error: {merge_ex}", is_error=True)
+                                                add_log_message(f"[ERROR] Merge failed: {merge_ex}")
+                                        
+                                        def cancel_merge(ev):
+                                            confirm_dialog.open = False
+                                            page.update()
+                                        
+                                        # Count unique records being changed
+                                        unique_records = len(set(record_idx for record_idx, _ in selected_field_changes))
+                                        
+                                        confirm_dialog = ft.AlertDialog(
+                                            modal=True,
+                                            title=ft.Text("⚠️ Confirm Merge", weight=ft.FontWeight.BOLD),
+                                            content=ft.Column([
+                                                ft.Text(f"You are about to merge into the core CSV:", size=12),
+                                                ft.Text(f"  • {len(selected_added)} new records", color=ft.Colors.BLUE),
+                                                ft.Text(f"  • {len(selected_field_changes)} field changes across {unique_records} records", color=ft.Colors.ORANGE),
+                                                ft.Text(""),
+                                                ft.Text(f"Core CSV: {old_csv.name}", size=11, weight=ft.FontWeight.BOLD),
+                                                ft.Text(""),
+                                                ft.Text("A backup will be created automatically.", size=10, italic=True),
+                                                ft.Text(""),
+                                                ft.Text("This action cannot be undone (except by restoring backup).", size=10, color=ft.Colors.RED),
+                                            ], spacing=4, tight=True),
+                                            actions=[
+                                                ft.TextButton("Cancel", on_click=cancel_merge),
+                                                ft.ElevatedButton("Merge Changes", on_click=confirm_merge, bgcolor=ft.Colors.BLUE),
+                                            ],
+                                        )
+                                        
+                                        page.overlay.append(confirm_dialog)
+                                        confirm_dialog.open = True
                                         page.update()
-                                    
-                                    # Count unique records being changed
-                                    unique_records = len(set(record_idx for record_idx, _ in selected_field_changes))
-                                    
-                                    confirm_dialog = ft.AlertDialog(
-                                        modal=True,
-                                        title=ft.Text("⚠️ Confirm Merge", weight=ft.FontWeight.BOLD),
-                                        content=ft.Column([
-                                            ft.Text(f"You are about to merge into the core CSV:", size=12),
-                                            ft.Text(f"  • {len(selected_added)} new records", color=ft.Colors.BLUE),
-                                            ft.Text(f"  • {len(selected_field_changes)} field changes across {unique_records} records", color=ft.Colors.ORANGE),
-                                            ft.Text(""),
-                                            ft.Text(f"Core CSV: {old_csv.name}", size=11, weight=ft.FontWeight.BOLD),
-                                            ft.Text(""),
-                                            ft.Text("A backup will be created automatically.", size=10, italic=True),
-                                            ft.Text(""),
-                                            ft.Text("This action cannot be undone (except by restoring backup).", size=10, color=ft.Colors.RED),
-                                        ], spacing=4, tight=True),
-                                        actions=[
-                                            ft.TextButton("Cancel", on_click=cancel_merge),
-                                            ft.ElevatedButton("Merge Changes", on_click=confirm_merge, bgcolor=ft.Colors.BLUE),
-                                        ],
-                                    )
-                                    
-                                    page.overlay.append(confirm_dialog)
-                                    confirm_dialog.open = True
-                                    page.update()
-                                    
-                                except Exception as ex:
-                                    logger.error(f"Error preparing merge: {ex}")
-                                    update_status(f"Error: {ex}", is_error=True)
-                            
-                            color_view_dialog = ft.AlertDialog(
-                                modal=True,
-                                title=ft.Text("🎨 Interactive Comparison & Merge", weight=ft.FontWeight.BOLD),
-                                content=ft.Container(
-                                    content=ft.Column(view_rows, spacing=2, scroll=ft.ScrollMode.ALWAYS),
-                                    width=900,
-                                    height=600,
-                                ),
-                                actions=[
-                                    ft.TextButton("Cancel", on_click=close_color_view),
-                                    ft.ElevatedButton("Merge Selected Changes", on_click=merge_selected_changes, bgcolor=ft.Colors.GREEN),
-                                ],
-                            )
-                            
-                            page.overlay.append(color_view_dialog)
-                            color_view_dialog.open = True
-                            page.update()
+                                        
+                                    except Exception as ex:
+                                        logger.error(f"Error preparing merge: {ex}")
+                                        update_status(f"Error: {ex}", is_error=True)
+                                
+                                color_view_dialog = ft.AlertDialog(
+                                    modal=True,
+                                    title=ft.Text("🎨 Interactive Comparison & Merge", weight=ft.FontWeight.BOLD),
+                                    content=ft.Container(
+                                        content=ft.Column(view_rows, spacing=2, scroll=ft.ScrollMode.ALWAYS),
+                                        width=900,
+                                        height=600,
+                                    ),
+                                    actions=[
+                                        ft.TextButton("Cancel", on_click=close_color_view),
+                                        ft.ElevatedButton("Merge Selected Changes", on_click=merge_selected_changes, bgcolor=ft.Colors.GREEN),
+                                    ],
+                                )
+                                
+                                page.overlay.append(color_view_dialog)
+                                color_view_dialog.open = True
+                                page.update()
                             
                         except Exception as ex:
                             logger.error(f"Error showing color-coded view: {ex}")

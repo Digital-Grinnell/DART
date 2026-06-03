@@ -7,6 +7,147 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.5.5] - 2026-06-03
+
+### Summary
+Version 1.5.5 removes the pandas dependency entirely, simplifying the codebase by eliminating duplicate CSV comparison functionality. Function 4 now uses csvdiff exclusively for all CSV comparisons, providing faster performance and cleaner code. This update also includes critical bug fixes for the filepath column handling in Functions 2, 3, and 4, and resolves indentation errors that prevented csvdiff from executing.
+
+### Removed
+- **pandas dependency**: Eliminated pandas library and all pandas-based comparison code
+  - Removed `import pandas as pd` from app.py
+  - Removed `pandas>=2.0.0` from python_requirements.txt
+  - Deleted ~370 lines of pandas-based comparison implementation in Function 4
+  - Simplifies dependencies and reduces installation size
+  - csvdiff provides all needed comparison functionality without pandas overhead
+- **CSV_review_with_csvdiff setting**: Removed dual-mode toggle from Function 0
+  - Before: Users could choose between pandas mode (default) or csvdiff mode
+  - After: csvdiff is the only comparison method (no toggle needed)
+  - Removed setting from DEFAULT_SETTINGS dictionary
+  - Removed UI field from settings dialog
+  - Removed validation and save/load logic for this setting
+  - Cleaner settings interface with one less option to configure
+
+### Added
+- **Automatic MIME type population**: Function 2 now auto-populates the 'format' field with valid MIME types
+  - New `get_mime_type()` function added to common-DG-utilities/dg_utils.py
+  - Maps file extensions to standard MIME types (e.g., .jpg → image/jpeg, .pdf → application/pdf)
+  - Supports comprehensive file types: images (JPEG, PNG, TIFF, GIF, etc.), documents (PDF, Office formats), audio/video, archives, and more
+  - Returns 'application/octet-stream' for unknown extensions
+  - Automatically called during CSV export for all file objects based on filename
+  - Compound parent objects leave format empty (no physical file)
+  - Provides valid CollectionBuilder metadata without manual entry
+  - Import added to app.py: `from common_dg_utilities.dg_utils import generate_unique_id, get_mime_type`
+- **Checkbox behavior explanation in merge viewer**: Function 4 merge dialog now shows clear guidance at the top
+  - New blue information box appears before any warnings or change lists
+  - Explains what happens when checkboxes are CHECKED (merge the change) vs UNCHECKED (skip the change)
+  - Clarifies default behavior: most changes checked by default, except data loss fields
+  - Helps users understand the interactive merge interface without guessing
+
+### Changed
+- **Function 4 merge viewer messaging**: Updated text to reflect current checkbox behavior
+  - Before: "Data loss checkboxes are DISABLED (grayed out) - click '⚠️ Enable' to allow them"
+  - After: "These fields are UNCHECKED by default to prevent accidental data loss - review carefully before enabling"
+  - Accurately reflects that all checkboxes are always interactive (Enable buttons removed in this version)
+  - Data loss warning now mentions fields are "highlighted in orange below" for clarity
+- **Function 4 merge viewer arrow direction**: Changed arrows to point left (←) instead of right (→)
+  - Before: Old value ← → New value (arrows pointed right, suggesting left-to-right flow)
+  - After: Old value ← New value (arrows point left, indicating data flows from new to old when checked)
+  - More intuitive visual representation: checked boxes merge data from right (new) to left (old/core)
+  - Regular changes use ← and data loss fields use ←⃠ (strikethrough left arrow)
+  - Applies to all record types: compound parents, compound children, and standalone records
+- **Function 4 merge viewer record headers**: Improved visual separation and readability of records
+  - Increased font size of record identifiers/filenames (now 13-14pt instead of 10-12pt)
+  - Added horizontal dividers below each record header for clear visual separation
+  - Added records: Separated filename header from "Add this record" checkbox for clarity
+  - Changed records (compound): Larger compound object header (14pt), parent (13pt), and children (12pt)
+  - Changed records (standalone): Larger record header (14pt) with divider
+  - Improves scannability when reviewing added and changed records in merge dialog
+  - Removed records remain in simple abbreviated list format (no visual changes needed)
+
+### Fixed
+- **Function 4 title field checkbox default**: Title fields now always default to unchecked in merge viewer
+  - Before: Title fields were checked by default (unless data loss detected)
+  - After: Title fields always start unchecked, regardless of data loss status
+  - Prevents accidental overwriting of user-refined titles during merge
+  - User must explicitly check the box to merge title changes
+  - Applies to all record types: compound parents, compound children, and standalone records
+  - Other fields remain checked by default (except data loss fields)
+- **Function 2 filepath column insertion**: Now correctly adds filepath to export_columns list
+  - Before: If template CSV lacked filepath column, exports would omit it
+  - After: filepath is automatically inserted after filename column regardless of template
+  - Prevents "Source file not found: filename (filepath: empty)" errors in Function 3
+  - Marked as internal DART data column in exports
+  - Ensures Function 3 can always locate source files for derivative generation
+- **Function 3 source file location**: Now uses filepath column correctly
+  - Before: "[ERROR #2] Source file not found: AnnaChristie-F14-001.jpg (filepath: empty)"
+  - After: Reads full path from filepath column to locate source files
+  - Works correctly when export CSV contains filepath data
+  - Fixed by ensuring Function 2 always includes filepath in exports
+- **Function 4 filepath column handling**: Now strips filepath before comparison
+  - Before: csvdiff failed with "csvdiff failed: 'filepath'" column mismatch error
+  - After: Creates temporary CSVs without filepath column before running csvdiff
+  - filepath is internal DART data for Function 3, not CollectionBuilder metadata
+  - Core CSV (template) lacks filepath, but DART_export CSVs include it
+  - Temporary filtered CSVs ensure clean comparison of only CollectionBuilder fields
+  - Both old and new CSVs filtered identically before csvdiff execution
+- **csvdiff execution indentation bug**: Fixed critical indentation error preventing csvdiff from running
+  - Before: All csvdiff code (~870 lines) was indented inside the `except ImportError` block
+  - After: Code properly dedented to execute after successful csvdiff import
+  - csvdiff logic was unreachable dead code after `return` statement
+  - Function 4 would log "Using csvdiff tool" but then exit silently with no results
+  - Now properly executes: temp file creation, csvdiff comparison, JSON/text output, results dialog
+  - show_color_coded_view function also dedented to correct level
+  - csvdiff_dialog creation fixed to proper indentation
+
+### Changed
+- **Function 4 comparison method**: Now uses csvdiff exclusively for all CSV comparisons
+  - Simplified from dual-mode (pandas/csvdiff toggle) to single-mode (csvdiff only)
+  - Generates 2 output files: JSON diff result + text summary (instead of 3 CSV files)
+  - Status classifications: added/removed/changed (instead of match/new/changed/missing_in_new)
+  - Interactive merge viewer with field-level checkboxes (unchanged)
+  - Compound object grouping with blanket toggles (unchanged)
+  - Faster comparison for large files
+  - Consistent behavior - no mode switching needed
+
+### Documentation
+- **README.md**: Updated Function 4 description to reflect csvdiff-only approach
+  - Removed references to "two comparison methods" and pandas mode
+  - Updated output file descriptions (JSON + text instead of 3 CSVs)
+  - Simplified feature list to focus on csvdiff capabilities
+  - Added note about automatic filepath exclusion from comparisons
+- **FUNCTION_4_COMPARE_MERGE_CSV.md**: Complete rewrite for csvdiff-only workflow
+  - Removed entire "Comparison Methods" section with pandas documentation
+  - Removed "Side-by-Side Comparison Format" section (pandas-specific)
+  - Updated "Output Files" section: 2 files (JSON + text) instead of 3 CSV files
+  - Updated "Status Classifications": added/removed/changed (3 types, not 4)
+  - Updated "Comparison Logic": csvdiff steps instead of pandas merge steps
+  - Updated "Example Workflow": interactive merge instead of manual Excel review
+  - Updated "Tips": removed pandas-specific advice about Excel filtering
+  - Clarified filepath column is automatically excluded from comparison
+  - Removed references to CSV_review_with_csvdiff setting throughout
+
+### Technical Details
+- Function 2 CSV export logic (lines ~2425-2476):
+  - Checks if 'filepath' in export_columns list
+  - If missing, inserts 'filepath' after 'filename' column
+  - CSV writer includes filepath for file objects (full path) and empty string for compound parents
+- Function 4 csvdiff implementation (lines ~3380-4250):
+  - Reads both CSVs with csv.DictReader
+  - Filters fieldnames to exclude 'filepath' column
+  - Creates temporary NamedTemporaryFile objects with filtered columns
+  - Writes filtered rows to temp files using csv.DictWriter with extrasaction='ignore'
+  - Runs diff_files(temp_old.name, temp_new.name, index_columns=['filename'])
+  - Cleans up temporary files with os.unlink()
+  - Parses JSON result for added/removed/changed counts
+  - Displays interactive merge dialog with compound grouping
+- Indentation fixes applied to lines 3380-4247:
+  - Dedented main csvdiff logic from except block to proper level
+  - Dedented show_color_coded_view function body (~715 lines)
+  - Dedented csvdiff_dialog creation and display logic
+  - Corrected try/except block alignment
+
+---
+
 ## [1.5.4] - 2026-05-20
 
 ### Summary

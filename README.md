@@ -70,17 +70,14 @@ DART provides a comprehensive platform for digital asset management workflows:
   - **Clickable log viewer**: Results dialog includes link to open detailed log in popup
   - **Kill Switch**: Emergency stop for long-running derivative generation
 - **Function 4** 🔀: Compare and Merge CSV Files
-  - **Two comparison methods**: pandas-based (default) or csvdiff tool (configurable)
-  - Compare two CSV files by filename with side-by-side value comparison
+  - **CSV comparison using csvdiff tool**: Fast, accurate comparison with JSON output
+  - Compare two CSV files by filename with detailed change tracking
   - Auto-selects newest DART_export CSV as "new" file for easy workflow
-  - Classifies records: match, new, changed, missing_in_new
-  - Generates three outputs: full review, changes only, and summary (pandas) or JSON+text (csvdiff)
-  - **Detailed change tracking**: Lists which fields changed for each record
-  - **Boolean flags per column**: Easy filtering of specific field changes (pandas mode)
-  - **Preview in UI**: See first 10 changes with summary counts
-  - **Interactive merge** (csvdiff mode): Field-level checkboxes (checked by default), data loss fields disabled/grayed requiring manual enable
+  - Classifies records: added (new), removed (missing in new), changed (different values)
+  - Generates JSON diff results and text summary
+  - **Interactive merge with preview**: Field-level checkboxes (checked by default), data loss fields disabled/grayed requiring manual enable
   - Case-sensitive comparison with whitespace normalization
-  - Validates unique filenames and reports duplicates
+  - **Preserves core CSV structure**: Never reorders rows from core metadata CSV
 - **Function 9** 💻: Display system information
 
 *Additional asset processing functions are added as needed for your specific workflow.*
