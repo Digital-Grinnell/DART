@@ -103,7 +103,23 @@ rsync -a \
 
 echo "  ✓ $(find "$SRC_DIR" -type f | wc -l | tr -d ' ') files copied"
 
-# ── 4. Create compressed DMG ──────────────────────────────────────────────
+# ── 4. Copy common-DG-utilities into the bundle ──────────────────────────
+echo "▶ Copying common-DG-utilities..."
+
+COMMON_UTILS_SRC="$SCRIPT_DIR/../common-DG-utilities/common_dg_utilities"
+if [ -d "$COMMON_UTILS_SRC" ]; then
+    rsync -a \
+        --exclude='__pycache__/' \
+        --exclude='*.pyc' \
+        "$COMMON_UTILS_SRC" "$SRC_DIR/"
+    echo "  ✓ common_dg_utilities copied successfully"
+else
+    echo "  ⚠️  WARNING: common-DG-utilities not found at $COMMON_UTILS_SRC"
+    echo "     The DMG may not function correctly without these utilities."
+    echo "     Expected location: $SCRIPT_DIR/../common-DG-utilities/"
+fi
+
+# ── 5. Create compressed DMG ──────────────────────────────────────────────
 echo "▶ Creating DMG (this may take a moment)..."
 
 # Remove any stale output first

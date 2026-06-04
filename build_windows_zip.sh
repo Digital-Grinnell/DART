@@ -47,7 +47,23 @@ rsync -a \
 
 echo "  ✓ $(find "$STAGE_DIR" -type f | wc -l | tr -d ' ') files copied"
 
-# ── 3. Create the ZIP ──────────────────────────────────────────────────────
+# ── 3. Copy common-DG-utilities into the package ──────────────────────────
+echo "▶ Copying common-DG-utilities..."
+
+COMMON_UTILS_SRC="$SCRIPT_DIR/../common-DG-utilities/common_dg_utilities"
+if [ -d "$COMMON_UTILS_SRC" ]; then
+    rsync -a \
+        --exclude='__pycache__/' \
+        --exclude='*.pyc' \
+        "$COMMON_UTILS_SRC" "$STAGE_DIR/"
+    echo "  ✓ common_dg_utilities copied successfully"
+else
+    echo "  ⚠️  WARNING: common-DG-utilities not found at $COMMON_UTILS_SRC"
+    echo "     The package may not function correctly without these utilities."
+    echo "     Expected location: $SCRIPT_DIR/../common-DG-utilities/"
+fi
+
+# ── 4. Create the ZIP ──────────────────────────────────────────────────────
 echo "▶ Creating ZIP..."
 rm -f "$ZIP_OUT"
 (cd "$STAGING" && zip -r "$ZIP_OUT" "${APP_NAME}_v${VERSION}" -x "*.DS_Store")

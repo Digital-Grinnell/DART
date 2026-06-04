@@ -134,6 +134,9 @@ The run scripts automatically:
 - **Flet 0.25.2** (installed automatically by run scripts)
 - **cryptography** (for encrypted settings)
 - **azure-storage-blob 12.19.0+** (for Azure Blob Storage uploads)
+- **common-DG-utilities** (included in DMG/ZIP packages; required for source builds)
+  - Contains shared Digital.Grinnell utility functions
+  - Auto-included by build scripts from sibling directory
 
 All dependencies are installed automatically by the run scripts.
 
@@ -331,6 +334,14 @@ DART uses OHM's proven layout structure:
 This layout has been refined through real-world use in production applications.
 
 ## Building Standalone Packages
+
+**Prerequisites for Building:**
+- **macOS/Linux**: Standard build tools
+- **common-DG-utilities**: Required repository must exist as sibling directory
+  - Clone from: `https://github.com/Digital-Grinnell/common-DG-utilities`
+  - Expected location: `../common-DG-utilities/` (relative to DART directory)
+  - The build scripts automatically include these utilities in the packages
+  - If not found, the build will show a warning but continue
 
 ### macOS DMG
 
