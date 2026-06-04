@@ -84,6 +84,27 @@ DART provides a comprehensive platform for digital asset management workflows:
 
 ## Quick Start
 
+### Installing from DMG (macOS)
+
+If you received a `DART_v2.0.dmg` file:
+
+1. **Open the DMG file** (double-click it)
+2. **⚠️ IMPORTANT: Copy DART.app to your Applications folder**
+   - Drag DART.app to Applications (or Desktop, or any writable location)
+   - Do NOT run directly from the mounted DMG
+3. **Eject the DMG**
+4. **Launch DART from your Applications folder**
+   - First launch: Right-click → Open (to bypass Gatekeeper for unsigned apps)
+   - Subsequent launches: Double-click normally
+5. **Wait for automatic setup**
+   - A Terminal window opens and installs dependencies (first launch only)
+   - Takes 1-2 minutes on first run
+   - The DART application window opens when ready
+
+**Prerequisites:** Python 3 must be installed
+- Download from [python.org/downloads](https://python.org/downloads)
+- Or via Homebrew: `brew install python`
+
 ### Running from Source
 
 1. **Clone or copy this repository**

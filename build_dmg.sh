@@ -67,9 +67,17 @@ PLIST
 # ── 2. Launcher script (Contents/MacOS/DART) ─────────────────────────────────
 # Opens a Terminal window that runs run.sh from inside the bundle.
 # The Terminal window remains visible so users can see setup progress and errors.
+# Now includes read-only filesystem detection.
 cat > "$MACOS_DIR/$APP_NAME" << 'LAUNCHER'
 #!/usr/bin/env bash
 SRC="$(cd "$(dirname "$0")/../Resources/src" && pwd)"
+
+# Check if running from a read-only volume (like a mounted DMG)
+if [ ! -w "$SRC" ]; then
+    osascript -e 'display dialog "⚠️ DART cannot run from a read-only volume.\n\n📋 Installation Required:\n\n1. Copy DART.app to your Applications folder\n   (or Desktop, or any writable location)\n\n2. Eject the DMG\n\n3. Run DART from the copied location\n\nDo not run directly from the mounted DMG!" buttons {"OK"} default button 1 with icon caution with title "DART Installation Required"'
+    exit 1
+fi
+
 osascript << APPLESCRIPT
 tell application "Terminal"
     activate
@@ -112,24 +120,31 @@ echo
 echo "✅ DMG created: $DMG_OUT"
 echo "   Size: $(du -sh "$DMG_OUT" | cut -f1)"
 echo
-echo "────────────────────────────────────────────────"
-echo " Distribution notes for recipients"
-echo "────────────────────────────────────────────────"
-echo " Prerequisites (one-time, if not already installed):"
-echo "   • Python 3:  https://python.org/downloads  (or via Homebrew: brew install python)"
+echo "════════════════════════════════════════════════"
+echo " 📋 Distribution Instructions for Recipients"
+echo "════════════════════════════════════════════════"
 echo
-echo " Installation:"
+echo " ⚠️  CRITICAL: Do NOT run directly from the DMG!"
+echo "     The DMG is read-only and will cause errors."
+echo
+echo " ✅ Correct Installation (required):"
 echo "   1. Open $DMG_NAME"
-echo "   2. Drag DART.app to your Applications folder (or any convenient location)"
+echo "   2. DRAG DART.app to your Applications folder"
 echo "   3. Eject the DMG"
+echo "   4. Run DART.app from Applications"
 echo
-echo " First launch (Gatekeeper — unsigned app):"
-echo "   • Right-click DART.app → Open → click Open in the dialog"
-echo "   • Subsequent launches can use a normal double-click"
+echo " 🔐 First Launch (Gatekeeper for unsigned apps):"
+echo "   • Right-click DART.app → Open → click 'Open'"
+echo "   • Subsequent launches: normal double-click"
 echo
-echo " What happens on first launch:"
-echo "   • A Terminal window opens and sets up a Python virtual environment"
-echo "   • Dependencies install automatically (may take a few minutes)"
-echo "   • The DART window opens when setup is complete"
-echo "   • The Terminal window can be left open or minimised while using the app"
-echo "────────────────────────────────────────────────"
+echo " 📦 Prerequisites (one-time setup if not installed):"
+echo "   • Python 3: https://python.org/downloads"
+echo "     Or via Homebrew: brew install python"
+echo
+echo " 🚀 What happens on first launch:"
+echo "   • Terminal window opens automatically"
+echo "   • Python virtual environment created"
+echo "   • Dependencies install (1-2 minutes)"
+echo "   • DART window opens when ready"
+echo "   • Terminal can be minimized during use"
+echo "════════════════════════════════════════════════"
