@@ -26,6 +26,17 @@ Version 1.5.5 removes the pandas dependency entirely, simplifying the codebase b
   - Removed UI field from settings dialog
   - Removed validation and save/load logic for this setting
   - Cleaner settings interface with one less option to configure
+- **Unused Function 0 settings**: Removed 5 placeholder settings that were never implemented
+  - `auto_save_enabled`: Boolean setting with no functional implementation
+  - `auto_save_format`: Text setting for specifying auto-save format (txt, csv, json)
+  - `api_key`: Generic API authentication field (encrypted but unused)
+  - `api_secret`: Generic API secret field (encrypted but unused)
+  - `password`: Generic password field (encrypted but unused)
+  - Removed from DEFAULT_APP_SETTINGS dictionary
+  - Removed from SENSITIVE_FIELDS list (kept azure_connection_string)
+  - Removed UI fields and validation from Function 0 settings dialog
+  - Removed from settings save handler
+  - Cleaner settings storage and simplified UI
 
 ### Added
 - **Automatic MIME type population**: Function 2 now auto-populates the 'format' field with valid MIME types

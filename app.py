@@ -90,22 +90,17 @@ PERSISTENCE_FILE = DATA_DIR / "persistent.json"
 ENCRYPTION_KEY_FILE = DATA_DIR / "encryption_key"
 
 # Sensitive fields that should be encrypted in settings
-SENSITIVE_FIELDS = ["api_key", "api_secret", "password", "azure_connection_string"]
+SENSITIVE_FIELDS = ["azure_connection_string"]
 
 # App settings filename and defaults
 APP_SETTINGS_FILENAME = "dart_settings.json"
 DEFAULT_APP_SETTINGS = {
-    "auto_save_enabled": False,
-    "auto_save_format": "txt",
     "group_compound_objects": False,
     "use_working_folder_for_file_selection": False,
     "csv_structure_file": "",
     "core_metadata_csv": "",
     "azure_blob_storage_path": "",
     "azure_connection_string": "",
-    "api_key": "",
-    "api_secret": "",
-    "password": "",
     "file_to_id_map": {},  # Maps full file paths to assigned dg_<epoch> IDs
 }
 
@@ -1113,18 +1108,6 @@ def main(page: ft.Page):
         settings_path = get_app_settings_path(working_dir)
         
         # Create form fields
-        auto_save_field = ft.TextField(
-            label="auto_save_enabled",
-            value=str(settings.get("auto_save_enabled", False)).lower(),
-            hint_text="true or false",
-            width=320,
-        )
-        auto_save_format_field = ft.TextField(
-            label="auto_save_format",
-            value=str(settings.get("auto_save_format", "txt")).lower(),
-            hint_text="txt, csv, json, etc.",
-            width=320,
-        )
         group_compound_field = ft.TextField(
             label="group_compound_objects",
             value=str(settings.get("group_compound_objects", False)).lower(),
@@ -1301,29 +1284,6 @@ def main(page: ft.Page):
             can_reveal_password=True,
             width=500,
         )
-        
-        api_key_field = ft.TextField(
-            label="api_key",
-            value=str(settings.get("api_key", "")),
-            hint_text="API key (encrypted)",
-            width=320,
-        )
-        api_secret_field = ft.TextField(
-            label="api_secret",
-            value=str(settings.get("api_secret", "")),
-            hint_text="API secret (encrypted)",
-            password=True,
-            can_reveal_password=True,
-            width=320,
-        )
-        password_field = ft.TextField(
-            label="password",
-            value=str(settings.get("password", "")),
-            hint_text="Password (encrypted)",
-            password=True,
-            can_reveal_password=True,
-            width=320,
-        )
 
         settings_path_text = ft.Text(
             f"Settings file: {settings_path}",
@@ -1337,14 +1297,6 @@ def main(page: ft.Page):
             page.update()
 
         def save_settings_click(evt):
-            parsed_auto_save = parse_bool_text(auto_save_field.value)
-            if parsed_auto_save is None:
-                update_status(
-                    "Error: auto_save_enabled must be true/false (or yes/no, 1/0)",
-                    is_error=True,
-                )
-                return
-            
             parsed_group_compound = parse_bool_text(group_compound_field.value)
             if parsed_group_compound is None:
                 update_status(
@@ -1443,17 +1395,12 @@ def main(page: ft.Page):
                     return
 
             new_settings = {
-                "auto_save_enabled": parsed_auto_save,
-                "auto_save_format": (auto_save_format_field.value or "").strip() or "txt",
                 "group_compound_objects": parsed_group_compound,
                 "use_working_folder_for_file_selection": parsed_use_working_folder,
                 "csv_structure_file": csv_file_path,
                 "core_metadata_csv": core_csv_path,
                 "azure_blob_storage_path": azure_path_value,
                 "azure_connection_string": (azure_connection_field.value or "").strip(),
-                "api_key": (api_key_field.value or "").strip(),
-                "api_secret": (api_secret_field.value or "").strip(),
-                "password": (password_field.value or "").strip(),
             }
             ok, save_result = save_app_settings(working_dir, new_settings)
             if not ok:
@@ -1477,8 +1424,6 @@ def main(page: ft.Page):
                         ),
                         settings_path_text,
                         ft.Container(height=8),
-                        auto_save_field,
-                        auto_save_format_field,
                         group_compound_field,
                         use_working_folder_field,
                         ft.Container(height=8),
@@ -1513,19 +1458,6 @@ def main(page: ft.Page):
                             weight=ft.FontWeight.BOLD,
                         ),
                         azure_connection_field,
-                        ft.Container(height=8),
-                        ft.Text(
-                            "Other sensitive fields (encrypted):",
-                            size=12,
-                            weight=ft.FontWeight.BOLD,
-                        ),
-                        api_key_field,
-                        ft.Row(
-                            controls=[
-                                api_secret_field,
-                                password_field,
-                            ]
-                        ),
                     ],
                     tight=True,
                     scroll=ft.ScrollMode.AUTO,
