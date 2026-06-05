@@ -29,7 +29,9 @@ SRC_DIR="$DMG_CONTENT_DIR/dart_files"
 echo "=== Building $DISPLAY_NAME v$VERSION ==="
 echo
 
-# ── 1. Create DMG content directory ───────────────────────────────────────
+# ── 1. App bundle skeleton ─────────────────────────────────────────────────
+echo "▶ Creating app bundle structure..."
+mkdir -pCreate DMG content directory ───────────────────────────────────────
 echo "▶ Creating DMG content structure..."
 mkdir -p "$SRC_DIR"
 
@@ -101,57 +103,7 @@ LAUNCHER
 chmod +x "$INSTALL_DIR/Launch DART.command"
 
 # Create desktop alias (optional)
-DESKTOP="$HOME/Desktop"
-if [ -d "$DESKTOP" ]; then
-    echo "▶ Creating desktop shortcut..."
-    ln -sf "$INSTALL_DIR/Launch DART.command" "$DESKTOP/Launch DART"
-fi
-
-echo
-echo "════════════════════════════════════════════════"
-echo " ✅ Installation Complete!"
-echo "════════════════════════════════════════════════"
-echo
-echo "DART has been installed to:"
-echo "  $INSTALL_DIR"
-echo
-echo "To launch DART:"
-echo "  • Double-click: Launch DART (on your Desktop)"
-echo "  • Or navigate to: $INSTALL_DIR"
-echo "    and double-click: Launch DART.command"
-echo
-echo "First launch notes:"
-echo "  • A Terminal window will open"
-echo "  • Dependencies install automatically (1-2 min)"
-echo "  • The DART window opens when ready"
-echo "  • Keep Terminal window open while using DART"
-echo
-echo "════════════════════════════════════════════════"
-echo
-read -p "Press Enter to finish..."
-INSTALLER
-
-# Replace version placeholder
-sed -i '' "s/__VERSION__/$VERSION/g" "$DMG_CONTENT_DIR/Install DART.command"
-chmod +x "$DMG_CONTENT_DIR/Install DART.command"
-
-# ── 3. Copy project source files ──────────────────────────────────────────
-echo "▶ Copying project files..."
-
-rsync -a \
-    --exclude='.venv/' \
-    --exclude='.git/' \
-    --exclude='.env' \
-    --exclude='*.dmg' \
-    --exclude='*.zip' \
-    --exclude='logfiles/' \
-    --exclude='*.pyc' \
-    --exclude='__pycache__/' \
-    "$SCRIPT_DIR/" "$SRC_DIR/"
-
-echo "  ✓ $(find "$SRC_DIR" -type f | wc -l | tr -d ' ') files copied"
-
-# ── 4. Copy common-DG-utilities ──────────────────────────────────────────
+DESKTOP="$HOME/Desktop"──────────────────────────────────────────
 echo "▶ Copying common-DG-utilities..."
 
 COMMON_UTILS_SRC="$SCRIPT_DIR/../common-DG-utilities/common_dg_utilities"
@@ -220,7 +172,55 @@ Documentation: See INSTALLATION.md in installed folder
 
 DMGREADME
 
-# ── 6. Create compressed DMG ──────────────────────────────────────────────
+# ── 6  • Or navigate to: $INSTALL_DIR"
+echo "    and double-click: Launch DART.command"
+echo
+echo "First launch notes:"
+echo "  • A Terminal window will open"
+echo "  • Dependencies install automatically (1-2 min)"
+echo "  • The DART window opens when ready"
+echo "  • Keep Terminal window open while using DART"
+echo
+echo "════════════════════════════════════════════════"
+echo
+read -p "Press Enter to finish..."
+INSTALLER
+
+# Replace version placeholder
+sed -i '' "s/__VERSION__/$VERSION/g" "$DMG_CONTENT_DIR/Install DART.command"
+chmod +x "$DMG_CONTENT_DIR/Install DART.command"
+
+# ── 3. Copy project source files ────────────────
+rsync -a \
+    --exclude='.venv/' \
+    --exclude='.git/' \
+    --exclude='.env' \
+    --exclude='*.dmg' \
+    --exclude='*.zip' \
+    --exclude='logfiles/' \
+    --exclude='*.pyc' \
+    --exclude='__pycache__/' \
+    "$SCRIPT_DIR/" "$SRC_DIR/"
+
+echo "  ✓ $(find "$SRC_DIR" -type f | wc -l | tr -d ' ') files copied"
+
+# ── 4. Copy common-DG-utilities into the bundle ──────────────────────────
+echo "▶ Copying common-DG-utilities..."
+
+COMMON_UTILS_SRC="$SCRIPT_DIR/../common-DG-utilities/common_dg_utilities"
+if [ -d "$COMMON_UTILS_SRC" ]; then
+    rsync -a \
+        --exclude='__pycache__/' \
+        --exclude='*.pyc' \
+        "$COMMON_UTILS_SRC" "$SRC_DIR/"
+    echo "  ✓ common_dg_utilities copied successfully"
+else
+    echo "  ⚠️  WARNING: common-DG-utilities not found at $COMMON_UTILS_SRC"
+    echo "     The DMG may not function correctly without these utilities."
+    echo "     Expected location: $SCRIPT_DIR/../common-DG-utilities/"
+fi
+
+# ── 5. Create compressed DMG ──────────────────────────────────────────────
 echo "▶ Creating DMG (this may take a moment)..."
 
 # Remove any stale output first
@@ -228,7 +228,7 @@ rm -f "$DMG_OUT"
 
 hdiutil create \
     -volname "$DISPLAY_NAME" \
-    -srcfolder "$DMG_CONTENT_DIR" \
+    -srcfolder "$STAGING" \
     -ov \
     -format UDZO \
     "$DMG_OUT"
@@ -241,26 +241,27 @@ echo "════════════════════════�
 echo " 📋 Distribution Instructions for Recipients"
 echo "════════════════════════════════════════════════"
 echo
-echo " ✅ EASY INSTALLATION (no admin required):"
+echo " ⚠️  CRITICAL: Do NOT run directly from the DMG!"
+echo "     The DMG is read-only and will cause errors."
+echo
+echo " ✅ Correct Installation (required):"
 echo "   1. Open $DMG_NAME"
-echo "   2. Double-click: 'Install DART.command'"
-echo "   3. Follow prompts in Terminal window"
-echo "   4. Find 'Launch DART' on your Desktop"
+echo "   2. DRAG DART.app to your Applications folder"
+echo "   3. Eject the DMG"
+echo "   4. Run DART.app from Applications"
 echo
-echo " 📍 Installs to: ~/DART/"
-echo "    (No Applications folder permissions needed)"
+echo " 🔐 First Launch (Gatekeeper for unsigned apps):"
+echo "   • Right-click DART.app → Open → click 'Open'"
+echo "   • Subsequent launches: normal double-click"
 echo
-echo " 🔐 Gatekeeper Bypass (unsigned app):"
-echo "   • If 'Install DART.command' won't open:"
-echo "   • Right-click → Open → click 'Open'"
-echo "   • (Only needed once)"
-echo
-echo " 📦 Prerequisites:"
+echo " 📦 Prerequisites (one-time setup if not installed):"
 echo "   • Python 3: https://python.org/downloads"
 echo "     Or via Homebrew: brew install python"
 echo
-echo " 🚀 First Launch:"
-echo "   • Terminal opens automatically"
-echo "   • Dependencies install (1-2 min, first time only)"
+echo " 🚀 What happens on first launch:"
+echo "   • Terminal window opens automatically"
+echo "   • Python virtual environment created"
+echo "   • Dependencies install (1-2 minutes)"
 echo "   • DART window opens when ready"
+echo "   • Terminal can be minimized during use"
 echo "════════════════════════════════════════════════"

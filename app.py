@@ -14,6 +14,7 @@ import socket
 import re
 import csv
 import shutil
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Tuple
@@ -4086,11 +4087,24 @@ Detailed results: {output_diff.name}
                                                 for filename in records_updated:
                                                     add_log_message(f"[INFO] Updated fields in: {filename}")
                                             
-                                            # Write updated CSV
-                                            with open(old_csv, 'w', encoding='utf-8', newline='') as f:
-                                                writer = csv.DictWriter(f, fieldnames=fieldnames)
-                                                writer.writeheader()
-                                                writer.writerows(core_rows)
+                                            # Write updated CSV using atomic write (temp file then rename)
+                                            # This prevents "_1" copies and ensures clean overwrite
+                                            temp_fd, temp_path = tempfile.mkstemp(suffix='.csv', dir=old_csv.parent, text=True)
+                                            try:
+                                                # Write to temporary file
+                                                with os.fdopen(temp_fd, 'w', encoding='utf-8', newline='') as f:
+                                                    writer = csv.DictWriter(f, fieldnames=fieldnames)
+                                                    writer.writeheader()
+                                                    writer.writerows(core_rows)
+                                                
+                                                # Atomic replace: rename temp file to target (overwrites on all platforms)
+                                                os.replace(temp_path, old_csv)
+                                                add_log_message(f"[INFO] Successfully overwrote {old_csv.name}")
+                                            except Exception as write_error:
+                                                # Clean up temp file if something went wrong
+                                                if Path(temp_path).exists():
+                                                    os.remove(temp_path)
+                                                raise write_error
                                             
                                             add_log_message(f"[SUCCESS] Merged {len(selected_added)} additions and {fields_updated_count} field changes across {len(records_updated)} records")
                                             update_status(f"Successfully merged {len(selected_added)} additions and {fields_updated_count} field changes")

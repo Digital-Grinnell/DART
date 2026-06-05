@@ -86,26 +86,77 @@ DART provides a comprehensive platform for digital asset management workflows:
 
 ### Installing from DMG (macOS)
 
-If you received a `DART_v2.0.dmg` file:
+DART for macOS features an **automated installer** that requires no admin permissions.
 
-1. **Open the DMG file** (double-click it)
-2. **⚠️ IMPORTANT: Copy DART.app to your Applications folder**
-   - Drag DART.app to Applications (or Desktop, or any writable location)
-   - Do NOT run directly from the mounted DMG
-3. **Eject the DMG**
-4. **Launch DART from your Applications folder**
-   - First launch: Right-click → Open (to bypass Gatekeeper for unsigned apps)
-   - Subsequent launches: Double-click normally
-5. **Wait for automatic setup**
-   - A Terminal window opens and installs dependencies (first launch only)
-   - Takes 1-2 minutes on first run
-   - The DART application window opens when ready
+**What you receive:** `DART_v2.0.dmg`
 
-**Prerequisites:** Python 3 must be installed
+**Installation steps:**
+
+1. **Open the DMG** (double-click it)
+
+2. **Run the installer:**
+   - Double-click: `Install DART.command`
+   - **First time only:** If blocked, right-click → Open → click "Open"
+
+3. **Follow prompts:**
+   - Installation completes in seconds
+   - DART installs to `~/DART/` (your home directory)
+   - A launcher appears on your Desktop
+
+4. **Eject the DMG**
+
+5. **Launch DART:**
+   - Double-click `Launch DART` on your Desktop
+   - Or navigate to `~/DART/` and double-click `Launch DART.command`
+
+**First launch:**
+- Terminal window opens and installs dependencies (1-2 minutes, first time only)
+- DART application window opens when ready
+- Keep Terminal open while using DART
+
+**Why home directory?**
+- No admin permissions required
+- Works on all systems, including managed/restricted work computers
+- Clean, predictable location: `~/DART/`
+
+**Prerequisites:** Python 3.8+ must be installed
 - Download from [python.org/downloads](https://python.org/downloads)
 - Or via Homebrew: `brew install python`
+- Verify: `python3 --version`
 
-### Running from Source
+📖 **For detailed instructions, see [INSTALLATION.md](INSTALLATION.md)**
+
+### Installing from ZIP (Development)
+
+1. **Clone or download this repository**
+   ```bash
+   git clone https://github.com/Digital-Grinnell/DART.git
+   cd DART
+   ```
+
+2. **Install common-DG-utilities (required dependency)**
+   ```bash
+   cd ..
+   git clone https://github.com/Digital-Grinnell/common-DG-utilities.git
+   cd DART
+   ```
+
+3
+3. **Run the launcher:**
+   - Double-click: `run.bat`
+
+4. **First launch:**
+   - Command Prompt opens and installs dependencies (1-2 minutes, first time only)
+   - DART application window opens when ready
+   - Keep Command Prompt open while using DART
+
+**Prerequisites:** Python 3.8+ must be installed with "Add Python to PATH" checked
+- Download from [python.org/downloads](https://python.org/downloads)
+- Verify: `python --version` in Command Prompt
+
+**Optional:** Create desktop shortcut: Right-click `run.bat` → Send to → Desktop
+
+📖 **For detailed instructions, see [INSTALLATION.md](INSTALLATION.md)**
 
 1. **Clone or copy this repository**
    ```bash
@@ -153,13 +204,15 @@ DART/
 ├── .gitignore                  # Git exclusions
 ├── LICENSE                     # MIT License
 ├── CHANGELOG.md               # Version history
+├── README.md                   # This file (full documentation)
+├── INSTALLATION.md             # Detailed installation guide
 ├── QUICKSTART.md              # Quick reference guide
 ├── FUNCTION_0_APP_SETTINGS.md # Help docs for Function 0
 ├── FUNCTION_1_ANALYZE_ASSETS.md  # Help docs for Function 1
 ├── FUNCTION_2_EXPORT_CSV.md     # Help docs for Function 2 (CSV and Azure export)
 ├── FUNCTION_3_GENERATE_DERIVATIVES.md  # Help docs for Function 3 (Derivatives)
 ├── FUNCTION_4_COMPARE_MERGE_CSV.md  # Help docs for Function 4 (Compare/Merge)
-└── README.md                   # This file
+└── common_dg_utilities/        # Shared utility functions (auto-included in builds)
 ```
 
 ### Runtime Files
@@ -330,28 +383,46 @@ DART uses OHM's proven layout structure:
 - **Status Output**: Multi-line with copy-to-clipboard
 - **Log Output**: Timestamped entries with copy and clear functionality
 - **Help Mode**: Toggle to view function documentation instead of executing
-
-This layout has been refined through real-world use in production applications.
-
-## Building Standalone Packages
-
-**Prerequisites for Building:**
-- **macOS/Linux**: Standard build tools
+ (`hdiutil` for macOS, `zip` for all)
 - **common-DG-utilities**: Required repository must exist as sibling directory
   - Clone from: `https://github.com/Digital-Grinnell/common-DG-utilities`
   - Expected location: `../common-DG-utilities/` (relative to DART directory)
   - The build scripts automatically include these utilities in the packages
   - If not found, the build will show a warning but continue
 
-### macOS DMG
-
-Create a distributable DMG file:
+**What the installers do:**
+- **macOS DMG**: Creates an auto-installer that installs to `~/DART/` (no admin required)
+- **Windows ZIP**: Packageswith auto-installer:
 
 ```bash
-bash build_dmg.sh 1.0
+bash build_dmg.sh 2.0
 ```
 
-This creates `YourApp_v1.0.dmg` with:
+This creates `DART_v2.0.dmg` with:
+- Auto-installer script (`Install DART.command`)
+- Installs to `~/DART/` (no admin permissions required)
+- Includes common-DG-utilities automatically
+- Creates desktop launcher
+- No code signing (users must right-click → Open on first use)
+
+**Distribution:**
+- Send the DMG file to users
+- Users double-click the installer
+- Installation completes automatically
+- No manual file copying required
+Create a distributable DMG file:
+DART_v2.0_Windows.zip` with:
+- All source files including common-DG-utilities
+- `run.bat` launcher
+- Automatic dependency installation on first launch
+- No admin permissions required
+
+**Distribution:**
+- Send the ZIP file to users
+- Users extract and run `run.bat`
+- First launch installs dependencies automatically
+
+Recipients need Python 3.8+ installed with "Add Python to PATH" checked
 - Self-contained app bundle
 - Automatic dependency installation on first launch
 - No code signing (users must right-click → Open on first launch)
