@@ -47,7 +47,14 @@ rsync -a \
 
 echo "  ✓ $(find "$STAGE_DIR" -type f | wc -l | tr -d ' ') files copied"
 
-# ── 3. Copy common-DG-utilities into the package ──────────────────────────
+# ── 3. Fix python_requirements.txt for distribution ──────────────────────
+echo "▶ Fixing python_requirements.txt for distribution..."
+# Remove the editable install line for common-DG-utilities since we bundle it directly
+grep -v "^-e.*common-DG-utilities" "$STAGE_DIR/python_requirements.txt" > "$STAGE_DIR/python_requirements.txt.tmp"
+mv "$STAGE_DIR/python_requirements.txt.tmp" "$STAGE_DIR/python_requirements.txt"
+echo "  ✓ Removed editable common-DG-utilities reference"
+
+# ── 4. Copy common-DG-utilities into the package ──────────────────────────
 echo "▶ Copying common-DG-utilities..."
 
 COMMON_UTILS_SRC="$SCRIPT_DIR/../common-DG-utilities/common_dg_utilities"
@@ -56,7 +63,7 @@ if [ -d "$COMMON_UTILS_SRC" ]; then
         --exclude='__pycache__/' \
         --exclude='*.pyc' \
         "$COMMON_UTILS_SRC" "$STAGE_DIR/"
-    echo "  ✓ common_dg_utilities copied successfully"
+# ── 5. Create the ZIP ──────────────────────────────────────────────────────
 else
     echo "  ⚠️  WARNING: common-DG-utilities not found at $COMMON_UTILS_SRC"
     echo "     The package may not function correctly without these utilities."

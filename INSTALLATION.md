@@ -191,25 +191,30 @@ DART runs from source on Linux systems.
 
 1. **Download or Clone**
    ```bash
-   # If you have the source archive:
-   unzip DART_v2.x.zip
-   cd DART_v2.x
-   
-   # Or clone from repository:
+   # Clone from repository:
    git clone https://github.com/Digital-Grinnell/DART.git
    cd DART
    ```
 
-2. **Run DART**
+2. **Install common-DG-utilities (required dependency)**
+   ```bash
+   cd ..
+   git clone https://github.com/Digital-Grinnell/common-DG-utilities.git
+   cd DART
+   ```
+
+3. **Run DART**
    ```bash
    ./run.sh
    ```
 
-3. **First Launch**
+4. **First Launch**
    - The script creates a Python virtual environment in `.venv/`
    - Installs all dependencies automatically
    - Launches the DART application
    - Subsequent runs skip the setup phase
+
+**Note for developers:** The `python_requirements.txt` file includes `-e ../common-DG-utilities` which references the sibling repository. This line is automatically removed by the build scripts when creating DMG/ZIP distributions since those packages bundle the utilities directly.
 
 ### Creating a Desktop Launcher (Optional)
 
@@ -401,9 +406,23 @@ sudo dnf install python3-tkinter
 **Cause:** DMG/ZIP was missing the utilities folder
 
 **Solution:**
-- This should not happen with properly built installers
-- Contact support or rebuild DMG/ZIP with utilities included
+- This should not happen with properly built installers v2.2+
+- The build scripts automatically bundle common_dg_utilities
 - For developers: Ensure `../common-DG-utilities/` exists when building
+
+#### "not a valid editable requirement" error
+
+**Cause:** Using source repository with missing sibling common-DG-utilities repo
+
+**Solution (for developers):**
+```bash
+# Clone the required utilities repository
+cd ..
+git clone https://github.com/Digital-Grinnell/common-DG-utilities.git
+cd DART
+```
+
+**Note:** DMG/ZIP installers automatically remove this dependency since utilities are bundled directly.
 
 ---
 

@@ -151,7 +151,14 @@ rsync -a \
 
 echo "  ✓ $(find "$SRC_DIR" -type f | wc -l | tr -d ' ') files copied"
 
-# ── 4. Copy common-DG-utilities ──────────────────────────────────────────
+# ── 4. Fix python_requirements.txt for distribution ──────────────────────
+echo "▶ Fixing python_requirements.txt for distribution..."
+# Remove the editable install line for common-DG-utilities since we bundle it directly
+grep -v "^-e.*common-DG-utilities" "$SRC_DIR/python_requirements.txt" > "$SRC_DIR/python_requirements.txt.tmp"
+mv "$SRC_DIR/python_requirements.txt.tmp" "$SRC_DIR/python_requirements.txt"
+echo "  ✓ Removed editable common-DG-utilities reference"
+
+# ── 5. Copy common-DG-utilities ──────────────────────────────────────────
 echo "▶ Copying common-DG-utilities..."
 
 COMMON_UTILS_SRC="$SCRIPT_DIR/../common-DG-utilities/common_dg_utilities"
@@ -160,7 +167,7 @@ if [ -d "$COMMON_UTILS_SRC" ]; then
         --exclude='__pycache__/' \
         --exclude='*.pyc' \
         "$COMMON_UTILS_SRC" "$SRC_DIR/"
-    echo "  ✓ common_dg_utilities copied successfully"
+# ── 6. Create README in DMG ───────────────────────────────────────────────
 else
     echo "  ⚠️  WARNING: common-DG-utilities not found at $COMMON_UTILS_SRC"
     echo "     The DMG may not function correctly without these utilities."
@@ -220,7 +227,7 @@ Documentation: See INSTALLATION.md in installed folder
 
 DMGREADME
 
-# ── 6. Create compressed DMG ──────────────────────────────────────────────
+# ── 7. Create compressed DMG ──────────────────────────────────────────────
 echo "▶ Creating DMG (this may take a moment)..."
 
 # Remove any stale output first
