@@ -98,7 +98,8 @@ The script searches these locations and patterns:
 
 **Files checked:**
 - `_config.yml` - Main site configuration
-- `_data/config-*.yml` - Metadata display configuration
+- `_data/config-*.yml` - Metadata display configuration (YAML-based)
+- `_data/config-*.csv` - Metadata display configuration (CSV-based)
 - `_data/theme.yml` - Theme configuration
 - `pages/*.md` - Page content
 - `_layouts/*.html` - Layout templates
@@ -252,7 +253,11 @@ done
 - The field might not be used in config files
 - Check if the field is only used in CSV/data files
 - This is normal for fields that aren't displayed on the site
-
+**Browse page shows no titles or dates after renaming**
+- Your CollectionBuilder uses CSV config files (config-browse.csv, config-metadata.csv)
+- The rename script now handles these automatically (v2.2.1+)
+- For older renames, run: `python3 fix_config_csv_fields.sh <collectionbuilder_dir>`
+- This updates the 'field' column in CSV config files to match your renamed metadata fields
 **"Conflict: destination is shared by multiple files" (CollectionBuilder build warning)**
 - Old non-hidden backup files are being processed by CollectionBuilder
 - Solution: Run `bash cleanup_old_backups.sh <collectionbuilder_dir>` to remove old backup files

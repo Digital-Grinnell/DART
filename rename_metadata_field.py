@@ -163,6 +163,7 @@ class MetadataFieldRenamer:
         patterns = [
             '_config.yml',
             '_data/config-*.yml',
+            '_data/config-*.csv',  # CSV-based config files
             '_data/theme.yml',
             'pages/*.md',
             '_layouts/*.html',
@@ -264,6 +265,60 @@ class MetadataFieldRenamer:
             print(f"  ⚠️  Error processing {file_path.name}: {e}")
             return False, 0
     
+    def update_cb_config_csv_file(self, file_path):
+        """Update field references in a CSV configuration file (e.g., config-browse.csv)."""
+        try:
+            with open(file_path, 'r', encoding='utf-8', newline='') as f:
+                reader = csv.reader(f)
+                rows = list(reader)
+            
+            if not rows or len(rows) < 2:
+                return False, 0  # Empty or header-only CSV
+            
+            headers = rows[0]
+            
+            # Find the 'field' column (usually the first column in config CSVs)
+            try:
+                field_col_index = headers.index('field')
+            except ValueError:
+                # No 'field' column, skip this file
+                return False, 0
+            
+            # Count and update field references
+            matches = 0
+            for i in range(1, len(rows)):  # Skip header row
+                if rows[i][field_col_index] == self.old_field:
+                    if not self.dry_run:
+                        rows[i][field_col_index] = self.new_field
+                    matches += 1
+            
+            if matches == 0:
+                return False, 0
+            
+            change_info = {
+                'file': str(file_path.relative_to(self.cb_dir)),
+                'type': 'config_file',
+                'matches': matches,
+                'match_types': ['csv_field_column']
+            }
+            self.changes.append(change_info)
+            
+            if not self.dry_run:
+                # Backup original
+                if self.create_backup:
+                    backup_path = self.backup_file(file_path)
+                
+                # Write updated CSV
+                with open(file_path, 'w', encoding='utf-8', newline='') as f:
+                    writer = csv.writer(f)
+                    writer.writerows(rows)
+            
+            return True, matches
+            
+        except Exception as e:
+            print(f"  ⚠️  Error processing CSV {file_path.name}: {e}")
+            return False, 0
+    
     def update_cb_configs(self):
         """Update all CollectionBuilder configuration files."""
         if not self.cb_dir:
@@ -283,7 +338,11 @@ class MetadataFieldRenamer:
         total_replacements = 0
         
         for config_file in config_files:
-            updated, count = self.update_cb_config_file(config_file)
+            # Route to appropriate handler based on file extension
+            if config_file.suffix.lower() == '.csv':
+                updated, count = self.update_cb_config_csv_file(config_file)
+            else:
+                updated, count = self.update_cb_config_file(config_file)
             if updated:
                 updated_count += 1
                 total_replacements += count

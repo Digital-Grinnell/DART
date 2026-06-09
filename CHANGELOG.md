@@ -37,6 +37,7 @@ Version 2.2.1 introduces persistent versioning infrastructure with automatic ver
   - Version stored in `APP_VERSION` global constant for application-wide access
 - **Metadata field renaming tools**: New utility scripts for coordinating field name changes
   - **rename_metadata_field.py**: Python script for renaming individual fields
+  - **fix_config_csv_fields.sh**: Python script to fix CSV config files after batch renaming
     - Renames fields in CSV headers and CollectionBuilder configuration files
     - Dry-run preview mode by default (safe before applying)
     - Automatic timestamped hidden backups (dotted filenames to prevent CollectionBuilder conflicts)
@@ -45,6 +46,7 @@ Version 2.2.1 introduces persistent versioning infrastructure with automatic ver
     - **Preserves page.title**: Does NOT rename `page.title` (page front matter), only `item.title` (metadata fields)
     - Protects `_config.yml` site settings from accidental changes
     - Pattern matching for YAML keys (in metadata configs only), Liquid item variables, quoted strings
+    - **Supports CSV configs**: Updates `_data/config-*.csv` files (config-browse.csv, config-metadata.csv, etc.)
     - Updates `_data/config-*.yml`, layouts, includes, and pages
     - Clear reporting of changes found and applied
     - Command-line tool with `--apply` flag to execute changes
@@ -55,6 +57,12 @@ Version 2.2.1 introduces persistent versioning infrastructure with automatic ver
     - Prevents CollectionBuilder build conflicts from old backups
     - Interactive confirmation before deletion
     - Preserves hidden (dotted) backup files
+  - **fix_config_csv_fields.sh**: Python script to fix CSV config files (for CSV-based CollectionBuilder themes)
+    - Updates 'field' column in config-browse.csv, config-metadata.csv, etc.
+    - Applies dc_ prefix mappings to match renamed metadata fields
+    - Creates timestamped backups before modifications
+    - Useful when batch rename didn't catch CSV config files
+    - Supports all standard Dublin Core field mappings
   - **batch_rename_dublin_core.sh**: Bash script for batch Dublin Core renaming
     - Renames multiple standard fields to dc_ format in one operation
     - Fields: title, description, creator, subject, date, format, rights, source, etc.

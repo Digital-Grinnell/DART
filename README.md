@@ -550,7 +550,17 @@ python rename_metadata_field.py \
 - Updates CSV headers and CollectionBuilder config files
 - Pattern matching for Liquid metadata variables (`item.field`), YAML in config files
 - **Does NOT change `page.title`** (page front matter) - only changes `item.title` (metadata)
+- **Supports CSV-based configs**: Updates config-browse.csv, config-metadata.csv, etc.
 - Clear reporting of what changed
+
+**Fix script** for CSV-based CollectionBuilder configs (if main script missed them):
+
+```bash
+# Update CSV config files after batch renaming
+python3 fix_config_csv_fields.sh ~/GitHub/collectionbuilder
+```
+
+This fixes the 'field' column in config-browse.csv, config-metadata.csv, etc.
 
 ### batch_rename_dublin_core.sh
 
