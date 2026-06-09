@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [2.2.1] - 2026-06-09
 
 ### Summary
-Version 2.2.1 introduces persistent versioning infrastructure with automatic version management and simplifies CSV configuration by consolidating the CSV structure template and core metadata CSV into a single setting.
+Version 2.2.1 introduces persistent versioning infrastructure with automatic version management, simplifies CSV configuration by consolidating redundant settings, and adds new utility scripts for coordinating metadata field name changes across CSV files and CollectionBuilder configuration.
 
 ### Added
 - **VERSION file**: Single source of truth for application version
@@ -35,6 +35,40 @@ Version 2.2.1 introduces persistent versioning infrastructure with automatic ver
   - Returns version string or "unknown" if file is missing or unreadable
   - Logs warnings/errors for troubleshooting version issues
   - Version stored in `APP_VERSION` global constant for application-wide access
+- **Metadata field renaming tools**: New utility scripts for coordinating field name changes
+  - **rename_metadata_field.py**: Python script for renaming individual fields
+    - Renames fields in CSV headers and CollectionBuilder configuration files
+    - Dry-run preview mode by default (safe before applying)
+    - Automatic timestamped hidden backups (dotted filenames to prevent CollectionBuilder conflicts)
+    - **Excludes backup files from processing**: Skips both hidden and non-hidden backup files when updating configs
+    - **Selective pattern matching**: Only changes metadata field references, not site-level configuration
+    - **Preserves page.title**: Does NOT rename `page.title` (page front matter), only `item.title` (metadata fields)
+    - Protects `_config.yml` site settings from accidental changes
+    - Pattern matching for YAML keys (in metadata configs only), Liquid item variables, quoted strings
+    - Updates `_data/config-*.yml`, layouts, includes, and pages
+    - Clear reporting of changes found and applied
+    - Command-line tool with `--apply` flag to execute changes
+    - **Field name validation**: Prevents problematic characters (colons, periods, slashes, etc.) with helpful suggestions
+    - **Enforces underscore format**: Blocks both `dc:title` and `dc.title`, recommends `dc_title`
+  - **cleanup_old_backups.sh**: Utility script to remove old non-hidden backup files
+    - Finds and removes backup files created before hidden backup feature
+    - Prevents CollectionBuilder build conflicts from old backups
+    - Interactive confirmation before deletion
+    - Preserves hidden (dotted) backup files
+  - **batch_rename_dublin_core.sh**: Bash script for batch Dublin Core renaming
+    - Renames multiple standard fields to dc_ format in one operation
+    - Fields: title, description, creator, subject, date, format, rights, source, etc.
+    - Checks CSV headers to determine which fields exist
+    - Previews all changes before prompting for confirmation
+    - Processes multiple fields sequentially with progress reporting
+    - Creates backups for all modified files
+  - **RENAME_METADATA_FIELD.md**: Comprehensive documentation
+    - Usage examples and command-line options
+    - Workflow guides and best practices
+    - Troubleshooting section
+    - Integration with DART metadata workflow
+    - Common field rename patterns
+    - Note: Use underscores (dc_title) not colons (dc:title) to avoid syntax issues
 
 ### Changed
 - **Build script usage**: Updated documentation in script headers

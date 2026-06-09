@@ -201,6 +201,7 @@ DART/
 ├── run.bat                     # Windows launcher
 ├── build_dmg.sh               # macOS installer builder
 ├── build_windows_zip.sh       # Windows package builder
+├── VERSION                     # Version number file
 ├── python_requirements.txt     # Python dependencies
 ├── .gitignore                  # Git exclusions
 ├── LICENSE                     # MIT License
@@ -213,6 +214,12 @@ DART/
 ├── FUNCTION_2_EXPORT_CSV.md     # Help docs for Function 2 (CSV and Azure export)
 ├── FUNCTION_3_GENERATE_DERIVATIVES.md  # Help docs for Function 3 (Derivatives)
 ├── FUNCTION_4_COMPARE_MERGE_CSV.md  # Help docs for Function 4 (Compare/Merge)
+├── rename_metadata_field.py    # Script to rename CSV/CollectionBuilder fields
+├── batch_rename_dublin_core.sh # Batch rename fields to Dublin Core format
+├── cleanup_old_backups.sh      # Remove old non-hidden backup files from CollectionBuilder
+├── RENAME_METADATA_FIELD.md    # Documentation for field renaming tools
+├── FIXING_RENAME_ISSUES.md     # Troubleshooting guide for renaming problems
+├── FIX_COLON_TO_UNDERSCORE.md  # Guide for converting dc:field to dc_field format
 └── common_dg_utilities/        # Shared utility functions (auto-included in builds)
 ```
 
@@ -510,6 +517,67 @@ The included `.gitignore` excludes:
 - Python cache (`__pycache__/`)
 - Log files
 - Build artifacts
+
+## Metadata Field Renaming Tools
+
+DART includes utility scripts for coordinating metadata field name changes across CSV files and CollectionBuilder configuration.
+
+### rename_metadata_field.py
+
+Python script for renaming individual fields with automatic backup and preview:
+
+```bash
+# Preview changes (dry run)
+python rename_metadata_field.py \
+  --csv metadata.csv \
+  --old-field title \
+  --new-field dc_title
+
+# Apply changes to CSV and CollectionBuilder
+python rename_metadata_field.py \
+  --csv metadata.csv \
+  --old-field title \
+  --new-field dc_title \
+  --cb-dir ../collectionbuilder \
+  --apply
+```
+
+**Features:**
+- Safe dry-run preview mode (default)
+- Field name validation (prevents colons, periods, and other problematic characters)
+- **Enforces underscore separators**: Recommends `dc_title` format, blocks `dc:title` and `dc.title`
+- Automatic timestamped hidden backups (dotted filenames)
+- Updates CSV headers and CollectionBuilder config files
+- Pattern matching for Liquid metadata variables (`item.field`), YAML in config files
+- **Does NOT change `page.title`** (page front matter) - only changes `item.title` (metadata)
+- Clear reporting of what changed
+
+### batch_rename_dublin_core.sh
+
+Bash script for batch renaming multiple fields to Dublin Core format:
+
+```bash
+# Rename all standard fields to dc_ format
+bash batch_rename_dublin_core.sh metadata.csv ../collectionbuilder
+```
+
+**Renames these fields (if present):**
+- `title` → `dc_title`
+- `description` → `dc_description`
+- `creator` → `dc_creator`
+- `subject` → `dc_subject`
+- `date` → `dc_date`
+- `format` → `dc_format`
+- `rights` → `dc_rights`
+- Plus more (see RENAME_METADATA_FIELD.md)
+
+**Features:**
+- Previews all changes before applying
+- Prompts for confirmation
+- Processes multiple fields in one operation
+- Creates backups for all modified files
+
+📖 **Full documentation**: See [RENAME_METADATA_FIELD.md](RENAME_METADATA_FIELD.md)
 
 ## Flet Resources
 
