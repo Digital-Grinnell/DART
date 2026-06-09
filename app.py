@@ -27,6 +27,22 @@ import fitz  # PyMuPDF for PDF processing
 # Import common DG utilities
 from common_dg_utilities.dg_utils import generate_unique_id, get_mime_type
 
+# Get application version from VERSION file
+def get_app_version():
+    """Read version from VERSION file in repo root."""
+    try:
+        version_file = Path(__file__).parent / "VERSION"
+        if version_file.exists():
+            return version_file.read_text().strip()
+        else:
+            logger.warning("VERSION file not found")
+            return "unknown"
+    except Exception as e:
+        logger.error(f"Error reading VERSION file: {e}")
+        return "unknown"
+
+APP_VERSION = get_app_version()
+
 # Configure logging
 DATA_DIR = Path.home() / "DART-data"
 # LOG_DIR will be set dynamically based on working directory
@@ -784,7 +800,7 @@ def generate_pdf_derivative(
 
 
 def main(page: ft.Page):
-    page.title = "DART - Digital Asset Routing and Transformation"
+    page.title = f"DART v{APP_VERSION} - Digital Asset Routing and Transformation"
     page.padding = 20
     page.window.width = 1050
     page.window.height = 900
@@ -1419,6 +1435,13 @@ def main(page: ft.Page):
             content=ft.Container(
                 content=ft.Column(
                     controls=[
+                        ft.Text(
+                            f"DART Version: {APP_VERSION}",
+                            size=11,
+                            color=ft.Colors.BLUE_700,
+                            weight=ft.FontWeight.BOLD,
+                        ),
+                        ft.Container(height=4),
                         ft.Text(
                             "Edit app settings and save them to the working folder.",
                             size=13,
@@ -4299,6 +4322,7 @@ Detailed results: {output_diff.name}
         storage.record_function_usage("Function 9")
 
         info_lines = [
+            f"DART Version: {APP_VERSION}",
             f"Hostname: {socket.gethostname()}",
             f"OS: {platform.system()} {platform.release()}",
             f"Machine: {platform.machine()}",

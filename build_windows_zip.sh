@@ -2,8 +2,8 @@
 # build_windows_zip.sh — Build a Windows distributable ZIP for DART.
 #
 # Usage:
-#   bash build_windows_zip.sh          # version defaults to 1.0
-#   bash build_windows_zip.sh 1.2      # explicit version
+#   bash build_windows_zip.sh          # auto-increments patch version from VERSION file
+#   bash build_windows_zip.sh 2.3.0    # explicit version (updates VERSION file)
 #
 # Output: DART_v<version>_Windows.zip in the project root
 #
@@ -12,11 +12,53 @@
 
 set -euo pipefail
 
-VERSION="${1:-1.0}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VERSION_FILE="$SCRIPT_DIR/VERSION"
+
+# Function to increment patch version (e.g., 2.2.1 -> 2.2.2)
+increment_version() {
+    local version=$1
+    local major minor patch
+    
+    # Parse version into major.minor.patch
+    if [[ $version =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+        major="${BASH_REMATCH[1]}"
+        minor="${BASH_REMATCH[2]}"
+        patch="${BASH_REMATCH[3]}"
+        patch=$((patch + 1))
+        echo "${major}.${minor}.${patch}"
+    else
+        echo "Error: Invalid version format in VERSION file: $version" >&2
+        exit 1
+    fi
+}
+
+# Read current version from VERSION file
+if [ ! -f "$VERSION_FILE" ]; then
+    echo "Error: VERSION file not found at $VERSION_FILE" >&2
+    exit 1
+fi
+
+CURRENT_VERSION=$(cat "$VERSION_FILE" | tr -d '[:space:]')
+
+# Determine version to use
+if [ $# -eq 0 ]; then
+    # No argument provided - auto-increment patch version
+    VERSION=$(increment_version "$CURRENT_VERSION")
+    echo "Auto-incrementing version: $CURRENT_VERSION → $VERSION"
+else
+    # User provided explicit version
+    VERSION="$1"
+    echo "Using provided version: $VERSION"
+fi
+
+# Write new version to VERSION file
+echo "$VERSION" > "$VERSION_FILE"
+echo "Updated VERSION file: $VERSION"
+
 APP_NAME="DART"
 DISPLAY_NAME="DART — Digital Asset Routing and Transformation"
 ZIP_NAME="${APP_NAME}_v${VERSION}_Windows.zip"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ZIP_OUT="$SCRIPT_DIR/$ZIP_NAME"
 
 STAGING="$(mktemp -d)"

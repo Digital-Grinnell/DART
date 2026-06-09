@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.2.1] - 2026-06-09
+
+### Summary
+Version 2.2.1 introduces persistent versioning infrastructure with automatic version management. The application version is now stored in a VERSION file and automatically incremented by build scripts, displayed prominently in the UI window title and settings screens.
+
+### Added
+- **VERSION file**: Single source of truth for application version
+  - Created VERSION file in repository root containing current version (2.2.1)
+  - Uses semantic versioning format (MAJOR.MINOR.PATCH)
+  - Tracked in Git for version history visibility
+  - Read by both build scripts and application at runtime
+- **Automatic version incrementing**: Build scripts now manage versions automatically
+  - `build_dmg.sh` and `build_windows_zip.sh` read from VERSION file
+  - Auto-increment patch version when run without arguments (2.2.1 → 2.2.2)
+  - Accept explicit version as argument for manual control: `./build_dmg.sh 3.0.0`
+  - Write new version back to VERSION file after each build
+  - Display old and new versions during build process
+  - Eliminates manual version updates in multiple files
+- **Version display in application**: Version now visible throughout the UI
+  - Window title shows version: "DART v2.2.1 - Digital Asset Routing and Transformation"
+  - Function 0 (App Settings) displays version at top in blue text
+  - Function 9 (System Info) shows version as first item in system information list
+  - Provides users with clear visibility of installed version
+- **Version reading utility**: New function `get_app_version()` in app.py
+  - Reads VERSION file from repository root at application startup
+  - Returns version string or "unknown" if file is missing or unreadable
+  - Logs warnings/errors for troubleshooting version issues
+  - Version stored in `APP_VERSION` global constant for application-wide access
+
+### Changed
+- **Build script usage**: Updated documentation in script headers
+  - Before: `bash build_dmg.sh` defaulted to version 1.0
+  - After: `bash build_dmg.sh` auto-increments from VERSION file
+  - Usage examples now show auto-increment and manual override patterns
+  - Comments explain version persistence and automatic updates
+
+### Technical Details
+- VERSION file location: `/Users/mcfatem/GitHub/DART/VERSION`
+- Version increment function in build scripts uses bash regex to parse MAJOR.MINOR.PATCH format
+- Error handling for invalid version formats in build scripts
+- app.py imports Path from pathlib to read VERSION file
+- Version read at module load time (before main() function runs)
+- Window title constructed using f-string with APP_VERSION variable
+
+---
+
 ## [1.5.5] - 2026-06-03
 
 ### Summary
