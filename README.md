@@ -7,9 +7,10 @@
 DART is focused on providing a valid import/ingest-compatible CSV metadata file using the digital objects and their original filenames as the "source of truth". Each object is given a unique Digital.Grinnell identifier and DART can help maintain those while directing files to proper long-term/preservation storage.
 
 **CSV Metadata Workflow:**
-- Define your metadata schema using a **CSV structure template** (with required CollectionBuilder fields)
-- Designate a **core metadata CSV** as your master/controlling metadata file
-- Generate new metadata from asset batches using the template structure
+- Define a **core metadata CSV** file that serves dual purposes:
+  - **Column structure template**: Defines required/recommended CollectionBuilder fields
+  - **Master metadata file**: Acts as the "source of truth" for your collection
+- Generate new metadata from asset batches using the core CSV's structure
 - Future functions will intelligently merge new metadata into the core CSV
 - Maintain consistency and avoid duplicate identifiers across workflow phases
 

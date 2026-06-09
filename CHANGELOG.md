@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [2.2.1] - 2026-06-09
 
 ### Summary
-Version 2.2.1 introduces persistent versioning infrastructure with automatic version management. The application version is now stored in a VERSION file and automatically incremented by build scripts, displayed prominently in the UI window title and settings screens.
+Version 2.2.1 introduces persistent versioning infrastructure with automatic version management and simplifies CSV configuration by consolidating the CSV structure template and core metadata CSV into a single setting.
 
 ### Added
 - **VERSION file**: Single source of truth for application version
@@ -42,6 +42,23 @@ Version 2.2.1 introduces persistent versioning infrastructure with automatic ver
   - After: `bash build_dmg.sh` auto-increments from VERSION file
   - Usage examples now show auto-increment and manual override patterns
   - Comments explain version persistence and automatic updates
+- **CSV configuration simplified**: Removed redundant `csv_structure_file` setting
+  - Before: Separate settings for CSV structure template and core metadata CSV
+  - After: Single `core_metadata_csv` setting serves dual purpose
+  - Core metadata CSV now defines both column structure and master metadata file
+  - Function 0 UI simplified with one less field to configure
+  - Function 2 uses core metadata CSV as template for exports
+  - Startup validation checks only core metadata CSV
+  - Documentation updated to reflect consolidated approach
+
+### Removed
+- **csv_structure_file setting**: Eliminated redundant CSV template setting
+  - Removed from DEFAULT_APP_SETTINGS dictionary
+  - Removed from Function 0 settings dialog UI
+  - Removed picker, browse button, and validation text for structure file
+  - Removed auto-population logic that copied structure to core CSV
+  - Updated `validate_core_metadata_csv()` to not require structure_path parameter
+  - All code references updated to use `core_metadata_csv` exclusively
 
 ### Technical Details
 - VERSION file location: `/Users/mcfatem/GitHub/DART/VERSION`
@@ -50,6 +67,11 @@ Version 2.2.1 introduces persistent versioning infrastructure with automatic ver
 - app.py imports Path from pathlib to read VERSION file
 - Version read at module load time (before main() function runs)
 - Window title constructed using f-string with APP_VERSION variable
+- CSV settings consolidation affects:
+  - Function 0: Save/load logic, UI display, validation
+  - Function 2: Template reading for CSV exports
+  - Startup: CSV validation and logging
+  - Documentation: README.md, FUNCTION_0_APP_SETTINGS.md
 
 ---
 

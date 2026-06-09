@@ -114,7 +114,6 @@ APP_SETTINGS_FILENAME = "dart_settings.json"
 DEFAULT_APP_SETTINGS = {
     "group_compound_objects": False,
     "use_working_folder_for_file_selection": False,
-    "csv_structure_file": "",
     "core_metadata_csv": "",
     "azure_blob_storage_path": "",
     "azure_connection_string": "",
@@ -376,10 +375,10 @@ def validate_csv_structure(csv_path: str) -> Tuple[bool, str, list]:
         return False, f"Error reading CSV file: {str(e)}", []
 
 
-def validate_core_metadata_csv(csv_path: str, structure_path: str = "") -> Tuple[bool, str]:
+def validate_core_metadata_csv(csv_path: str) -> Tuple[bool, str]:
     """
     Validate the core metadata CSV file.
-    Checks that it exists, has valid structure, and matches template if provided.
+    Checks that it exists and has valid CollectionBuilder structure.
     Returns (success, message).
     """
     if not csv_path or not csv_path.strip():
@@ -393,17 +392,6 @@ def validate_core_metadata_csv(csv_path: str, structure_path: str = "") -> Tuple
     valid, msg, headers = validate_csv_structure(csv_path)
     if not valid:
         return False, f"Core CSV validation failed: {msg}"
-    
-    # If structure template is provided, verify compatibility
-    if structure_path and structure_path.strip():
-        struct_valid, struct_msg, struct_headers = validate_csv_structure(structure_path)
-        if struct_valid and struct_headers:
-            # Check if core CSV has all columns from template
-            missing_cols = [col for col in struct_headers if col not in headers]
-            if missing_cols:
-                return False, f"Core CSV missing columns from template: {', '.join(missing_cols)}"
-            
-            return True, f"✓ Core CSV valid and compatible with template ({len(headers)} columns)"
     
     return True, f"✓ Core CSV valid ({len(headers)} columns)"
 
@@ -1137,76 +1125,12 @@ def main(page: ft.Page):
             hint_text="true or false - use working folder as initial directory for file picker",
             width=320,
         )
-        csv_structure_field = ft.TextField(
-            label="csv_structure_file",
-            value=str(settings.get("csv_structure_file", "")),
-            hint_text="Path to CSV file defining expected column structure",
-            width=500,
-            read_only=False,
-        )
-        
-        csv_validation_text = ft.Text(
-            "",
-            size=11,
-            color=ft.Colors.GREY_700,
-            visible=False,
-        )
-        
-        # Validate existing CSV if one is set
-        existing_csv = settings.get("csv_structure_file", "")
-        if existing_csv:
-            valid, msg, fields = validate_csv_structure(existing_csv)
-            csv_validation_text.value = msg
-            csv_validation_text.color = ft.Colors.GREEN if valid else ft.Colors.RED
-            csv_validation_text.visible = True
-        
-        def on_csv_picker_result(picker_event: ft.FilePickerResultEvent):
-            """Handle CSV file picker result."""
-            if picker_event.files and len(picker_event.files) > 0:
-                csv_path = picker_event.files[0].path
-                csv_structure_field.value = csv_path
-                
-                # Validate the selected CSV
-                valid, msg, fields = validate_csv_structure(csv_path)
-                csv_validation_text.value = msg
-                csv_validation_text.color = ft.Colors.GREEN if valid else ft.Colors.RED
-                csv_validation_text.visible = True
-                
-                # Auto-populate core CSV if it's empty
-                if not core_csv_field.value or not core_csv_field.value.strip():
-                    core_csv_field.value = csv_path
-                    # Validate the auto-populated core CSV
-                    core_valid, core_msg = validate_core_metadata_csv(csv_path, csv_path)
-                    core_csv_validation_text.value = core_msg
-                    core_csv_validation_text.color = ft.Colors.GREEN if core_valid else ft.Colors.RED
-                    core_csv_validation_text.visible = True
-                    add_log_message(f"Auto-populated core metadata CSV from template: {Path(csv_path).name}")
-                    logger.info(f"Auto-populated core_metadata_csv from template: {csv_path}")
-                
-                page.update()
-        
-        csv_picker = ft.FilePicker(on_result=on_csv_picker_result)
-        page.overlay.append(csv_picker)
-        
-        def browse_csv_click(evt):
-            """Open file picker for CSV selection."""
-            csv_picker.pick_files(
-                dialog_title="Select CSV Structure File",
-                allowed_extensions=["csv"],
-                allow_multiple=False,
-            )
-        
-        csv_browse_button = ft.ElevatedButton(
-            "Browse...",
-            on_click=browse_csv_click,
-            height=40,
-        )
         
         # Core Metadata CSV field with picker
         core_csv_field = ft.TextField(
             label="core_metadata_csv",
             value=str(settings.get("core_metadata_csv", "")),
-            hint_text="Path to core/controlling metadata CSV file (optional)",
+            hint_text="Path to core/controlling metadata CSV file (defines structure and holds master metadata)",
             width=500,
             read_only=False,
         )
@@ -1221,7 +1145,7 @@ def main(page: ft.Page):
         # Validate existing core CSV if one is set
         existing_core_csv = settings.get("core_metadata_csv", "")
         if existing_core_csv:
-            valid, msg = validate_core_metadata_csv(existing_core_csv, existing_csv)
+            valid, msg = validate_core_metadata_csv(existing_core_csv)
             core_csv_validation_text.value = msg
             core_csv_validation_text.color = ft.Colors.GREEN if valid else ft.Colors.RED
             core_csv_validation_text.visible = True
@@ -1233,8 +1157,7 @@ def main(page: ft.Page):
                 core_csv_field.value = core_csv_path
                 
                 # Validate the selected core CSV
-                template_path = csv_structure_field.value
-                valid, msg = validate_core_metadata_csv(core_csv_path, template_path)
+                valid, msg = validate_core_metadata_csv(core_csv_path)
                 core_csv_validation_text.value = msg
                 core_csv_validation_text.color = ft.Colors.GREEN if valid else ft.Colors.RED
                 core_csv_validation_text.visible = True
@@ -1330,25 +1253,10 @@ def main(page: ft.Page):
                 )
                 return
             
-            # Validate CSV structure if provided
-            csv_file_path = (csv_structure_field.value or "").strip()
-            if csv_file_path:
-                valid, msg, fields = validate_csv_structure(csv_file_path)
-                if not valid:
-                    update_status(f"CSV structure validation error: {msg}", is_error=True)
-                    csv_validation_text.value = msg
-                    csv_validation_text.color = ft.Colors.RED
-                    csv_validation_text.visible = True
-                    page.update()
-                    return
-                else:
-                    add_log_message(f"CSV structure validated: {msg}")
-                    logger.info(f"CSV structure validated: {csv_file_path} - {msg}")
-            
             # Validate core metadata CSV if provided
             core_csv_path = (core_csv_field.value or "").strip()
             if core_csv_path:
-                valid, msg = validate_core_metadata_csv(core_csv_path, csv_file_path)
+                valid, msg = validate_core_metadata_csv(core_csv_path)
                 if not valid:
                     update_status(f"Core CSV validation error: {msg}", is_error=True)
                     core_csv_validation_text.value = msg
@@ -1360,46 +1268,16 @@ def main(page: ft.Page):
                     add_log_message(f"Core metadata CSV validated: {msg}")
                     logger.info(f"Core CSV validated: {core_csv_path} - {msg}")
             
-            # Copy CSV files to working directory if they're not already there
-            # Handle case where both files might be the same
-            files_to_copy = {}
-            if csv_file_path:
-                files_to_copy['template'] = csv_file_path
-            if core_csv_path and core_csv_path != csv_file_path:
-                files_to_copy['core'] = core_csv_path
-            elif core_csv_path and core_csv_path == csv_file_path:
-                # Both are the same file - copy once, use for both
-                files_to_copy['both'] = csv_file_path
-            
-            copied_template_path = csv_file_path
-            copied_core_path = core_csv_path
-            
-            for file_type, file_path in files_to_copy.items():
-                new_path, was_copied, copy_msg = copy_csv_to_working_dir(file_path, working_dir, file_type)
+            # Copy CSV file to working directory if it's not already there
+            if core_csv_path:
+                new_path, was_copied, copy_msg = copy_csv_to_working_dir(core_csv_path, working_dir, 'core')
                 if copy_msg:
                     add_log_message(copy_msg)
                     logger.info(copy_msg)
                 
                 if was_copied:
-                    if file_type == 'template':
-                        copied_template_path = new_path
-                        csv_structure_field.value = new_path
-                    elif file_type == 'core':
-                        copied_core_path = new_path
-                        core_csv_field.value = new_path
-                    elif file_type == 'both':
-                        # Same file used for both - update both paths
-                        copied_template_path = new_path
-                        copied_core_path = new_path
-                        csv_structure_field.value = new_path
-                        core_csv_field.value = new_path
-                        add_log_message(f"Both template and core CSV point to the same file: {Path(new_path).name}")
-            
-            # Update validation displays if paths changed
-            if copied_template_path != csv_file_path:
-                csv_file_path = copied_template_path
-            if copied_core_path != core_csv_path:
-                core_csv_path = copied_core_path
+                    core_csv_path = new_path
+                    core_csv_field.value = new_path
             
             page.update()
 
@@ -1414,7 +1292,6 @@ def main(page: ft.Page):
             new_settings = {
                 "group_compound_objects": parsed_group_compound,
                 "use_working_folder_for_file_selection": parsed_use_working_folder,
-                "csv_structure_file": csv_file_path,
                 "core_metadata_csv": core_csv_path,
                 "azure_blob_storage_path": azure_path_value,
                 "azure_connection_string": (azure_connection_field.value or "").strip(),
@@ -1452,18 +1329,10 @@ def main(page: ft.Page):
                         use_working_folder_field,
                         ft.Container(height=8),
                         ft.Text(
-                            "CSV File Settings:",
+                            "Core Metadata CSV:",
                             size=12,
                             weight=ft.FontWeight.BOLD,
                         ),
-                        ft.Row(
-                            controls=[
-                                csv_structure_field,
-                                csv_browse_button,
-                            ],
-                            alignment=ft.MainAxisAlignment.START,
-                        ),
-                        csv_validation_text,
                         ft.Row(
                             controls=[
                                 core_csv_field,
@@ -1473,11 +1342,16 @@ def main(page: ft.Page):
                         ),
                         core_csv_validation_text,
                         ft.Container(height=8),
+                        ft.Text(
+                            "Azure Storage:",
+                            size=12,
+                            weight=ft.FontWeight.BOLD,
+                        ),
                         azure_storage_field,
                         azure_path_validation_text,
                         ft.Container(height=8),
                         ft.Text(
-                            "Azure Storage (encrypted):",
+                            "Azure Connection String (encrypted):",
                             size=12,
                             weight=ft.FontWeight.BOLD,
                         ),
@@ -2127,11 +2001,11 @@ def main(page: ft.Page):
 
         # Load settings and check for CSV template
         settings, _ = load_app_settings(working_dir)
-        csv_template_path = settings.get("csv_structure_file", "")
+        csv_template_path = settings.get("core_metadata_csv", "")
         
         if not csv_template_path or not Path(csv_template_path).exists():
-            update_status("Error: CSV structure template not configured in settings", is_error=True)
-            add_log_message("[ERROR] No CSV template found - configure in Function 0")
+            update_status("Error: Core metadata CSV not configured in settings", is_error=True)
+            add_log_message("[ERROR] No core metadata CSV found - configure in Function 0")
             return
 
         # Load CSV template to get column structure
@@ -4813,28 +4687,10 @@ Detailed results: {output_diff.name}
     working_dir = output_dir_field.value
     if working_dir:
         settings, _ = load_app_settings(working_dir)
-        csv_file = settings.get("csv_structure_file", "")
         core_csv = settings.get("core_metadata_csv", "")
         
-        # Auto-populate core CSV from template if core is undefined but template exists
-        if csv_file and not core_csv:
-            core_csv = csv_file
-            settings["core_metadata_csv"] = core_csv
-            save_app_settings(working_dir, settings)
-            add_log_message(f"Auto-populated core metadata CSV from template: {Path(csv_file).name}")
-            logger.info(f"Auto-populated core_metadata_csv from template at startup: {csv_file}")
-        
-        if csv_file:
-            valid, msg, fields = validate_csv_structure(csv_file)
-            if valid:
-                add_log_message(f"✓ CSV structure template validated: {msg}")
-                logger.info(f"CSV structure validated on startup: {csv_file}")
-            else:
-                add_log_message(f"⚠ CSV structure validation warning: {msg}")
-                logger.warning(f"CSV structure validation failed: {csv_file} - {msg}")
-        
         if core_csv:
-            valid, msg = validate_core_metadata_csv(core_csv, csv_file)
+            valid, msg = validate_core_metadata_csv(core_csv)
             if valid:
                 add_log_message(f"✓ Core metadata CSV validated: {msg}")
                 logger.info(f"Core metadata CSV validated on startup: {core_csv}")

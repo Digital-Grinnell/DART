@@ -9,12 +9,9 @@ Open the application settings file in the selected working/outputs folder and ed
 The encryption key is stored separately in `~/.DART-data/encryption_key` with restricted permissions.
 
 ## Current Settings
-- **auto_save_enabled**: When `true`, enables automatic saving of output from functions. **[BOOLEAN]**
-- **auto_save_format**: Default output format for autosave files (e.g., `txt`, `csv`, `json`, etc.)
 - **group_compound_objects**: When `true`, groups similar filenames as compound objects in asset analysis. **[BOOLEAN]**
 - **use_working_folder_for_file_selection**: When `true`, the File Selector opens in the working/outputs folder. When `false`, it opens in the inputs folder. **[BOOLEAN]**
-- **csv_structure_file**: Path to a CSV template file that defines the expected column structure for metadata exports. Use the "Browse..." button to select a CSV file. **[VALIDATED]**
-- **core_metadata_csv**: Path to your main/controlling metadata CSV file. This is the master metadata file that future functions will update and merge into. **[VALIDATED, OPTIONAL]**
+- **core_metadata_csv**: Path to your core metadata CSV file. This file serves two purposes: (1) defines the column structure/template for metadata exports, and (2) acts as the master metadata file that future functions will update and merge into. **[VALIDATED]**
 - **azure_blob_storage_path**: Azure Blob Storage path for cloud storage operations. **[VALIDATED]**
   - **REQUIRED**: Path must contain `/objs/` folder (this holds original source files)
   - Format: `container/objs/subfolder` or `objs/collection_name`
@@ -44,7 +41,7 @@ The encryption key is stored separately in `~/.DART-data/encryption_key` with re
 - Location: Inside the selected working/outputs folder
 
 ## Accepted Boolean Values
-For `auto_save_enabled`, `group_compound_objects`, and `use_working_folder_for_file_selection`, you can enter:
+For `group_compound_objects` and `use_working_folder_for_file_selection`, you can enter:
 - true/false
 - yes/no
 - 1/0
@@ -60,9 +57,11 @@ For `auto_save_enabled`, `group_compound_objects`, and `use_working_folder_for_f
 - `azure_connection_string` is your Azure Storage account connection string from the Azure portal (stored encrypted)
 - You can customize the sensitive fields list and default settings in `app.py`
 
-### CSV Structure File Validation
+### Core Metadata CSV
 
-The `csv_structure_file` setting allows you to specify a template CSV file that defines the required column structure for CollectionBuilder-compatible metadata exports. 
+The `core_metadata_csv` setting identifies your core metadata CSV file - this single file serves as both:
+1. **Column structure template** - Defines required/recommended fields for CollectionBuilder compatibility
+2. **Master metadata file** - The "source of truth" for your collection's metadata 
 
 **Auto-Copy to Working Directory:** When you select a CSV template file and save settings, DART automatically copies it to your working directory if it's not already there. This keeps all project-related files together and ensures the template is available with your project data.
 
@@ -74,7 +73,7 @@ The `csv_structure_file` setting allows you to specify a template CSV file that 
 - `title` - Title or name of the object
 - `format` - File format/MIME type
 - `date` - Date associated with the object
-
+ore_metadata_csv
 **How it works:**
 1. Click the "Browse..." button next to the csv_structure_file field
 2. Select a CSV file that has the column headers you want to use (can be from anywhere)
@@ -90,54 +89,33 @@ The `csv_structure_file` setting allows you to specify a template CSV file that 
 objectid,filename,title,format,date,description,subject,creator
 ```
 
-This ensures your metadata exports will be compatible with CollectionBuilder and other digital collection platforms that require specific column structures.
-
-### Core Metadata CSV
-
-The `core_metadata_csv` setting (optional) identifies your main/controlling metadata CSV file - the "source of truth" for your collection's metadata.
+**Purpose:**
 
 **Auto-Population:** If you select a CSV structure template but leave the core metadata CSV blank, DART automatically populates the core CSV field with the same file. This makes it easy to use a single CSV file as both your template and your working metadata file. You can always override this by selecting a different file.
 
 **Auto-Copy to Working Directory:** When you save settings, DART automatically copies the core CSV to your working directory if it's not already there. If both the template and core CSV are the same file, DART copies it once and uses that copy for both settings. This ensures all project files stay together.
 
 **Purpose:**
+- Defines your metadata schema with required and recommended fields
 - Serves as the master metadata file for your collection
 - Future DART functions will intelligently merge new metadata into this file
 - Maintains consistency across workflow phases
 - Enables incremental metadata updates without losing existing work
 
-**How it works:**
-1. Click the "Browse..." button next to the core_metadata_csv field
-2. Select your existing metadata CSV file (can be from anywhere, or leave blank to auto-populate from template)
-3. DART validates the file structure and checks compatibility with your template
-4. When you save settings, the file is copied to your working directory (if not already there)
-5. Settings are updated to point to the local copy
-6. If a CSV structure template is configured, DART verifies the core CSV has all required columns
-7. Green checkmark (✓) indicates valid structure and template compatibility
-8. Red error (✗) indicates problems that need resolution
-
-**Validation checks:**
+**File structure validation:**
 - File exists and is readable
 - Has required CollectionBuilder fields (`objectid`, `filename`)
-- If CSV structure template is configured: verifies core CSV has all template columns
 - Reports column count and compatibility status
 
 **Workflow example:**
-1. Create/select a CSV structure template defining your metadata schema (can be anywhere on your system)
-2. Leave core_metadata_csv blank - it auto-populates from the template (or select a different file)
-3. Save settings - both files are automatically copied to your working directory
-4. Use Function 1 to analyze assets and generate new metadata
-5. Future functions will merge new data into core_metadata_csv following the template structure
+1. Create/select a CSV file with your desired metadata columns (can be anywhere on your system)
+2. The file should have headers like: `objectid,filename,title,format,date,description,subject,creator`
+3. Save settings - file is automatically copied to your working directory
+4. Use Function 2 to analyze assets and generate new metadata rows
+5. Future functions will merge new data into this CSV following its column structure
 6. Core CSV grows and updates intelligently as you process batches of assets
 
-**Note:** The core_metadata_csv field is **optional**. Leave it blank if:
-- You're starting a new collection with no existing metadata
-- You want to generate standalone CSV files without merging
-- You prefer to manage CSV merging manually
-
-When configured, it enables DART's intelligent metadata management workflow. All CSV files are kept in your working directory alongside your project data.
-
-### Azure Blob Storage Configuration
+When configured, it enables DART's intelligent metadata management workflow. The CSV file is
 
 The Azure Blob Storage settings enable DART to upload files directly to Microsoft Azure cloud storage.
 
@@ -240,12 +218,8 @@ Once configured, future DART functions will be able to:
   }
 }
 ```
-
-**Note**: The `file_to_id_map` stores both individual file IDs and compound object IDs. Compound entries use the special format `{folder}::COMPOUND::{text_base}`.
-
-## Customization
-To add your own settings:
-1. Edit `DEFAULT_APP_SETTINGS` in `app.py`
-2. Add new fields to the Function 0 dialog
-3. Mark sensitive fields in `SENSITIVE_FIELDS` list for encryption
-4. Update this documentation
+group_compound_objects": true,
+  "use_working_folder_for_file_selection": false,
+  "core_metadata_csv": "/path/to/collection_metadata.csv",
+  "azure_blob_storage_path": "objs/tdps-archive",
+  "azure_connection_string
