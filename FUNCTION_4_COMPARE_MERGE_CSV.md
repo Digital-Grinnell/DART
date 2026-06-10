@@ -14,10 +14,12 @@ Use this function when you want to:
 ## Requirements
 - **Working/Outputs folder** must be set
 - **Core metadata CSV** must be configured in Function 0 settings
-- **At least 1 DART_export CSV file** must exist in the working directory (for comparison)
+- **At least 1 DART_export CSV file** must exist in the `.DART-working-directory` subfolder (for comparison)
 - Both CSV files must have a `filename` column (unique identifier)
 - No duplicate `filename` values within each file
 - **csvdiff Python package** must be installed (included in requirements)
+
+**Note**: DART automatically creates a `.DART-working-directory` subfolder within your working/outputs folder to keep DART_export files isolated from other project files. The core metadata CSV can be located anywhere (inside or outside the working directory).
 
 ## How It Works
 
@@ -57,9 +59,9 @@ Function 4 uses the csvdiff Python library for comparison:
 
 ## Workflow
 
-1. Configure **core_metadata_csv** in Function 0 settings (used as baseline)
+1. Configure **core_metadata_csv** in Function 0 settings (used as baseline, can be anywhere)
 
-2. Ensure your working directory contains DART_export CSV file(s) to compare
+2. Ensure your working directory contains DART_export CSV file(s) in the `.DART-working-directory` subfolder
 
 3. Select **Function 4: Compare and Merge CSV Files** from the dropdown
 

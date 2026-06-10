@@ -29,7 +29,9 @@ Use this function when you want to:
 
 4. Click **Execute Function**
 
-5. A timestamped CSV file is created in your working directory
+5. A timestamped CSV file is created in `.DART-working-directory` subfolder of your working directory
+   - Format: `DART_export_YYYYMMDD_HHMMSS.csv`
+   - Hidden subfolder keeps working files isolated from other project files
 
 ## What Gets Exported
 

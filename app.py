@@ -43,6 +43,20 @@ def get_app_version():
 
 APP_VERSION = get_app_version()
 
+def get_dart_working_dir(working_dir: str) -> Path:
+    """
+    Get or create the .DART-working-directory subfolder for working files.
+    
+    Args:
+        working_dir: The user-specified working/output directory
+        
+    Returns:
+        Path to the .DART-working-directory subfolder
+    """
+    dart_subdir = Path(working_dir) / ".DART-working-directory"
+    dart_subdir.mkdir(exist_ok=True)
+    return dart_subdir
+
 # Configure logging
 DATA_DIR = Path.home() / "DART-data"
 # LOG_DIR will be set dynamically based on working directory
@@ -1268,16 +1282,8 @@ def main(page: ft.Page):
                     add_log_message(f"Core metadata CSV validated: {msg}")
                     logger.info(f"Core CSV validated: {core_csv_path} - {msg}")
             
-            # Copy CSV file to working directory if it's not already there
-            if core_csv_path:
-                new_path, was_copied, copy_msg = copy_csv_to_working_dir(core_csv_path, working_dir, 'core')
-                if copy_msg:
-                    add_log_message(copy_msg)
-                    logger.info(copy_msg)
-                
-                if was_copied:
-                    core_csv_path = new_path
-                    core_csv_field.value = new_path
+            # Core CSV stays wherever the user put it (no copying to working directory)
+            # This allows CollectionBuilder projects to keep core CSV in _data/ folder
             
             page.update()
 
@@ -2235,7 +2241,9 @@ def main(page: ft.Page):
         # Create CSV filename with timestamp
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         csv_filename = f"DART_export_{timestamp}.csv"
-        csv_output_path = Path(working_dir) / csv_filename
+        # Write to .DART-working-directory subfolder to keep working files isolated
+        dart_working_dir = get_dart_working_dir(working_dir)
+        csv_output_path = dart_working_dir / csv_filename
 
         # Ensure 'filepath' column is included (required by Function 3 for derivative generation)
         export_columns = list(template_columns)
@@ -2479,7 +2487,8 @@ def main(page: ft.Page):
         
         # Find latest CSV export or let user select
         # Exclude derivative CSVs (which contain "with_derivatives") to avoid processing output as input
-        all_csv_files = sorted(Path(working_dir).glob("DART_export_*.csv"), reverse=True)
+        dart_working_dir = get_dart_working_dir(working_dir)
+        all_csv_files = sorted(dart_working_dir.glob("DART_export_*.csv"), reverse=True)
         csv_files = [f for f in all_csv_files if "with_derivatives" not in f.name]
         if not csv_files:
             update_status("Error: No CSV exports found. Run Function 2 first.", is_error=True)
@@ -2826,7 +2835,9 @@ def main(page: ft.Page):
         
         # Write updated CSV
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        output_csv = Path(working_dir) / f"DART_export_with_derivatives_{timestamp}.csv"
+        # Write to .DART-working-directory subfolder to keep working files isolated
+        dart_working_dir = get_dart_working_dir(working_dir)
+        output_csv = dart_working_dir / f"DART_export_with_derivatives_{timestamp}.csv"
         
         try:
             with open(output_csv, 'w', newline='', encoding='utf-8') as f:
@@ -2957,16 +2968,17 @@ def main(page: ft.Page):
             add_log_message("[INFO] Update core_metadata_csv path in Function 0 settings")
             return
         
-        # Find all DART_export CSV files in working directory, sorted by modification time (newest first)
+        # Find all DART_export CSV files in DART working subdirectory, sorted by modification time (newest first)
+        dart_working_dir = get_dart_working_dir(working_dir)
         csv_files = sorted(
-            [f for f in working_path.glob("DART_export_*.csv") if f.is_file()],
+            [f for f in dart_working_dir.glob("DART_export_*.csv") if f.is_file()],
             key=lambda p: p.stat().st_mtime,
             reverse=True
         )
         
         if len(csv_files) < 1:
-            update_status("Error: No DART_export CSV files found in working directory", is_error=True)
-            add_log_message(f"[ERROR] No DART_export CSV files found in {working_dir}")
+            update_status("Error: No DART_export CSV files found in DART working directory", is_error=True)
+            add_log_message(f"[ERROR] No DART_export CSV files found in {dart_working_dir}")
             add_log_message("[INFO] Run Function 2 first to generate a CSV export")
             return
         
@@ -2978,7 +2990,7 @@ def main(page: ft.Page):
             # Find second newest CSV
             if len(csv_files) < 2:
                 update_status("Error: Only core CSV found, no DART_export files to compare", is_error=True)
-                add_log_message(f"[ERROR] Only one DART_export CSV file (core metadata) found in {working_dir}")
+                add_log_message(f"[ERROR] Only one DART_export CSV file (core metadata) found in DART working directory")
                 add_log_message("[INFO] Run Function 2 to generate a new CSV export to compare")
                 return
             new_csv = csv_files[1]

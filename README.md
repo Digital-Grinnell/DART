@@ -10,8 +10,15 @@ DART is focused on providing a valid import/ingest-compatible CSV metadata file 
 - Define a **core metadata CSV** file that serves dual purposes:
   - **Column structure template**: Defines required/recommended CollectionBuilder fields
   - **Master metadata file**: Acts as the "source of truth" for your collection
+  - Can be located anywhere (inside or outside working directory)
 - Generate new metadata from asset batches using the core CSV's structure
-- Future functions will intelligently merge new metadata into the core CSV
+- **Isolated Working Files**: DART automatically creates `.DART-working-directory` subfolder
+  - Keeps DART_export CSV files separate from project files
+  - Hidden folder doesn't clutter your main directory
+  - Functions 2, 3, and 4 automatically use this subfolder
+- **Smart Merging**: Function 4 always updates the core CSV (wherever it's located)
+  - No confusion about which file is the master
+  - Working files stay in isolated subfolder
 - Maintain consistency and avoid duplicate identifiers across workflow phases
 
 ## Purpose
@@ -31,6 +38,11 @@ DART provides a comprehensive platform for digital asset management workflows:
 - **Persistent File Selection**: Selected files are remembered across app restarts - no need to re-select
 - **Permanent ID Assignment**: Files receive unique `dg_<epoch>` identifiers that never change once assigned
 - **CSV Metadata Management**: Template-based CSV generation with intelligent merging into master metadata file
+- **Isolated Working Directory**: Automatic `.DART-working-directory` subfolder for temporary files
+  - DART_export CSV files written to hidden subfolder
+  - Keeps working files separate from project files
+  - Core metadata CSV can be located anywhere
+  - Merges always update the core CSV (not working directory)
 - **CollectionBuilder Compatibility**: Validates CSV structure for required fields (objectid, filename)
 - **Azure Blob Storage Integration**: Automatic file uploads with encrypted connection strings
 - **Kill Switch**: Emergency stop button for batch operations (stops cleanly without data corruption)
@@ -60,7 +72,7 @@ DART provides a comprehensive platform for digital asset management workflows:
   - **Auto-creates Azure containers**: No manual Azure Portal setup required
   - Files uploaded with DG identifiers as filenames (e.g., dg_1715614222.jpg)
   - **Kill Switch**: Emergency stop for long-running Azure uploads (stops cleanly after current file)
-  - Timestamped exports to working directory
+  - Timestamped exports to `.DART-working-directory` subfolder
 - **Function 3** 🖼️: Generate Derivatives for CSV and Azure
   - Creates small (800x800) and thumbnail (400x400) image derivatives
   - Uploads derivatives to Azure Blob Storage (/smalls/ and /thumbs/ folders)
@@ -68,15 +80,17 @@ DART provides a comprehensive platform for digital asset management workflows:
   - **Smart skip existing**: Checks Azure and skips files with existing derivatives (fast re-runs)
   - Automatically populates image_small and image_thumb CSV columns
   - Maintains aspect ratios, handles EXIF orientation and transparency
+  - Reads from and writes to `.DART-working-directory` subfolder
   - **Clickable log viewer**: Results dialog includes link to open detailed log in popup
   - **Kill Switch**: Emergency stop for long-running derivative generation
 - **Function 4** 🔀: Compare and Merge CSV Files
   - **CSV comparison using csvdiff tool**: Fast, accurate comparison with JSON output
   - Compare two CSV files by filename with detailed change tracking
-  - Auto-selects newest DART_export CSV as "new" file for easy workflow
+  - Auto-selects newest DART_export CSV from `.DART-working-directory` subfolder
   - Classifies records: added (new), removed (missing in new), changed (different values)
   - Generates JSON diff results and text summary
   - **Interactive merge with preview**: Field-level checkboxes (checked by default), data loss fields disabled/grayed requiring manual enable
+  - **Smart merge behavior**: Always updates core CSV file (wherever it's located)
   - Case-sensitive comparison with whitespace normalization
   - **Preserves core CSV structure**: Never reorders rows from core metadata CSV
 - **Function 9** 💻: Display system information
@@ -232,11 +246,16 @@ When you run the application, these are created automatically:
 
 {working_folder}/
 ├── dart_settings.json          # Per-folder app settings (in working/outputs folder)
-└── logfiles/                   # Application logs (in working/outputs folder)
-    └── dart_YYYYMMDD_HHMMSS.log
+├── logfiles/                   # Application logs (in working/outputs folder)
+│   └── dart_YYYYMMDD_HHMMSS.log
+└── .DART-working-directory/    # Isolated subfolder for working files (auto-created)
+    ├── DART_export_YYYYMMDD_HHMMSS.csv  # CSV exports from Function 2
+    └── DART_export_with_derivatives_YYYYMMDD_HHMMSS.csv  # Function 3 output
 ```
 
 **Note:** Log files are created in your working/outputs folder (set in the UI) to keep logs organized with the project data they relate to. On initial startup before a working folder is set, logs temporarily go to `~/DART-data/logfiles/`.
+
+**Working Directory Structure:** DART automatically creates a `.DART-working-directory` hidden subfolder to keep temporary DART_export files separate from your project files (e.g., CollectionBuilder files). Your core metadata CSV remains wherever you've placed it (often in `_data/` for CollectionBuilder projects).
 ```
 
 ## Customizing DART for Your Application

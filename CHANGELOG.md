@@ -7,6 +7,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.2.4] - 2026-06-10
+
+### Fixed
+- **Core CSV Path Issue**: Removed automatic copying of core metadata CSV to working directory
+  - Core CSV now stays wherever user specifies (e.g., `_data/` folder for CollectionBuilder)
+  - Settings save no longer modifies the core CSV path
+  - Fixes issue where app would change path without permission (e.g., adding `_1` suffix)
+  - Maintains original design: core CSV can be anywhere, working files in `.DART-working-directory`
+
+### Technical Details
+- Removed `copy_csv_to_working_dir()` call for core CSV in settings save handler
+- Core CSV path validation still performed, but path remains unchanged
+- Only `.DART-working-directory` subfolder used for temporary DART_export files
+
+---
+
+## [2.2.3] - 2026-06-10
+
+### Summary
+Version 2.2.3 improves file organization and merge behavior by isolating working files in a dedicated subdirectory and ensuring metadata merges always update the core CSV file regardless of its location.
+
+### Added
+- **Isolated working directory**: DART now creates and uses `.DART-working-directory` subfolder
+  - Created automatically within user-specified working/output directory
+  - All DART_export CSV files written to this subfolder (Functions 2 & 3)
+  - Keeps working files isolated from other project files
+  - Hidden folder (dotted) doesn't clutter main project view
+  - Functions 2, 3, and 4 automatically use this subfolder
+
+### Changed
+- **Merge behavior improved**: Function 4 merge now always updates core CSV in its original location
+  - Previously: Merge could write to working directory
+  - Now: Merge always replaces the core metadata CSV file (wherever it is)
+  - Core CSV can be located anywhere (inside or outside working directory)
+  - Working files (DART_export) stay in `.DART-working-directory`
+  - Prevents confusion about which file is the master
+- **File organization**: Better separation of working vs. permanent files
+  - DART_export files: Temporary, in `.DART-working-directory`
+  - Core metadata CSV: Permanent, can be anywhere (often in _data folder)
+  - Clearer distinction between temporary exports and master metadata
+
+### Technical Details
+- Added `get_dart_working_dir()` helper function to manage subdirectory creation
+- Updated Function 2 (Export CSV) to write to `.DART-working-directory`
+- Updated Function 3 (Generate Derivatives) to:
+  - Read from `.DART-working-directory`
+  - Write to `.DART-working-directory`
+- Updated Function 4 (Compare & Merge) to:
+  - Read DART_export files from `.DART-working-directory`
+  - Always write merged results to core CSV (wherever it is)
+- Updated error messages to reference `.DART-working-directory`
+- Updated documentation (FUNCTION_2, FUNCTION_3, FUNCTION_4) to explain new structure
+
+---
+
 ## [2.2.1] - 2026-06-09
 
 ### Summary

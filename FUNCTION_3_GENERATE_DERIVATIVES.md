@@ -16,7 +16,7 @@ Use this function after Function 2 (Export Assets to CSV and Azure) when you wan
 - **Azure Blob Storage** must be configured in Function 0 settings
   - Valid `azure_blob_storage_path` (contains `/objs/` folder)
   - Valid `azure_connection_string`
-- **CSV export from Function 2** must exist in working directory
+- **CSV export from Function 2** must exist in `.DART-working-directory` subfolder
 - **Original source files** must be accessible (image files only)
 
 ## Workflow
