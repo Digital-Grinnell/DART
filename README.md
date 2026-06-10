@@ -52,6 +52,11 @@ DART provides a comprehensive platform for digital asset management workflows:
   - Clickable log viewer in results dialogs
   - Complete audit trail of all operations
 - **Function Management**: Icon-enhanced dropdown with usage tracking and workflow ordering
+  - **Workflow Tracking Indicators**: Visual progress markers in function dropdown
+    - "✓ Last" shows most recently executed function
+    - "▶ NEXT ◀" highlights suggested next step in workflow sequence
+    - Auto-updates after each function execution
+  - Workflow sequence: 1 (Analyze) → 2 (Export) → 3 (Derivatives) → 4 (Compare/Merge)
 - **Help Mode**: Built-in markdown help viewer for each function with copy-to-clipboard
 - **Smart Folder Management**: Collapsible folders section to maximize screen space
 - **File Selection**: Dedicated file picker with persistence (separate from directories)

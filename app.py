@@ -197,6 +197,38 @@ class PersistentStorage:
         )
         self.save()
 
+    def get_last_executed_function(self) -> str:
+        """Get the key of the most recently executed function."""
+        if not self.data["function_usage"]:
+            return ""
+        
+        most_recent = None
+        most_recent_time = None
+        
+        for func_name, usage_data in self.data["function_usage"].items():
+            if "last_used" in usage_data:
+                try:
+                    last_used = datetime.fromisoformat(usage_data["last_used"])
+                    if most_recent_time is None or last_used > most_recent_time:
+                        most_recent_time = last_used
+                        most_recent = func_name
+                except (ValueError, TypeError):
+                    continue
+        
+        # Convert "Function 1" -> "function_1_list_files" format
+        if most_recent:
+            func_map = {
+                "Function 0": "function_0_app_settings",
+                "Function 1": "function_1_list_files",
+                "Function 2": "function_2_export_csv",
+                "Function 3": "function_3_generate_derivatives",
+                "Function 4": "function_4_compare_merge",
+                "Function 9": "function_9_system_info",
+            }
+            return func_map.get(most_recent, "")
+        
+        return ""
+
 
 def get_or_create_encryption_key() -> bytes:
     """
@@ -4357,20 +4389,50 @@ Detailed results: {output_diff.name}
             if handler:
                 logger.info(f"Executing {func_info['label']}")
                 handler(None)
+                # Refresh dropdown options to update workflow indicators
+                active_function_dropdown.options = get_sorted_function_options(active_functions)
 
         active_function_dropdown.value = None
         page.update()
 
     def get_sorted_function_options(function_list):
-        """Return dropdown options sorted by function number."""
+        """Return dropdown options sorted by function number with workflow indicators."""
         opts = []
+        last_executed = storage.get_last_executed_function()
+        
+        # Define workflow sequence (excluding Function 0 settings and Function 9 info)
+        workflow_sequence = [
+            "function_1_list_files",
+            "function_2_export_csv", 
+            "function_3_generate_derivatives",
+            "function_4_compare_merge"
+        ]
+        
+        # Find next suggested function in workflow
+        next_suggested = ""
+        if last_executed in workflow_sequence:
+            current_index = workflow_sequence.index(last_executed)
+            if current_index < len(workflow_sequence) - 1:
+                next_suggested = workflow_sequence[current_index + 1]
+        elif not last_executed:
+            # If nothing executed yet, suggest starting with Function 1
+            next_suggested = "function_1_list_files"
+        
         for func_key in function_list:
             if func_key in functions:
                 f = functions[func_key]
+                label = f"{f['icon']} {f['label']}"
+                
+                # Add workflow indicators with visual distinction
+                if func_key == last_executed:
+                    label += "   ✓ Last"
+                elif func_key == next_suggested:
+                    label += "   ▶ NEXT ◀"
+                
                 opts.append(
                     ft.dropdown.Option(
                         key=func_key,
-                        text=f"{f['icon']} {f['label']}"
+                        text=label
                     )
                 )
         return opts
@@ -4484,13 +4546,13 @@ Detailed results: {output_diff.name}
                 ft.Row([
                     ft.Text("🎯", size=32),
                     ft.Text(
-                        "DART — Digital Asset Routing and Transformation",
+                        f"DART — Digital Asset Routing and Transformation — v{APP_VERSION}",
                         size=24,
                         weight=ft.FontWeight.BOLD,
                     ),
                 ], spacing=10),
                 ft.Text(
-                    "Process digital assets from folders or CSV manifests to create derivatives and transformations",
+                    "Process digital assets to create CollectionBuilder metadata in-sync with the objects and their derivatives.",
                     size=13,
                     color=ft.Colors.GREY_700,
                     italic=True,

@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.2.6] - 2026-06-10
+
+### Changed
+- **Workflow Indicators Refinement**: Updated visual style for better clarity
+  - Changed "last executed" indicator from "⦿ (last)" to "✓ Last" (clearer checkmark)
+  - Enhanced "next suggested" indicator from "▶ NEXT" to "▶ NEXT ◀" (bracketed arrows for emphasis)
+  - Improved visual distinction between completed and suggested next steps
+
+---
+
+## [2.2.5] - 2026-06-10
+
+### Added
+- **Workflow Tracking Indicators**: Function dropdown now shows workflow progress
+  - "✓ Last" indicator on most recently executed function
+  - "▶ NEXT ◀" indicator on suggested next function in workflow sequence (bracketed arrows for emphasis)
+  - Helps users track their position in the workflow (1→2→3→4)
+  - Indicators update automatically after each function executes
+  - Function 0 (Settings) and Function 9 (System Info) excluded from workflow sequence
+  - Visual distinction: checkmark for completed, double arrows + caps for next step
+
+### Changed
+- **App Banner**: Updated title to include version number (displays current version dynamically)
+- **App Subtitle**: Changed to emphasize CollectionBuilder metadata workflow ("Process digital assets to create CollectionBuilder metadata in-sync with the objects and their derivatives.")
+
+### Technical Details
+- Added `get_last_executed_function()` method to storage class
+- Enhanced `get_sorted_function_options()` to add workflow indicators
+- Dropdown options refresh after function execution to update indicators
+- Workflow sequence: Function 1 → 2 → 3 → 4
+- Banner title now uses APP_VERSION variable for dynamic version display
+
+---
+
 ## [2.2.4] - 2026-06-10
 
 ### Fixed
