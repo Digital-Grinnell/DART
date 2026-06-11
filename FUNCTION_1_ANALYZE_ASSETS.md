@@ -3,12 +3,23 @@
 ## Purpose
 Analyze selected digital asset files or scan a folder to generate unique standard DG identifiers for each file. Each identifier follows the format `dg_<epoch_time>` ensuring global uniqueness.
 
+## Automated Workflow
+**NEW**: Enable `automatic_four` in Function 0 (App Settings) to automatically execute Functions 2, 3, and 4 after this function completes successfully. This creates a seamless workflow:
+
+1. **Function 1**: Analyze assets and generate identifiers
+2. **Function 2**: Export to CSV and upload to Azure (automatic)
+3. **Function 3**: Generate derivatives and upload to Azure (automatic)
+4. **Function 4**: Compare and merge metadata into core CSV (automatic)
+
+The workflow stops immediately if any errors occur. The `automatic_four` setting automatically resets to `false` at the start of each new session, ensuring you consciously enable automation when needed.
+
 ## When to Use
 Use this function to:
 - Generate standard unique identifiers for digital assets
 - Prepare asset metadata with guaranteed unique IDs
 - Create identifiers that can be tracked across systems
 - Ensure each file has a globally unique, timestamp-based identifier
+- **NEW**: Trigger the complete workflow automatically (when `automatic_four` is enabled)
 
 ## Supported File Types
 - **Images**: JPG, JPEG, PNG, GIF, TIF, TIFF, BMP, WEBP

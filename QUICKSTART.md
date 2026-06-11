@@ -46,9 +46,13 @@ This will:
 
 The app includes four functions:
 - **Function 0**: App Settings (configure behavior, encryption-enabled)
+  - **Tip**: Enable `automatic_four` for automated workflow (Functions 1→2→3→4 run automatically)
 - **Function 1**: Analyze Digital Assets & Generate Standard DG Identifiers
 - **Function 2**: Export Assets to CSV and Azure
-- **Function 3**: Display system information
+- **Function 3**: Generate Derivatives for CSV and Azure
+- **Function 4**: Compare and Merge CSV Files
+
+**Automated Workflow**: Set `automatic_four = true` in Function 0 to automatically run the complete workflow (Functions 1→2→3→4) with a single click. Perfect for batch processing!
 
 Enable "Help Mode" to view the documentation for each function.
 

@@ -65,9 +65,14 @@ DART provides a comprehensive platform for digital asset management workflows:
 
 ### Workflow Functions
 - **Function 0** ⚙️: App Settings with encrypted sensitive fields
+  - **Automated Workflow**: Enable `automatic_four` to automatically execute Functions 2, 3, and 4 after Function 1 completes
+  - Creates a seamless workflow from asset analysis through metadata merge
+  - Stops immediately if any errors occur
+  - Automatically resets to `false` at start of each new session (opt-in per session)
 - **Function 1** 🎯: Analyze digital assets and generate standard DG identifiers (dg_<epoch>)
   - Creates compound objects for related file groups (optional)
   - Permanent ID assignment with folder-based compound tracking
+  - When `automatic_four` is enabled, automatically triggers Functions 2, 3, and 4
 - **Function 2** 📊: Export Assets to CSV and Azure
   - Generates CollectionBuilder-compatible metadata files
   - Auto-populates objectid, filename, parentid, display_template, format, and object_location fields

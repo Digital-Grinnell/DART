@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.2.7] - 2026-06-10
+
+### Added
+- **Automated Workflow Feature**: New `automatic_four` setting in Function 0
+  - When enabled, automatically executes Functions 2, 3, and 4 after Function 1 completes
+  - Creates seamless workflow: Analyze → Export CSV → Generate Derivatives → Compare/Merge
+  - Stops immediately if any errors occur along the way
+  - Automatically resets to `false` at start of each new session (opt-in per session)
+  - Detailed logging of each step's progress and completion
+  - Perfect for batch processing complete workflows with a single click
+
+### Documentation
+- Added `automatic_four` documentation to README.md, QUICKSTART.md, and FUNCTION_0_APP_SETTINGS.md
+- Updated FUNCTION_1_ANALYZE_ASSETS.md to explain automatic workflow trigger
+
+---
+
 ## [2.2.6] - 2026-06-10
 
 ### Changed

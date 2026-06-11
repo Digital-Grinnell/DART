@@ -128,6 +128,7 @@ APP_SETTINGS_FILENAME = "dart_settings.json"
 DEFAULT_APP_SETTINGS = {
     "group_compound_objects": False,
     "use_working_folder_for_file_selection": False,
+    "automatic_four": False,
     "core_metadata_csv": "",
     "azure_blob_storage_path": "",
     "azure_connection_string": "",
@@ -1171,6 +1172,12 @@ def main(page: ft.Page):
             hint_text="true or false - use working folder as initial directory for file picker",
             width=320,
         )
+        automatic_four_field = ft.TextField(
+            label="automatic_four",
+            value=str(settings.get("automatic_four", False)).lower(),
+            hint_text="true or false - automatically run Functions 2, 3, 4 after Function 1 completes",
+            width=320,
+        )
         
         # Core Metadata CSV field with picker
         core_csv_field = ft.TextField(
@@ -1299,6 +1306,14 @@ def main(page: ft.Page):
                 )
                 return
             
+            parsed_automatic_four = parse_bool_text(automatic_four_field.value)
+            if parsed_automatic_four is None:
+                update_status(
+                    "Error: automatic_four must be true/false (or yes/no, 1/0)",
+                    is_error=True,
+                )
+                return
+            
             # Validate core metadata CSV if provided
             core_csv_path = (core_csv_field.value or "").strip()
             if core_csv_path:
@@ -1330,6 +1345,7 @@ def main(page: ft.Page):
             new_settings = {
                 "group_compound_objects": parsed_group_compound,
                 "use_working_folder_for_file_selection": parsed_use_working_folder,
+                "automatic_four": parsed_automatic_four,
                 "core_metadata_csv": core_csv_path,
                 "azure_blob_storage_path": azure_path_value,
                 "azure_connection_string": (azure_connection_field.value or "").strip(),
@@ -1365,6 +1381,7 @@ def main(page: ft.Page):
                         ft.Container(height=8),
                         group_compound_field,
                         use_working_folder_field,
+                        automatic_four_field,
                         ft.Container(height=8),
                         ft.Text(
                             "Core Metadata CSV:",
@@ -1988,6 +2005,62 @@ def main(page: ft.Page):
         else:
             update_status(f"Analyzed {len(files)} file(s), generated {len(objects)} unique object ID(s)")
             logger.info(f"Function 1: Analyzed {len(files)} files, generated {len(objects)} unique object IDs")
+        
+        # Check if automatic_four is enabled - if so, chain Functions 2, 3, and 4
+        if working_dir:
+            settings, _ = load_app_settings(working_dir)
+            automatic_four = settings.get("automatic_four", False)
+            
+            if automatic_four:
+                add_log_message("[INFO] automatic_four enabled - will run Functions 2, 3, and 4 automatically")
+                logger.info("automatic_four enabled - starting automatic workflow")
+                
+                # Close the Function 1 dialog first
+                dialog.open = False
+                page.update()
+                
+                # Execute Function 2 (Export CSV)
+                add_log_message("[INFO] Starting Function 2 (Export CSV)...")
+                logger.info("Automatic workflow: Starting Function 2")
+                try:
+                    on_function_2_export_csv(None)
+                    add_log_message("[SUCCESS] Function 2 completed")
+                    logger.info("Automatic workflow: Function 2 completed successfully")
+                except Exception as e:
+                    error_msg = f"Error in Function 2: {str(e)}"
+                    add_log_message(f"[ERROR] {error_msg}")
+                    logger.error(f"Automatic workflow failed at Function 2: {e}")
+                    update_status(f"Automatic workflow stopped: {error_msg}", is_error=True)
+                    return
+                
+                # Execute Function 3 (Generate Derivatives)
+                add_log_message("[INFO] Starting Function 3 (Generate Derivatives)...")
+                logger.info("Automatic workflow: Starting Function 3")
+                try:
+                    on_function_3_generate_derivatives(None)
+                    add_log_message("[SUCCESS] Function 3 completed")
+                    logger.info("Automatic workflow: Function 3 completed successfully")
+                except Exception as e:
+                    error_msg = f"Error in Function 3: {str(e)}"
+                    add_log_message(f"[ERROR] {error_msg}")
+                    logger.error(f"Automatic workflow failed at Function 3: {e}")
+                    update_status(f"Automatic workflow stopped: {error_msg}", is_error=True)
+                    return
+                
+                # Execute Function 4 (Compare/Merge CSV)
+                add_log_message("[INFO] Starting Function 4 (Compare/Merge CSV)...")
+                logger.info("Automatic workflow: Starting Function 4")
+                try:
+                    on_function_4_compare_merge(None)
+                    add_log_message("[SUCCESS] Function 4 completed")
+                    logger.info("Automatic workflow: Function 4 completed successfully")
+                    update_status("✅ Automatic workflow completed: Functions 1-4 executed successfully")
+                except Exception as e:
+                    error_msg = f"Error in Function 4: {str(e)}"
+                    add_log_message(f"[ERROR] {error_msg}")
+                    logger.error(f"Automatic workflow failed at Function 4: {e}")
+                    update_status(f"Automatic workflow stopped: {error_msg}", is_error=True)
+                    return
 
     def get_display_template(file_extension):
         """
@@ -4757,8 +4830,20 @@ Detailed results: {output_diff.name}
     # Validate directories on startup
     validate_directories()
     
-    # Validate CSV structure file on startup if configured
+    # Reset automatic_four to false at the start of a new session
     working_dir = output_dir_field.value
+    if working_dir:
+        settings, _ = load_app_settings(working_dir)
+        if settings.get("automatic_four", False):
+            settings["automatic_four"] = False
+            ok, save_result = save_app_settings(working_dir, settings)
+            if ok:
+                add_log_message("[INFO] automatic_four reset to false for new session")
+                logger.info("Session startup: automatic_four reset to false")
+            else:
+                logger.warning(f"Failed to reset automatic_four: {save_result}")
+    
+    # Validate CSV structure file on startup if configured
     if working_dir:
         settings, _ = load_app_settings(working_dir)
         core_csv = settings.get("core_metadata_csv", "")

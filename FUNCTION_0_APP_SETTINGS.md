@@ -11,6 +11,7 @@ The encryption key is stored separately in `~/.DART-data/encryption_key` with re
 ## Current Settings
 - **group_compound_objects**: When `true`, groups similar filenames as compound objects in asset analysis. **[BOOLEAN]**
 - **use_working_folder_for_file_selection**: When `true`, the File Selector opens in the working/outputs folder. When `false`, it opens in the inputs folder. **[BOOLEAN]**
+- **automatic_four**: When `true`, automatically executes Functions 2, 3, and 4 sequentially after Function 1 completes successfully. This creates a seamless workflow from asset analysis through CSV export, derivative generation, and metadata merge. Automatically resets to `false` at the start of each new session. **[BOOLEAN]**
 - **core_metadata_csv**: Path to your core metadata CSV file. This file serves two purposes: (1) defines the column structure/template for metadata exports, and (2) acts as the master metadata file that future functions will update and merge into. **[VALIDATED]**
 - **azure_blob_storage_path**: Azure Blob Storage path for cloud storage operations. **[VALIDATED]**
   - **REQUIRED**: Path must contain `/objs/` folder (this holds original source files)
