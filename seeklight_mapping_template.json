@@ -1,0 +1,22 @@
+{
+  "field_mapping": {
+    "Title": "dc_title",
+    "Description": "dc_description",
+    "Creator": "creator",
+    "Date": "dc_date",
+    "Subject": "dc_subject",
+    "Rights": "dc_rights",
+    "Type": "type",
+    "Format": "dc_format",
+    "Identifier": "dc_identifier",
+    "Source": "dc_source",
+    "Language": "dc_language",
+    "Coverage": "coverage",
+    "Relation": "relation"
+  },
+  "default_values": {
+    "dc_language": "eng"
+  },
+  "filename_column": "Filename",
+  "_comment": "This is a template for mapping Seeklight-generated metadata to DART core metadata columns. Edit field_mapping to match your Seeklight export column names to your core CSV column names. Seeklight columns may have bracketed numbers like 'Title[3101377]' - you only need to specify the base name without brackets (e.g., 'Title'). The filename_column identifies which Seeklight column contains filenames. NOTE: objectid is always left EMPTY in transformed files - Seeklight generates new metadata. Use Function 6 to compare and merge with core metadata using filename-based matching."
+}

@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.3.0] - 2026-06-16
+
+### Added
+- **Function 5: Engage Seeklight Metadata Generation** 🔍
+  - Transform Seeklight-generated metadata to DART core metadata format
+  - File picker with remembered directory for selecting Seeklight CSV/XLSX exports
+  - JSON-based field mapping template (`seeklight_mapping_template.json`)
+  - Smart column matching handles Seeklight's bracketed number notation (e.g., `Title[3101377]`)
+  - Always leaves objectid empty (Seeklight generates new metadata without IDs)
+  - Timestamped output CSV files in `.DART-working-directory` subfolder
+  - Detailed transformation report showing processed row count
+  - Customizable field mappings without code changes
+  - Supports default values for unmapped fields
+  - Complete documentation of Seeklight web workflow in help system
+- **Function 6: Compare and Merge Seeklight CSV** 🔗
+  - Compare Seeklight-transformed CSV files with core metadata
+  - Basename-to-objectid matching (Seeklight filename basename → core objectid)
+  - Interactive merge interface with field-level checkboxes
+  - Data loss protection: empty Seeklight values unchecked by default with ←⃠ indicator
+  - Selective merging: choose exactly which fields to update
+  - Protected fields: objectid, filename, filepath never shown as changeable
+  - Left-pointing arrows (←) indicate "replace core with Seeklight"
+  - Automatic backup creation before merge
+  - Shows comparison summary: matched, new, and changed records
+  - Granular control over which changes to accept
+
+### Fixed
+- **Function 5**: Objectid handling corrected
+  - Now always leaves objectid empty in transformed CSV (Seeklight generates new metadata)
+  - Removed incorrect ID matching/generation logic
+  - Field matching with existing records now happens in Function 6
+- **Function 5**: Column mapping improved
+  - Handles Seeklight column names with bracketed numbers automatically
+  - Template only needs base names (e.g., `Title` matches `Title[3101377]`)
+- **Function 6**: Merge interface consistency
+  - Arrow direction corrected to point left (←) meaning "replace core with Seeklight"
+  - Protected fields (objectid, filename, filepath) excluded from merge options
+  - Clear display format explanation added to UI
+
+### Documentation
+- Added `FUNCTION_5_ENGAGE_SEEKLIGHT.md` with 15-step Seeklight workflow and transformation instructions
+- Added `FUNCTION_6_COMPARE_MERGE_SEEKLIGHT.md` with detailed merge workflow and best practices
+- Added `seeklight_mapping_template.json` configuration file with usage examples
+- Updated README.md with Functions 5 and 6 documentation
+- Updated QUICKSTART.md with Functions 5 and 6 references
+- Clarified objectid behavior: always empty in Function 5 output, matching happens in Function 6
+
+---
+
 ## [2.2.7] - 2026-06-10
 
 ### Added

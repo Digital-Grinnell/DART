@@ -4308,6 +4308,650 @@ Detailed results: {output_diff.name}
         add_log_message(f"[INFO] Newest CSV: {new_csv.name}")
         update_status(f"Function 4: Select new CSV to compare with core ({old_csv.name})")
 
+    def on_function_5_engage_seeklight(e):
+        """Function 5: Engage Seeklight Metadata Generation and Transform."""
+        storage.record_function_usage("Function 5")
+
+        # Check for working directory
+        working_dir = output_dir_field.value
+        if not working_dir or not Path(working_dir).exists():
+            update_status("Error: Please set a working/outputs folder first", is_error=True)
+            return
+
+        # Load settings to get core metadata CSV
+        settings, _ = load_app_settings(working_dir)
+        core_csv_path = settings.get("core_metadata_csv", "")
+        
+        if not core_csv_path or not core_csv_path.strip():
+            update_status("Error: Core metadata CSV not configured in settings", is_error=True)
+            add_log_message("[ERROR] No core metadata CSV configured in Function 0 settings")
+            return
+
+        # Load mapping template
+        mapping_file = Path(__file__).parent / "seeklight_mapping_template.json"
+        if not mapping_file.exists():
+            update_status("Error: Seeklight mapping template not found", is_error=True)
+            add_log_message(f"[ERROR] Missing {mapping_file.name}")
+            return
+
+        try:
+            with open(mapping_file, 'r', encoding='utf-8') as f:
+                mapping_config = json.load(f)
+                field_mapping = mapping_config.get("field_mapping", {})
+                default_values = mapping_config.get("default_values", {})
+                filename_column = mapping_config.get("filename_column", "Filename")
+        except Exception as ex:
+            update_status(f"Error loading mapping template: {ex}", is_error=True)
+            add_log_message(f"[ERROR] Failed to load mapping: {ex}")
+            return
+
+        # State for selected file
+        selected_seeklight_file = ft.Ref[ft.Text]()
+        seeklight_file_path = None
+
+        def on_seeklight_file_picked(picker_event: ft.FilePickerResultEvent):
+            nonlocal seeklight_file_path
+            if picker_event.files and len(picker_event.files) > 0:
+                seeklight_file_path = Path(picker_event.files[0].path)
+                selected_seeklight_file.current.value = f"Selected: {seeklight_file_path.name}"
+                # Remember directory for next time
+                storage.set_ui_state("last_seeklight_dir", str(seeklight_file_path.parent))
+                dialog.update()
+                add_log_message(f"[INFO] Selected Seeklight file: {seeklight_file_path.name}")
+                update_status(f"Selected: {seeklight_file_path.name}")
+
+        def pick_seeklight_file(e):
+            # Use last directory if available
+            last_dir = storage.get_ui_state("last_seeklight_dir")
+            initial_dir = last_dir if last_dir else working_dir
+            
+            seeklight_picker.pick_files(
+                dialog_title="Select Seeklight CSV File",
+                allow_multiple=False,
+                initial_directory=initial_dir,
+                allowed_extensions=["csv"],
+            )
+
+        def transform_metadata(e):
+            nonlocal seeklight_file_path
+            
+            if not seeklight_file_path or not seeklight_file_path.exists():
+                add_log_message("[ERROR] Please select a Seeklight CSV file first")
+                update_status("Error: No file selected", is_error=True)
+                return
+
+            try:
+                # Read Seeklight CSV
+                add_log_message(f"[INFO] Reading Seeklight CSV: {seeklight_file_path.name}")
+                with open(seeklight_file_path, 'r', encoding='utf-8') as f:
+                    seeklight_reader = csv.DictReader(f)
+                    seeklight_data = list(seeklight_reader)
+                    seeklight_columns = seeklight_reader.fieldnames
+
+                if not seeklight_data:
+                    add_log_message("[ERROR] Seeklight CSV is empty")
+                    update_status("Error: Empty CSV file", is_error=True)
+                    return
+
+                add_log_message(f"[INFO] Loaded {len(seeklight_data)} rows from Seeklight CSV")
+                add_log_message(f"[DEBUG] Seeklight columns: {', '.join(seeklight_columns)}")
+
+                # Read core CSV template to get structure
+                with open(core_csv_path, 'r', encoding='utf-8') as f:
+                    core_reader = csv.DictReader(f)
+                    core_columns = list(core_reader.fieldnames)
+
+                # Transform data
+                transformed_rows = []
+
+                for seeklight_row in seeklight_data:
+                    # Get filename from Seeklight data
+                    filename = seeklight_row.get(filename_column, "").strip()
+                    if not filename:
+                        add_log_message(f"[WARNING] Row missing filename column '{filename_column}'")
+                        continue
+
+                    # Seeklight generates NEW metadata - objectid is always empty
+                    # Matching with existing records happens later in Function 6
+                    objectid = ''
+
+                    # Build transformed row
+                    new_row = {}
+                    for col in core_columns:
+                        if col == 'objectid':
+                            new_row[col] = objectid  # Empty if no match
+                        elif col == 'filename':
+                            new_row[col] = filename
+                        elif col in field_mapping.values():
+                            # Find Seeklight column that maps to this core column
+                            seeklight_col = None
+                            for sk_col, core_col in field_mapping.items():
+                                if core_col == col:
+                                    seeklight_col = sk_col
+                                    break
+                            
+                            # Try to find matching column in Seeklight data
+                            # Support both exact match and match with bracketed numbers
+                            value = None
+                            if seeklight_col:
+                                if seeklight_col in seeklight_row:
+                                    value = seeklight_row[seeklight_col]
+                                else:
+                                    # Try finding column with bracket notation
+                                    for actual_col in seeklight_row.keys():
+                                        if actual_col.startswith(f"{seeklight_col}["):
+                                            value = seeklight_row[actual_col]
+                                            break
+                            
+                            if value is not None:
+                                new_row[col] = value
+                            elif col in default_values:
+                                new_row[col] = default_values[col]
+                            else:
+                                new_row[col] = ''
+                        elif col in default_values:
+                            new_row[col] = default_values[col]
+                        else:
+                            new_row[col] = ''
+
+                    transformed_rows.append(new_row)
+
+                # Write output CSV
+                dart_working_dir = get_dart_working_dir(working_dir)
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                output_filename = f"DART_seeklight_transformed_{timestamp}.csv"
+                output_path = dart_working_dir / output_filename
+
+                with open(output_path, 'w', newline='', encoding='utf-8') as f:
+                    writer = csv.DictWriter(f, fieldnames=core_columns)
+                    writer.writeheader()
+                    writer.writerows(transformed_rows)
+
+                add_log_message(f"[SUCCESS] Transformed {len(transformed_rows)} rows")
+                add_log_message(f"[INFO] All objectid fields left empty (Seeklight generates new metadata)")
+                add_log_message(f"[SUCCESS] Output saved: {output_filename}")
+                update_status(f"Transformation complete: {output_filename}")
+
+                result_text = (
+                    f"✅ Transformation Complete\n\n"
+                    f"Processed: {len(transformed_rows)} rows\n"
+                    f"All objectid fields: empty (as expected from Seeklight)\n\n"
+                    f"Output: {output_filename}\n"
+                    f"Location: {dart_working_dir}\n\n"
+                    f"Next: Use Function 6 to compare and merge with core metadata"
+                )
+
+                result_dialog = ft.AlertDialog(
+                    modal=True,
+                    title=ft.Text("Transformation Complete", weight=ft.FontWeight.BOLD),
+                    content=ft.Text(result_text, selectable=True),
+                    actions=[ft.TextButton("OK", on_click=lambda e: close_result_dialog())],
+                )
+
+                def close_result_dialog():
+                    result_dialog.open = False
+                    dialog.open = False
+                    page.update()
+
+                page.overlay.append(result_dialog)
+                result_dialog.open = True
+                page.update()
+
+            except Exception as ex:
+                logger.error(f"Error transforming Seeklight metadata: {ex}", exc_info=True)
+                add_log_message(f"[ERROR] Transformation failed: {ex}")
+                update_status(f"Error: {ex}", is_error=True)
+
+        def close_dialog(e):
+            dialog.open = False
+            page.update()
+
+        seeklight_picker = ft.FilePicker(on_result=on_seeklight_file_picked)
+        page.overlay.append(seeklight_picker)
+
+        dialog = ft.AlertDialog(
+            modal=True,
+            title=ft.Text("Function 5: Engage Seeklight Metadata Generation"),
+            content=ft.Container(
+                content=ft.Column([
+                    ft.Text(
+                        "Please refer to the Help documentation (? button) for detailed instructions "
+                        "on using the Seeklight web interface to generate metadata.",
+                        size=12,
+                    ),
+                    ft.Divider(),
+                    ft.Text("Transform Seeklight Metadata", weight=ft.FontWeight.BOLD, size=14),
+                    ft.Text(
+                        "Export your Seeklight-generated .xlsx file to CSV, then select it below:",
+                        size=12,
+                    ),
+                    ft.Container(height=10),
+                    ft.ElevatedButton(
+                        "Select Seeklight CSV File...",
+                        icon=ft.Icons.FILE_OPEN,
+                        on_click=pick_seeklight_file,
+                    ),
+                    ft.Text(ref=selected_seeklight_file, value="No file selected", size=11, italic=True),
+                    ft.Container(height=10),
+                    ft.ElevatedButton(
+                        "Transform Metadata",
+                        icon=ft.Icons.TRANSFORM,
+                        on_click=transform_metadata,
+                        bgcolor=ft.Colors.BLUE_700,
+                        color=ft.Colors.WHITE,
+                    ),
+                ], spacing=8, tight=True),
+                width=600,
+                height=350,
+            ),
+            actions=[ft.TextButton("Close", on_click=close_dialog)],
+        )
+
+        page.overlay.append(dialog)
+        dialog.open = True
+        page.update()
+
+        update_status("Function 5: Seeklight metadata transformation")
+        logger.info("Function 5: Opened Seeklight transformation dialog")
+
+    def on_function_6_compare_merge_seeklight(e):
+        """Function 6: Compare and merge Seeklight transformed CSV with core metadata."""
+        storage.record_function_usage("Function 6")
+        
+        # Check for working directory
+        working_dir = output_dir_field.value
+        if not working_dir or not Path(working_dir).exists():
+            update_status("Error: Please set a working/outputs folder first", is_error=True)
+            return
+        
+        # Load settings to get core metadata CSV
+        settings, _ = load_app_settings(working_dir)
+        core_csv_path = settings.get("core_metadata_csv", "")
+        
+        if not core_csv_path or not core_csv_path.strip():
+            update_status("Error: Core metadata CSV not configured in settings", is_error=True)
+            add_log_message("[ERROR] No core metadata CSV configured in Function 0 settings")
+            return
+        
+        old_csv = Path(core_csv_path)
+        if not old_csv.exists():
+            update_status(f"Error: Core CSV file not found: {old_csv.name}", is_error=True)
+            add_log_message(f"[ERROR] Core metadata CSV not found: {core_csv_path}")
+            return
+        
+        # Find all DART_seeklight_transformed CSV files
+        dart_working_dir = get_dart_working_dir(working_dir)
+        csv_files = sorted(
+            [f for f in dart_working_dir.glob("DART_seeklight_transformed_*.csv") if f.is_file()],
+            key=lambda p: p.stat().st_mtime,
+            reverse=True
+        )
+        
+        if len(csv_files) < 1:
+            update_status("Error: No Seeklight transformed CSV files found", is_error=True)
+            add_log_message(f"[ERROR] No DART_seeklight_transformed CSV files found in {dart_working_dir}")
+            add_log_message("[INFO] Run Function 5 first to transform Seeklight metadata")
+            return
+        
+        # Auto-select newest CSV
+        new_csv = csv_files[0]
+        
+        add_log_message(f"[INFO] Using core metadata CSV: {old_csv.name}")
+        add_log_message(f"[INFO] Auto-selected newest Seeklight CSV: {new_csv.name}")
+        
+        # Perform comparison using objectid matching
+        def perform_seeklight_comparison(selected_new_csv):
+            try:
+                add_log_message(f"[INFO] Comparing Seeklight CSV with core metadata...")
+                update_status("Comparing CSV files...")
+                
+                # Read both CSVs
+                with open(old_csv, 'r', encoding='utf-8') as f:
+                    reader = csv.DictReader(f)
+                    core_fieldnames = list(reader.fieldnames)
+                    core_rows = list(reader)
+                
+                with open(selected_new_csv, 'r', encoding='utf-8') as f:
+                    reader = csv.DictReader(f)
+                    seeklight_fieldnames = list(reader.fieldnames)
+                    seeklight_rows = list(reader)
+                
+                # Build mapping: objectid -> core row
+                core_by_objectid = {}
+                for row in core_rows:
+                    objectid = row.get('objectid', '').strip()
+                    if objectid:
+                        core_by_objectid[objectid] = row
+                
+                # Compare rows using basename of Seeklight filename matched to core objectid
+                matched = []
+                new_records = []
+                changed_records = []
+                
+                for seeklight_row in seeklight_rows:
+                    # Get filename from Seeklight row and extract basename (without extension)
+                    filename = seeklight_row.get('filename', '').strip()
+                    
+                    if not filename:
+                        add_log_message(f"[WARNING] Seeklight row missing filename, skipping")
+                        continue
+                    
+                    # Extract basename without extension
+                    basename = Path(filename).stem
+                    
+                    # Match basename against core objectid
+                    if basename in core_by_objectid:
+                        # Compare fields
+                        core_row = core_by_objectid[basename]
+                        changed_fields = {}
+                        
+                        for field in seeklight_fieldnames:
+                            # Skip matching keys and internal fields - these should never be merged
+                            if field in ['filepath', 'objectid', 'filename']:
+                                continue
+                            
+                            seeklight_val = seeklight_row.get(field, '').strip()
+                            core_val = core_row.get(field, '').strip()
+                            
+                            if seeklight_val != core_val:
+                                changed_fields[field] = {
+                                    'from': core_val,  # OLD value (currently in core)
+                                    'to': seeklight_val  # NEW value (from Seeklight)
+                                }
+                        
+                        if changed_fields:
+                            changed_records.append({
+                                'objectid': basename,  # Use basename as the identifier
+                                'filename': filename,
+                                'fields': changed_fields
+                            })
+                        else:
+                            matched.append(basename)
+                    else:
+                        # New record not in core (basename not found in core objectids)
+                        new_records.append(seeklight_row)
+                        add_log_message(f"[INFO] No match found for basename '{basename}' (from {filename})")
+                
+                # Show results dialog with merge option
+                add_log_message(f"[INFO] Comparison complete:")
+                add_log_message(f"  • {len(matched)} records matched (no changes)")
+                add_log_message(f"  • {len(new_records)} new records")
+                add_log_message(f"  • {len(changed_records)} records with changes")
+                
+                def close_results_dialog(ev):
+                    results_dialog.open = False
+                    page.update()
+                
+                def show_merge_dialog(ev):
+                    """Show interactive merge dialog with checkboxes."""
+                    # Build merge UI
+                    merge_rows = []
+                    selections = {'new': {}, 'changed': {}}
+                    
+                    # Info banner
+                    merge_rows.append(ft.Container(
+                        content=ft.Column([
+                            ft.Text("Merge Instructions", weight=ft.FontWeight.BOLD, size=12),
+                            ft.Text("• CHECKED: Merge this change into core CSV", size=10),
+                            ft.Text("• UNCHECKED: Skip this change (keep existing core value)", size=10),
+                            ft.Text("", size=6),
+                            ft.Text("Display format: CORE (old) ← SEEKLIGHT (new)", size=10, italic=True, color=ft.Colors.BLUE_700),
+                            ft.Text("Arrow points LEFT: Replace core value with Seeklight value", size=9, italic=True, color=ft.Colors.GREY_600),
+                        ], spacing=2),
+                        bgcolor=ft.Colors.BLUE_50,
+                        border=ft.border.all(1, ft.Colors.BLUE_300),
+                        border_radius=4,
+                        padding=8,
+                        margin=ft.margin.only(bottom=10),
+                    ))
+                    
+                    # New records
+                    if new_records:
+                        merge_rows.append(ft.Text(f"✨ NEW RECORDS ({len(new_records)})", weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE, size=14))
+                        merge_rows.append(ft.Divider(height=1))
+                        
+                        for idx, record in enumerate(new_records):
+                            objectid = record.get('objectid', '')
+                            filename = record.get('filename', '')
+                            title = record.get('title', record.get('dc_title', ''))
+                            
+                            checkbox = ft.Checkbox(value=True, label=f"Add: {filename} ({objectid}) - {title}"[:80])
+                            selections['new'][idx] = checkbox
+                            merge_rows.append(checkbox)
+                        
+                        merge_rows.append(ft.Text(""))
+                    
+                    # Changed records
+                    if changed_records:
+                        merge_rows.append(ft.Text(f"📝 CHANGED RECORDS ({len(changed_records)})", weight=ft.FontWeight.BOLD, color=ft.Colors.ORANGE, size=14))
+                        merge_rows.append(ft.Divider(height=1))
+                        
+                        for idx, change in enumerate(changed_records):
+                            objectid = change['objectid']
+                            filename = change['filename']
+                            fields = change['fields']
+                            
+                            merge_rows.append(ft.Text(f"📄 {filename} ({objectid})", weight=ft.FontWeight.BOLD, size=13))
+                            
+                            selections['changed'][idx] = {}
+                            
+                            for field_name, field_change in fields.items():
+                                old_val = field_change['from'][:100]
+                                new_val = field_change['to'][:100]
+                                
+                                # Detect data loss
+                                is_data_loss = old_val.strip() and not new_val.strip()
+                                default_checked = not is_data_loss
+                                
+                                checkbox = ft.Checkbox(value=default_checked, label="")
+                                selections['changed'][idx][field_name] = checkbox
+                                
+                                if is_data_loss:
+                                    merge_rows.append(ft.Container(
+                                        content=ft.Row([
+                                            checkbox,
+                                            ft.Text("⚠️", size=12),
+                                            ft.Text(f"{field_name}:", size=10, weight=ft.FontWeight.BOLD, width=100),
+                                            ft.Text(old_val, size=10),
+                                            ft.Text("←⃠", size=12, color=ft.Colors.ORANGE),
+                                            ft.Text("(empty)", size=10, italic=True, color=ft.Colors.ORANGE_900),
+                                        ], spacing=4),
+                                        bgcolor=ft.Colors.ORANGE_50,
+                                        padding=4,
+                                        border_radius=2,
+                                    ))
+                                else:
+                                    merge_rows.append(ft.Container(
+                                        content=ft.Row([
+                                            checkbox,
+                                            ft.Text(f"{field_name}:", size=10, weight=ft.FontWeight.BOLD, width=100),
+                                            ft.Text(old_val if old_val else "(empty)", size=10),
+                                            ft.Text("←", size=10),
+                                            ft.Text(new_val if new_val else "(empty)", size=10),
+                                        ], spacing=4),
+                                        padding=ft.padding.only(left=20, top=2, bottom=2),
+                                    ))
+                            
+                            merge_rows.append(ft.Text(""))
+                    
+                    def close_merge_dialog(ev):
+                        merge_dialog.open = False
+                        page.update()
+                    
+                    def execute_merge(ev):
+                        """Execute the merge with selected changes."""
+                        try:
+                            # Count selections
+                            selected_new = [idx for idx, cb in selections['new'].items() if cb.value]
+                            selected_changes = []
+                            for rec_idx, field_cbs in selections['changed'].items():
+                                for field_name, cb in field_cbs.items():
+                                    if cb.value:
+                                        selected_changes.append((rec_idx, field_name))
+                            
+                            if not selected_new and not selected_changes:
+                                update_status("No changes selected", is_error=True)
+                                return
+                            
+                            # Create backup
+                            backup_path = Path(str(old_csv) + f".backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
+                            shutil.copy2(old_csv, backup_path)
+                            add_log_message(f"[INFO] Created backup: {backup_path.name}")
+                            
+                            # Load core CSV
+                            with open(old_csv, 'r', encoding='utf-8') as f:
+                                reader = csv.DictReader(f)
+                                fieldnames = list(reader.fieldnames)
+                                core_rows_list = list(reader)
+                            
+                            # Apply new records
+                            for idx in selected_new:
+                                if idx < len(new_records):
+                                    core_rows_list.append(new_records[idx])
+                                    add_log_message(f"[INFO] Added: {new_records[idx].get('filename', '')}")
+                            
+                            # Apply field changes
+                            core_by_id = {row.get('objectid', '').strip(): row for row in core_rows_list}
+                            
+                            for rec_idx, field_name in selected_changes:
+                                if rec_idx < len(changed_records):
+                                    change = changed_records[rec_idx]
+                                    # Use the stored objectid (which is actually the basename)
+                                    core_objectid = change['objectid']
+                                    new_val = change['fields'][field_name]['to']
+                                    
+                                    if core_objectid in core_by_id:
+                                        core_by_id[core_objectid][field_name] = new_val
+                            
+                            # Write updated CSV
+                            with open(old_csv, 'w', newline='', encoding='utf-8') as f:
+                                writer = csv.DictWriter(f, fieldnames=fieldnames)
+                                writer.writeheader()
+                                writer.writerows(core_rows_list)
+                            
+                            add_log_message(f"[SUCCESS] Merged {len(selected_new)} new records and {len(selected_changes)} field changes")
+                            update_status(f"Merge complete: {len(selected_new)} new, {len(selected_changes)} changes")
+                            
+                            # Close dialogs
+                            merge_dialog.open = False
+                            results_dialog.open = False
+                            page.update()
+                            
+                        except Exception as merge_ex:
+                            logger.error(f"Merge error: {merge_ex}", exc_info=True)
+                            update_status(f"Merge error: {merge_ex}", is_error=True)
+                    
+                    merge_dialog = ft.AlertDialog(
+                        modal=True,
+                        title=ft.Text("🔀 Merge Seeklight Metadata", weight=ft.FontWeight.BOLD),
+                        content=ft.Container(
+                            content=ft.Column(merge_rows, spacing=2, scroll=ft.ScrollMode.ALWAYS),
+                            width=800,
+                            height=600,
+                        ),
+                        actions=[
+                            ft.TextButton("Cancel", on_click=close_merge_dialog),
+                            ft.ElevatedButton("Merge Selected", on_click=execute_merge, bgcolor=ft.Colors.GREEN),
+                        ],
+                    )
+                    
+                    page.overlay.append(merge_dialog)
+                    merge_dialog.open = True
+                    page.update()
+                
+                # Show results
+                results_dialog = ft.AlertDialog(
+                    modal=True,
+                    title=ft.Text("📊 Seeklight Comparison Results"),
+                    content=ft.Container(
+                        content=ft.Column([
+                            ft.Text(f"Core CSV: {old_csv.name}", size=11),
+                            ft.Text(f"Seeklight CSV: {Path(selected_new_csv).name}", size=11),
+                            ft.Text(""),
+                            ft.Text("Results:", weight=ft.FontWeight.BOLD),
+                            ft.Text(f"  • {len(matched)} exact matches (no changes needed)", color=ft.Colors.GREEN),
+                            ft.Text(f"  • {len(new_records)} new records (no match in core)", color=ft.Colors.BLUE),
+                            ft.Text(f"  • {len(changed_records)} records with field changes", color=ft.Colors.ORANGE),
+                            ft.Text(""),
+                            ft.Text("Matching method: Seeklight filename basename ↔ Core objectid", size=10, italic=True),
+                        ], spacing=4),
+                        width=600,
+                        height=300,
+                    ),
+                    actions=[
+                        ft.ElevatedButton("Review & Merge", on_click=show_merge_dialog, bgcolor=ft.Colors.GREEN),
+                        ft.TextButton("Close", on_click=close_results_dialog),
+                    ],
+                )
+                
+                page.overlay.append(results_dialog)
+                results_dialog.open = True
+                page.update()
+                
+                update_status(f"Comparison complete: {len(new_records)} new, {len(changed_records)} changed")
+                
+            except Exception as ex:
+                logger.error(f"Comparison error: {ex}", exc_info=True)
+                update_status(f"Error: {ex}", is_error=True)
+                add_log_message(f"[ERROR] Comparison failed: {ex}")
+        
+        # Show selection dialog if multiple files
+        if len(csv_files) > 1:
+            def close_select(ev):
+                select_dialog.open = False
+                page.update()
+            
+            def on_csv_selected(selected_file):
+                select_dialog.open = False
+                page.update()
+                perform_seeklight_comparison(selected_file)
+            
+            csv_choices = []
+            for i, csv_file in enumerate(csv_files, 1):
+                mod_time = datetime.fromtimestamp(csv_file.stat().st_mtime).strftime('%Y-%m-%d %H:%M')
+                is_newest = csv_file == new_csv
+                
+                label = f"{i}. {csv_file.name}\n   Modified: {mod_time}"
+                if is_newest:
+                    label += " ⭐ (newest)"
+                
+                csv_choices.append(
+                    ft.Container(
+                        content=ft.TextButton(
+                            label,
+                            on_click=lambda e, f=csv_file: on_csv_selected(f),
+                        ),
+                        padding=4,
+                        bgcolor=ft.Colors.GREEN_50 if is_newest else None,
+                        border_radius=4,
+                    )
+                )
+            
+            select_dialog = ft.AlertDialog(
+                modal=True,
+                title=ft.Text("Select Seeklight CSV", weight=ft.FontWeight.BOLD),
+                content=ft.Container(
+                    content=ft.Column([
+                        ft.Text("Select the Seeklight transformed CSV to compare:", size=12),
+                        ft.Container(height=8),
+                        ft.Column(csv_choices, spacing=2, scroll=ft.ScrollMode.AUTO),
+                    ], spacing=4),
+                    width=600,
+                    height=400,
+                ),
+                actions=[ft.TextButton("Cancel", on_click=close_select)],
+            )
+            
+            page.overlay.append(select_dialog)
+            select_dialog.open = True
+            page.update()
+        else:
+            # Auto-proceed with newest file
+            perform_seeklight_comparison(new_csv)
+        
+        add_log_message(f"[INFO] Function 6: Found {len(csv_files)} Seeklight CSV files")
+        update_status(f"Function 6: Comparing Seeklight CSV with core")
+
     def on_function_9_system_info(e):
         """Function 9: Display system information."""
         storage.record_function_usage("Function 9")
@@ -4354,6 +4998,8 @@ Detailed results: {output_diff.name}
         "function_2_export_csv",
         "function_3_generate_derivatives",
         "function_4_compare_merge",
+        "function_5_engage_seeklight",
+        "function_6_compare_merge_seeklight",
         "function_9_system_info",
     ]
 
@@ -4387,6 +5033,18 @@ Detailed results: {output_diff.name}
             "icon": "🔀",
             "handler": on_function_4_compare_merge,
             "help_file": "FUNCTION_4_COMPARE_MERGE_CSV.md"
+        },
+        "function_5_engage_seeklight": {
+            "label": "5: Engage Seeklight Metadata Generation",
+            "icon": "🔍",
+            "handler": on_function_5_engage_seeklight,
+            "help_file": "FUNCTION_5_ENGAGE_SEEKLIGHT.md"
+        },
+        "function_6_compare_merge_seeklight": {
+            "label": "6: Compare and Merge Seeklight CSV",
+            "icon": "🔗",
+            "handler": on_function_6_compare_merge_seeklight,
+            "help_file": "FUNCTION_6_COMPARE_MERGE_SEEKLIGHT.md"
         },
         "function_9_system_info": {
             "label": "9: System Information",
@@ -4478,7 +5136,9 @@ Detailed results: {output_diff.name}
             "function_1_list_files",
             "function_2_export_csv", 
             "function_3_generate_derivatives",
-            "function_4_compare_merge"
+            "function_4_compare_merge",
+            "function_5_engage_seeklight",
+            "function_6_compare_merge_seeklight"
         ]
         
         # Find next suggested function in workflow

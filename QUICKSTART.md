@@ -44,13 +44,16 @@ This will:
 
 ### 1. Test the Example Functions
 
-The app includes four functions:
+The app includes multiple functions:
 - **Function 0**: App Settings (configure behavior, encryption-enabled)
   - **Tip**: Enable `automatic_four` for automated workflow (Functions 1→2→3→4 run automatically)
 - **Function 1**: Analyze Digital Assets & Generate Standard DG Identifiers
 - **Function 2**: Export Assets to CSV and Azure
 - **Function 3**: Generate Derivatives for CSV and Azure
 - **Function 4**: Compare and Merge CSV Files
+- **Function 5**: Engage Seeklight Metadata Generation (transform AI-generated metadata)
+- **Function 6**: Compare and Merge Seeklight CSV (merge AI metadata into core)
+- **Function 9**: System Information
 
 **Automated Workflow**: Set `automatic_four = true` in Function 0 to automatically run the complete workflow (Functions 1→2→3→4) with a single click. Perfect for batch processing!
 

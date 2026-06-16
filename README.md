@@ -103,6 +103,23 @@ DART provides a comprehensive platform for digital asset management workflows:
   - **Smart merge behavior**: Always updates core CSV file (wherever it's located)
   - Case-sensitive comparison with whitespace normalization
   - **Preserves core CSV structure**: Never reorders rows from core metadata CSV
+- **Function 5** 🔍: Engage Seeklight Metadata Generation
+  - Transform Seeklight-generated metadata to DART core metadata format
+  - File picker with remembered directory for Seeklight CSV exports
+  - Smart matching with existing object IDs based on filenames
+  - JSON-based field mapping template (`seeklight_mapping_template.json`)
+  - Automatic generation of new IDs for unmatched files
+  - Customizable field mappings and default values
+  - Timestamped output in `.DART-working-directory` subfolder
+  - Complete Seeklight web workflow documentation in help system
+- **Function 6** 🔗: Compare and Merge Seeklight CSV
+  - Compare Seeklight-transformed CSV files with core metadata
+  - Basename-to-objectid matching (Seeklight filename basename matched to core objectid)
+  - Interactive merge with field-level checkboxes for granular control
+  - Data loss protection: unchecks fields where Seeklight value is empty
+  - Selective merging: choose exactly which changes to accept
+  - Automatic backup creation before merge
+  - Shows matched, new, and changed records with clear indicators
 - **Function 9** 💻: Display system information
 
 *Additional asset processing functions are added as needed for your specific workflow.*
