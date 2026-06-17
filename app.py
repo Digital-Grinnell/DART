@@ -4348,6 +4348,21 @@ Detailed results: {output_diff.name}
         # State for selected file
         selected_seeklight_file = ft.Ref[ft.Text]()
         seeklight_file_path = None
+        
+        # State for target override
+        override_checkbox = ft.Checkbox(value=False, label="")
+        override_textfield = ft.TextField(
+            label="Target Record Override",
+            hint_text="Enter filename to use as merge target (optional)",
+            width=400,
+            disabled=True,
+        )
+        
+        def on_override_checkbox_changed(e):
+            override_textfield.disabled = not override_checkbox.value
+            dialog.update()
+        
+        override_checkbox.on_change = on_override_checkbox_changed
 
         def on_seeklight_file_picked(picker_event: ft.FilePickerResultEvent):
             nonlocal seeklight_file_path
@@ -4401,15 +4416,54 @@ Detailed results: {output_diff.name}
                     core_reader = csv.DictReader(f)
                     core_columns = list(core_reader.fieldnames)
 
+                # Identify unmapped Seeklight columns that contain data
+                # These will be added as new columns with underscore prefix
+                unmapped_columns = {}  # {seeklight_col_base: new_core_col_name}
+                mapped_bases = set()
+                
+                # Get base names of all mapped columns (only those with non-empty mappings)
+                for sk_col, core_col in field_mapping.items():
+                    if core_col and core_col.strip():  # Only count as mapped if target is not empty
+                        mapped_bases.add(sk_col)
+                
+                # Check all Seeklight columns for unmapped ones with data
+                for seeklight_col in seeklight_columns:
+                    # Extract base name (remove bracketed numbers)
+                    base_name = seeklight_col.split('[')[0] if '[' in seeklight_col else seeklight_col
+                    
+                    # Skip if it's the filename column or already mapped to a non-empty target
+                    if base_name == filename_column or base_name in mapped_bases:
+                        continue
+                    
+                    # Check if any row has data in this column
+                    has_data = any(row.get(seeklight_col, '').strip() for row in seeklight_data)
+                    
+                    if has_data and base_name not in unmapped_columns:
+                        # Create new column name: underscore prefix, spaces to underscores, lowercase
+                        new_col_name = '_' + base_name.lower().replace(' ', '_')
+                        unmapped_columns[base_name] = new_col_name
+                        core_columns.append(new_col_name)
+                        add_log_message(f"[INFO] Adding new column '{new_col_name}' for unmapped Seeklight field '{base_name}'")
+
                 # Transform data
                 transformed_rows = []
+                
+                # Check if user wants to override the target filename
+                use_override = override_checkbox.value and override_textfield.value and override_textfield.value.strip()
+                override_filename = override_textfield.value.strip() if use_override else None
+                
+                if use_override:
+                    add_log_message(f"[INFO] Using target override: '{override_filename}' (all rows will use this filename)")
 
                 for seeklight_row in seeklight_data:
-                    # Get filename from Seeklight data
-                    filename = seeklight_row.get(filename_column, "").strip()
-                    if not filename:
-                        add_log_message(f"[WARNING] Row missing filename column '{filename_column}'")
-                        continue
+                    # Get filename from Seeklight data or use override
+                    if use_override:
+                        filename = override_filename
+                    else:
+                        filename = seeklight_row.get(filename_column, "").strip()
+                        if not filename:
+                            add_log_message(f"[WARNING] Row missing filename column '{filename_column}'")
+                            continue
 
                     # Seeklight generates NEW metadata - objectid is always empty
                     # Matching with existing records happens later in Function 6
@@ -4444,6 +4498,8 @@ Detailed results: {output_diff.name}
                                             break
                             
                             if value is not None:
+                                # Convert Seeklight's pipe separators to DART's semicolon separators
+                                value = str(value).replace(' | ', '; ')
                                 new_row[col] = value
                             elif col in default_values:
                                 new_row[col] = default_values[col]
@@ -4451,6 +4507,35 @@ Detailed results: {output_diff.name}
                                 new_row[col] = ''
                         elif col in default_values:
                             new_row[col] = default_values[col]
+                        elif col in unmapped_columns.values():
+                            # Handle unmapped Seeklight columns (added dynamically)
+                            # Find the base name for this new column
+                            base_name = None
+                            for sk_base, core_col in unmapped_columns.items():
+                                if core_col == col:
+                                    base_name = sk_base
+                                    break
+                            
+                            if base_name:
+                                # Try to find the value in Seeklight data
+                                value = None
+                                if base_name in seeklight_row:
+                                    value = seeklight_row[base_name]
+                                else:
+                                    # Try with bracket notation
+                                    for actual_col in seeklight_row.keys():
+                                        if actual_col.startswith(f"{base_name}["):
+                                            value = seeklight_row[actual_col]
+                                            break
+                                
+                                if value:
+                                    # Convert Seeklight's pipe separators to DART's semicolon separators
+                                    value = str(value).replace(' | ', '; ')
+                                    new_row[col] = value
+                                else:
+                                    new_row[col] = ''
+                            else:
+                                new_row[col] = ''
                         else:
                             new_row[col] = ''
 
@@ -4469,13 +4554,18 @@ Detailed results: {output_diff.name}
 
                 add_log_message(f"[SUCCESS] Transformed {len(transformed_rows)} rows")
                 add_log_message(f"[INFO] All objectid fields left empty (Seeklight generates new metadata)")
+                add_log_message(f"[INFO] Multi-value separators converted: pipe (|) to semicolon (;)")
+                if unmapped_columns:
+                    add_log_message(f"[INFO] Added {len(unmapped_columns)} new columns for unmapped Seeklight fields")
                 add_log_message(f"[SUCCESS] Output saved: {output_filename}")
                 update_status(f"Transformation complete: {output_filename}")
 
+                new_cols_text = f"\nNew columns added: {len(unmapped_columns)}" if unmapped_columns else ""
+                
                 result_text = (
                     f"✅ Transformation Complete\n\n"
                     f"Processed: {len(transformed_rows)} rows\n"
-                    f"All objectid fields: empty (as expected from Seeklight)\n\n"
+                    f"All objectid fields: empty (as expected from Seeklight){new_cols_text}\n\n"
                     f"Output: {output_filename}\n"
                     f"Location: {dart_working_dir}\n\n"
                     f"Next: Use Function 6 to compare and merge with core metadata"
@@ -4533,6 +4623,20 @@ Detailed results: {output_diff.name}
                     ),
                     ft.Text(ref=selected_seeklight_file, value="No file selected", size=11, italic=True),
                     ft.Container(height=10),
+                    ft.Divider(),
+                    ft.Row([
+                        override_checkbox,
+                        ft.Text("Override merge target filename", size=12),
+                    ], spacing=5),
+                    override_textfield,
+                    ft.Text(
+                        "Check and enter a filename to merge all Seeklight records with a specific target record, "
+                        "ignoring Seeklight's filename values.",
+                        size=10,
+                        italic=True,
+                        color=ft.Colors.GREY_700,
+                    ),
+                    ft.Container(height=10),
                     ft.ElevatedButton(
                         "Transform Metadata",
                         icon=ft.Icons.TRANSFORM,
@@ -4542,7 +4646,7 @@ Detailed results: {output_diff.name}
                     ),
                 ], spacing=8, tight=True),
                 width=600,
-                height=350,
+                height=500,
             ),
             actions=[ft.TextButton("Close", on_click=close_dialog)],
         )
@@ -4804,11 +4908,40 @@ Detailed results: {output_diff.name}
                                 fieldnames = list(reader.fieldnames)
                                 core_rows_list = list(reader)
                             
+                            # Detect new fields from Seeklight records that aren't in core CSV
+                            new_fields = set()
+                            for idx in selected_new:
+                                if idx < len(new_records):
+                                    for field in new_records[idx].keys():
+                                        if field not in fieldnames:
+                                            new_fields.add(field)
+                            
+                            for rec_idx, field_name in selected_changes:
+                                if rec_idx < len(changed_records) and field_name not in fieldnames:
+                                    new_fields.add(field_name)
+                            
+                            # Add new fields to fieldnames and backfill existing rows
+                            if new_fields:
+                                new_fields_list = sorted(list(new_fields))
+                                add_log_message(f"[INFO] Adding {len(new_fields_list)} new columns to core CSV: {', '.join(new_fields_list)}")
+                                fieldnames.extend(new_fields_list)
+                                
+                                # Backfill existing rows with empty values for new fields
+                                for row in core_rows_list:
+                                    for field in new_fields_list:
+                                        if field not in row:
+                                            row[field] = ''
+                            
                             # Apply new records
                             for idx in selected_new:
                                 if idx < len(new_records):
-                                    core_rows_list.append(new_records[idx])
-                                    add_log_message(f"[INFO] Added: {new_records[idx].get('filename', '')}")
+                                    # Ensure all fieldnames are present in the new record
+                                    new_record = new_records[idx].copy()
+                                    for field in fieldnames:
+                                        if field not in new_record:
+                                            new_record[field] = ''
+                                    core_rows_list.append(new_record)
+                                    add_log_message(f"[INFO] Added: {new_record.get('filename', '')}")
                             
                             # Apply field changes
                             core_by_id = {row.get('objectid', '').strip(): row for row in core_rows_list}
@@ -4830,6 +4963,8 @@ Detailed results: {output_diff.name}
                                 writer.writerows(core_rows_list)
                             
                             add_log_message(f"[SUCCESS] Merged {len(selected_new)} new records and {len(selected_changes)} field changes")
+                            if new_fields:
+                                add_log_message(f"[SUCCESS] Added {len(new_fields)} new columns to core CSV")
                             update_status(f"Merge complete: {len(selected_new)} new, {len(selected_changes)} changes")
                             
                             # Close dialogs
@@ -4840,6 +4975,28 @@ Detailed results: {output_diff.name}
                         except Exception as merge_ex:
                             logger.error(f"Merge error: {merge_ex}", exc_info=True)
                             update_status(f"Merge error: {merge_ex}", is_error=True)
+                            add_log_message(f"[ERROR] Merge failed: {merge_ex}")
+                            add_log_message(f"[INFO] Core CSV NOT modified - backup preserved at {backup_path.name}")
+                            # Show error to user
+                            error_dialog = ft.AlertDialog(
+                                modal=True,
+                                title=ft.Text("⚠️ Merge Failed", weight=ft.FontWeight.BOLD, color=ft.Colors.RED),
+                                content=ft.Text(
+                                    f"Merge operation failed with error:\n\n{str(merge_ex)}\n\n"
+                                    f"Your core CSV was NOT modified.\n"
+                                    f"Backup preserved at: {backup_path.name}",
+                                    selectable=True
+                                ),
+                                actions=[ft.TextButton("OK", on_click=lambda e: close_error_dialog())],
+                            )
+                            
+                            def close_error_dialog():
+                                error_dialog.open = False
+                                page.update()
+                            
+                            page.overlay.append(error_dialog)
+                            error_dialog.open = True
+                            page.update()
                     
                     merge_dialog = ft.AlertDialog(
                         modal=True,

@@ -33,10 +33,18 @@ Once you have downloaded the Seeklight-generated metadata:
 
 3) **Select CSV**: Click "Select Seeklight CSV File..." and navigate to your exported CSV.
 
+3a) **Optional - Override Merge Target**: 
+   - Check the "Override merge target filename" checkbox if you want ALL Seeklight records to merge with a specific target record
+   - Enter the target filename in the text field
+   - This overrides the Seeklight filename values and makes all metadata merge with the specified target
+   - Leave unchecked for normal filename-based matching (default behavior)
+
 4) **Transform**: The transformation will:
    - Read the Seeklight metadata
    - Map Seeklight fields to DART core columns using `seeklight_mapping_template.json`
    - Handle Seeklight column names with or without bracketed numbers (e.g., `Title[3101377]` or `Title`)
+   - **Convert multi-value separators**: Seeklight's pipe separators (` | `) → DART's semicolon separators (`;`)
+   - **Automatically add new columns**: For any Seeklight field with data that isn't mapped in the template, a new column is created with an underscore prefix and spaces converted to underscores (e.g., "Named Entities" becomes "_named_entities")
    - **Leave objectid empty** (Seeklight generates new metadata without objectids)
    - Set filename from Seeklight data
    - Create a timestamped CSV: `DART_seeklight_transformed_YYYYMMDD_HHMMSS.csv`
@@ -44,6 +52,7 @@ Once you have downloaded the Seeklight-generated metadata:
 
 5) **Output**: Results show:
    - Number of rows processed
+   - Number of new columns added for unmapped fields (if any)
    - Confirmation that objectid fields are empty
    - Output filename and location
    - Reminder to use Function 6 for comparing/merging with core metadata
@@ -68,6 +77,14 @@ Edit `seeklight_mapping_template.json` in the DART folder to customize how Seekl
 
 - **field_mapping**: Maps Seeklight column names (left) to your core CSV column names (right)
   - **Note**: Seeklight columns may have bracketed numbers like `Title[3101377]`. The mapping handles both `Title` and `Title[3101377]` automatically - you only need to specify the base name without brackets.
+  - **Empty string values** (e.g., `"Keywords": ""`) are treated as unmapped - those fields will be auto-created as new columns if Seeklight provides data for them.
 - **default_values**: Sets default values for columns not provided by Seeklight
 - **filename_column**: Identifies which Seeklight column contains filenames
+- **Multi-value fields**: Seeklight uses pipe separators (` | `) for multi-value fields. The transformation automatically converts these to DART's semicolon separators (`;`) for compatibility.
+- **Unmapped fields**: If Seeklight provides data in fields not listed in your mapping template, new columns are automatically created in the output CSV. These column names start with an underscore and use lowercase with spaces converted to underscores (e.g., "Named Entities" → "_named_entities"). You can later add these to your mapping template if desired.
+- **Target Record Override**: Use this when you want to merge Seeklight metadata with a different record than what the Seeklight filename would normally match. Common use cases:
+  - You renamed the file after uploading to Seeklight
+  - Seeklight data is for a compound parent object while filenames reference children
+  - You want to merge multiple Seeklight analyses into a single target record
+  - When checked and filled in, ALL rows in the transformed CSV will use the specified filename instead of the Seeklight filename values
 - **objectid handling**: The transformation **always leaves objectid empty** because Seeklight generates new metadata. Use Function 6 to compare and merge with existing core metadata using filename-based matching.

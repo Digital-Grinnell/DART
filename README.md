@@ -1,6 +1,15 @@
-# � &nbsp; DART - Digital Asset Routing and Transformation
+# DART - Digital Asset Routing and Transformation
 
-**DART** (Digital Asset Routing and Transformation) is a professional desktop application built with [Flet](https://flet.dev) for processing digital asset workflows. Select a 'truth' set folder of digital asset files or a CSV file listing assets, then apply powerful functions to create derivatives, modify metadata, and route assets through your transformation pipeline.
+**DART** (Digital Asset Routing and Transformation) is a desktop application built with Python and [Flet](https://flet.dev) for managing digital asset workflows in Grinnell College Libraries. Using DART the user selects a 'truth' set of digital asset files, then applies up to 6 powerful functions to manage the workflow.  
+
+Key functions, in typical order of execution, include: 
+
+1) analyzing assets and assigning unique IDs to each while optionally grouping like-named assets into compound objects, 
+2) creating initial control/management metadata around the new IDs, 
+3) generating small and thumbnail derivatives, 
+4) deposit objects and derivatives properly into managed, web-addressable Azure Blob Storage, 
+5) optionally engage Seeklight to generate additional or alternative metadata, and
+6) manage the process of selectively merging new metadata with old to complete our routing and transformation workflow.
 
 ## Core Mission
 

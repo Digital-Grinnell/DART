@@ -15,9 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - File picker with remembered directory for selecting Seeklight CSV/XLSX exports
   - JSON-based field mapping template (`seeklight_mapping_template.json`)
   - Smart column matching handles Seeklight's bracketed number notation (e.g., `Title[3101377]`)
+  - Automatic conversion of multi-value separators: pipe (` | `) → semicolon (`;`)
+  - **Dynamic column creation**: Automatically adds new columns for unmapped Seeklight fields with data (underscore prefix, lowercase, spaces to underscores)
+  - **Target Record Override**: Optional checkbox and text field to specify a custom merge target filename (applies to all Seeklight records)
   - Always leaves objectid empty (Seeklight generates new metadata without IDs)
   - Timestamped output CSV files in `.DART-working-directory` subfolder
-  - Detailed transformation report showing processed row count
+  - Detailed transformation report showing processed row count and new columns added
   - Customizable field mappings without code changes
   - Supports default values for unmapped fields
   - Complete documentation of Seeklight web workflow in help system
@@ -29,9 +32,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Selective merging: choose exactly which fields to update
   - Protected fields: objectid, filename, filepath never shown as changeable
   - Left-pointing arrows (←) indicate "replace core with Seeklight"
+  - **Automatic column addition**: New columns from Function 5 are automatically added to core CSV during merge with backfilling
   - Automatic backup creation before merge
   - Shows comparison summary: matched, new, and changed records
   - Granular control over which changes to accept
+  - Error handling prevents data loss if merge fails
 
 ### Fixed
 - **Function 5**: Objectid handling corrected
@@ -41,10 +46,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Function 5**: Column mapping improved
   - Handles Seeklight column names with bracketed numbers automatically
   - Template only needs base names (e.g., `Title` matches `Title[3101377]`)
+  - Empty string mappings (e.g., `"Keywords": ""`) now correctly treated as unmapped - triggers auto-column creation if data present
 - **Function 6**: Merge interface consistency
   - Arrow direction corrected to point left (←) meaning "replace core with Seeklight"
   - Protected fields (objectid, filename, filepath) excluded from merge options
   - Clear display format explanation added to UI
+- **Function 6**: Column handling
+  - Automatically detects and adds new columns from Seeklight CSV to core CSV during merge
+  - Backfills existing core records with empty values for new columns
+  - Error dialog shows detailed information if merge fails
+  - Prevents data loss by preserving backup if merge operation fails
 
 ### Documentation
 - Added `FUNCTION_5_ENGAGE_SEEKLIGHT.md` with 15-step Seeklight workflow and transformation instructions

@@ -71,7 +71,16 @@ All field changes are shown in this format:
 2. **Click "Merge Selected"**: Applies only the checked changes
 3. **Automatic backup**: Creates timestamped backup of core CSV
    - Format: `{core_csv_name}.backup_YYYYMMDD_HHMMSS`
-4. **Core CSV updated**: Changes are written to your core metadata CSV
+4. **New column handling**: If Seeklight records contain new fields not in your core CSV:
+   - New columns are automatically added to the core CSV
+   - Existing core records are backfilled with empty values for new columns
+   - Log shows which columns were added (e.g., "_keywords", "_medium")
+   - Common with Function 5's dynamic column creation for unmapped Seeklight fields
+5. **Core CSV updated**: Changes are written to your core metadata CSV
+6. **Error protection**: If merge fails for any reason:
+   - Core CSV is NOT modified
+   - Backup is preserved
+   - Error dialog shows detailed information
 
 ## Matching Logic
 
