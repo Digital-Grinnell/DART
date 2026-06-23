@@ -311,13 +311,33 @@ def decrypt_sensitive_settings(settings: dict) -> dict:
 
 def get_app_settings_path(working_dir: str) -> Path:
     """Return the settings file path for a working directory."""
+    return get_dart_working_dir(working_dir) / APP_SETTINGS_FILENAME
+
+
+def get_legacy_app_settings_path(working_dir: str) -> Path:
+    """Return the legacy settings file path at the working directory root."""
     return Path(working_dir) / APP_SETTINGS_FILENAME
 
 
 def ensure_app_settings_file(working_dir: str) -> Path:
-    """Create the app settings file with defaults if it does not exist."""
+    """Create the app settings file with defaults if it does not exist.
+
+    If a legacy root-level settings file exists, migrate it into
+    .DART-working-directory to keep generated DART artifacts isolated.
+    """
     settings_path = get_app_settings_path(working_dir)
+    legacy_settings_path = get_legacy_app_settings_path(working_dir)
     os.makedirs(settings_path.parent, exist_ok=True)
+
+    if not settings_path.exists() and legacy_settings_path.exists():
+        try:
+            shutil.move(str(legacy_settings_path), str(settings_path))
+            logger.info(f"Migrated settings file to DART working subdirectory: {settings_path}")
+        except Exception as ex:
+            logger.warning(
+                f"Could not migrate legacy settings file {legacy_settings_path} to {settings_path}: {ex}"
+            )
+
     if not settings_path.exists():
         with open(settings_path, "w", encoding="utf-8") as f:
             json.dump(DEFAULT_APP_SETTINGS, f, indent=2, ensure_ascii=False)
@@ -2669,7 +2689,7 @@ def main(page: ft.Page):
         thumb_fail = 0
         
         # Create temp directory for derivatives
-        temp_dir = Path(working_dir) / "temp_derivatives"
+        temp_dir = get_dart_working_dir(working_dir) / "temp_derivatives"
         temp_dir.mkdir(exist_ok=True)
         
         # Pre-scan to show what will be processed/skipped
@@ -3053,8 +3073,8 @@ def main(page: ft.Page):
         if not working_dir or not Path(working_dir).exists():
             update_status("Error: Please set a working/outputs folder first", is_error=True)
             return
-        
-        working_path = Path(working_dir)
+
+        dart_working_dir = get_dart_working_dir(working_dir)
         
         # Load settings to get core metadata CSV
         settings, _ = load_app_settings(working_dir)
@@ -3074,7 +3094,6 @@ def main(page: ft.Page):
             return
         
         # Find all DART_export CSV files in DART working subdirectory, sorted by modification time (newest first)
-        dart_working_dir = get_dart_working_dir(working_dir)
         csv_files = sorted(
             [f for f in dart_working_dir.glob("DART_export_*.csv") if f.is_file()],
             key=lambda p: p.stat().st_mtime,
@@ -3394,8 +3413,8 @@ def main(page: ft.Page):
                     
                     # Convert csvdiff result to our format
                     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                    output_diff = working_path / f"csvdiff_result_{timestamp}.json"
-                    output_summary = working_path / f"csvdiff_summary_{timestamp}.txt"
+                    output_diff = dart_working_dir / f"csvdiff_result_{timestamp}.json"
+                    output_summary = dart_working_dir / f"csvdiff_summary_{timestamp}.txt"
                     
                     # Write JSON output
                     import json
@@ -4057,8 +4076,8 @@ Detailed results: {output_diff.name}
                                             from datetime import datetime
                                             import shutil
                                             
-                                            # Create backup of core CSV
-                                            backup_path = Path(str(old_csv) + f".backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
+                                            # Create backup of core CSV in DART working subdirectory
+                                            backup_path = dart_working_dir / f"{old_csv.name}.backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
                                             shutil.copy2(old_csv, backup_path)
                                             add_log_message(f"[INFO] Created backup: {backup_path.name}")
                                             
@@ -4897,8 +4916,8 @@ Detailed results: {output_diff.name}
                                 update_status("No changes selected", is_error=True)
                                 return
                             
-                            # Create backup
-                            backup_path = Path(str(old_csv) + f".backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
+                            # Create backup in DART working subdirectory
+                            backup_path = dart_working_dir / f"{old_csv.name}.backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
                             shutil.copy2(old_csv, backup_path)
                             add_log_message(f"[INFO] Created backup: {backup_path.name}")
                             

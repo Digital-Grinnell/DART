@@ -1,7 +1,7 @@
 # Function 0: App Settings
 
 ## Purpose
-Open the application settings file in the selected working/outputs folder and edit values using popup text input fields.
+Open the application settings file in the selected working/outputs folder's `.DART-working-directory` subfolder and edit values using popup text input fields.
 
 ## Security Note
 **Sensitive fields are encrypted** (`api_key`, `api_secret`, `password`). You enter and see them as plain text in the editor, but they are automatically encrypted when saved to `dart_settings.json`. This makes it safe to commit your settings file to version control (GitHub, etc.) without exposing credentials.
@@ -39,7 +39,7 @@ The encryption key is stored separately in `~/.DART-data/encryption_key` with re
 
 ## Settings File
 - File name: `dart_settings.json`
-- Location: Inside the selected working/outputs folder
+- Location: Inside `.DART-working-directory` under the selected working/outputs folder
 
 ## Accepted Boolean Values
 For `group_compound_objects` and `use_working_folder_for_file_selection`, you can enter:
@@ -50,7 +50,8 @@ For `group_compound_objects` and `use_working_folder_for_file_selection`, you ca
 
 ## Notes
 - Settings are specific to each working/outputs folder
-- The settings file is created automatically with defaults if it doesn't exist
+- The settings file is created automatically with defaults in `.DART-working-directory` if it doesn't exist
+- If a legacy root-level `dart_settings.json` is found, DART automatically migrates it into `.DART-working-directory`
 - Sensitive fields (marked **[ENCRYPTED]**) are stored encrypted in the JSON file
 - `group_compound_objects` controls whether Function 1 groups similar filenames as compound objects
 - `use_working_folder_for_file_selection` controls where the File Selector dialog opens (working/outputs folder when true, inputs folder when false)

@@ -11,6 +11,17 @@ Key functions, in typical order of execution, include:
 5) optionally engage Seeklight to generate additional or alternative metadata, and
 6) manage the process of selectively merging new metadata with old to complete our routing and transformation workflow.
 
+## Working with AI
+
+This repository now includes project-specific AI guidance files:
+
+- `AGENTS.md` — repository rules and architectural guidance for coding agents
+- `HUMANS.md` — how contributors can prompt and review AI effectively on DART
+- `CLAUDE.md` — pointer file so Claude-based tools inherit the same instructions
+- `copilot-instructions.md` — DART-specific working guidance for GitHub Copilot sessions
+
+If you use AI to work on DART, start with these files before making changes. Keep `AGENTS.md` as the source of truth when repository rules evolve.
+
 ## Core Mission
 
 DART is focused on providing a valid import/ingest-compatible CSV metadata file using the digital objects and their original filenames as the "source of truth". Each object is given a unique Digital.Grinnell identifier and DART can help maintain those while directing files to proper long-term/preservation storage.
@@ -265,7 +276,8 @@ DART/
 ├── FUNCTION_3_GENERATE_DERIVATIVES.md  # Help docs for Function 3 (Derivatives)
 ├── FUNCTION_4_COMPARE_MERGE_CSV.md  # Help docs for Function 4 (Compare/Merge)
 ├── rename_metadata_field.py    # Script to rename CSV/CollectionBuilder fields
-├── batch_rename_dublin_core.sh # Batch rename fields to Dublin Core format
+├── batch_rename_dublin_core.sh # Batch normalize legacy dc_ fields to standard names
+├── migrate_legacy_working_files.py # One-time migration helper for old DART artifacts
 ├── cleanup_old_backups.sh      # Remove old non-hidden backup files from CollectionBuilder
 ├── RENAME_METADATA_FIELD.md    # Documentation for field renaming tools
 ├── FIXING_RENAME_ISSUES.md     # Troubleshooting guide for renaming problems
@@ -281,18 +293,22 @@ When you run the application, these are created automatically:
 └── encryption_key              # Encryption key for sensitive settings
 
 {working_folder}/
-├── dart_settings.json          # Per-folder app settings (in working/outputs folder)
-├── logfiles/                   # Application logs (in working/outputs folder)
-│   └── dart_YYYYMMDD_HHMMSS.log
-└── .DART-working-directory/    # Isolated subfolder for working files (auto-created)
-    ├── DART_export_YYYYMMDD_HHMMSS.csv  # CSV exports from Function 2
-    └── DART_export_with_derivatives_YYYYMMDD_HHMMSS.csv  # Function 3 output
+├── .DART-working-directory/                     # Isolated DART-generated artifacts
+│   ├── dart_settings.json                       # Per-folder app settings
+│   ├── DART_export_YYYYMMDD_HHMMSS.csv          # CSV exports from Function 2
+│   ├── DART_export_with_derivatives_*.csv       # Function 3 outputs
+│   ├── DART_seeklight_transformed_*.csv         # Function 5 transformed output
+│   ├── csvdiff_result_*.json                    # Function 4 diff output
+│   ├── csvdiff_summary_*.txt                    # Function 4 summary output
+│   ├── *.backup_YYYYMMDD_HHMMSS                 # Merge backups (Functions 4 and 6)
+│   └── temp_derivatives/                        # Temporary derivative staging
+└── logfiles/
+    └── dart_YYYYMMDD_HHMMSS.log               # Application logs
 ```
 
 **Note:** Log files are created in your working/outputs folder (set in the UI) to keep logs organized with the project data they relate to. On initial startup before a working folder is set, logs temporarily go to `~/DART-data/logfiles/`.
 
 **Working Directory Structure:** DART automatically creates a `.DART-working-directory` hidden subfolder to keep temporary DART_export files separate from your project files (e.g., CollectionBuilder files). Your core metadata CSV remains wherever you've placed it (often in `_data/` for CollectionBuilder projects).
-```
 
 ## Customizing DART for Your Application
 
@@ -643,6 +659,21 @@ bash batch_rename_dublin_core.sh metadata.csv ../collectionbuilder
 - Prompts for confirmation
 - Processes multiple fields in one operation
 - Creates backups for all modified files
+
+### migrate_legacy_working_files.py
+
+One-time helper for older projects that still have DART-generated artifacts outside `.DART-working-directory`.
+
+```bash
+# Preview what would be moved (dry run)
+python3 migrate_legacy_working_files.py /path/to/working-folder
+
+# Apply migration
+python3 migrate_legacy_working_files.py /path/to/working-folder --apply
+```
+
+This migrates legacy files such as `dart_settings.json`, `DART_*`, `csvdiff_*`, and `*.backup_*` into `.DART-working-directory/legacy-migrated/`.
+It only targets DART/csvdiff HTML report-style names and does not move arbitrary project HTML files.
 
 📖 **Full documentation**: See [RENAME_METADATA_FIELD.md](RENAME_METADATA_FIELD.md)
 
