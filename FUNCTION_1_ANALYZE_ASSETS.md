@@ -1,7 +1,7 @@
 # Function 1: Analyze Digital Assets & Generate Standard DG Identifiers
 
 ## Purpose
-Analyze selected digital asset files or scan a folder to generate unique standard DG identifiers for each file. Each identifier follows the format `dg_<epoch_time>` ensuring global uniqueness.
+Analyze selected digital asset files or scan a folder to generate unique standard DG identifiers for each file. Legacy identifiers follow the format `dg_<epoch_time>`. If `dg_prefix` is configured in Function 0, new identifiers follow `<prefix>_dg_<epoch_time>`.
 
 ## Automated Workflow
 **NEW**: Enable `automatic_four` in Function 0 (App Settings) to automatically execute Functions 2, 3, and 4 after this function completes successfully. This creates a seamless workflow:
@@ -40,11 +40,12 @@ Use this function to:
    - Scans all files in the folder matching supported types
 3. **Generates unique identifiers** using the standard DG format: `dg_<epoch_time>`
    - Each file receives a permanent identifier
+   - If `dg_prefix` is set in Function 0, the generated format becomes `<prefix>_dg_<epoch_time>`
    - IDs are reused if the file was previously processed
 4. **Creates compound objects** (if grouping enabled)
    - Groups files by text similarity in filenames
    - Numbers are used for sequencing, not grouping
-   - Each compound gets its own `dg_<epoch>` identifier
+   - Each compound gets its own permanent identifier using the same legacy or prefixed format
    - Child files track their parent via `parentid` field
 
 ## Compound Object Grouping
@@ -59,7 +60,7 @@ A **compound object** is a logical grouping of related digital assets. The compo
 
 **Key Characteristics:**
 - Associated with the folder path where children are located
-- Has its own unique `dg_<epoch>` identifier
+- Has its own unique identifier in either `dg_<epoch>` or `<prefix>_dg_<epoch>` form
 - Serves as the parent for all child assets in the group
 
 ### How Grouping Works
@@ -113,13 +114,13 @@ When `group_compound_objects` is enabled in Function 0:
    - Makes visual inspection easier and confirms proper grouping
 
 5. **Compound Object Creation**: For each group with 2+ files:
-   - A compound object is created with its own `dg_<epoch>` identifier
+   - A compound object is created with its own permanent identifier
    - The compound is associated with the **folder path** containing the children
    - Compound ID is reused if the same group (folder + text base) is processed again
    - The compound ID becomes the `parentid` for all children
 
 6. **Child Tracking**: Each child asset:
-   - Has its own unique `dg_<epoch>` identifier (objectid)
+   - Has its own unique permanent identifier (objectid)
    - Has a `parentid` field pointing to the compound object
    - Retains its file path and other metadata
 
@@ -164,9 +165,16 @@ This ensures:
 When you run Function 1:
 1. The app checks if each file already has an assigned ID (stored in working folder settings using **full file path** as key)
 2. If an ID exists for that file path, it reuses that ID - **IDs never change**
-3. If a file is new, it generates a new `dg_<epoch>` identifier
+3. If a file is new, it generates a new identifier in either `dg_<epoch>` form or `<prefix>_dg_<epoch>` form
 4. The mapping (full path → ID) is saved to `dart_settings.json` in the working folder
 5. Results show: "X new, Y reused" to indicate which IDs were newly generated vs. retrieved
+
+### Legacy and Prefixed ID Cutoff
+
+- Epoch cutoff for this feature: `1782237851`
+- IDs with epoch values earlier than `1782237851` are legacy-era IDs and will appear as `dg_<epoch>`
+- IDs created at or after `1782237851` may still appear as `dg_<epoch>` if `dg_prefix` is blank
+- When `dg_prefix` is configured, new IDs created at or after `1782237851` appear as `<prefix>_dg_<epoch>`
 
 This ensures that once a file receives an identifier, running the function again will always return the same ID for that file. Using full paths prevents collisions between files with the same name in different directories.
 

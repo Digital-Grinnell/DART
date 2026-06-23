@@ -8,13 +8,14 @@ Before editing `app.py`, check whether the request belongs in one of these highe
 
 1. `seeklight_mapping_template.json`
 2. `FUNCTION_*.md`, `README.md`, `INSTALLATION.md`, `QUICKSTART.md`
-3. Focused helper scripts such as `rename_metadata_field.py`, `fix_config_csv_fields.sh`, `batch_rename_dublin_core.sh`
+3. Focused helper scripts such as `scripts/rename_metadata_field.py`, `scripts/fix_config_csv_fields.sh`, `scripts/batch_rename_dublin_core.sh`
 4. `app.py`
 
 ## DART-Specific Rules
 
 - Treat the configured core metadata CSV as the source of truth.
-- Preserve `objectid`, `filename`, and `file_to_id_map` semantics unless the user explicitly asks to change them.
+- Preserve `objectid`, `original_file_name`, and `file_to_id_map` semantics unless the user explicitly asks to change them.
+- Preserve optional `dg_prefix` behavior for new IDs: legacy IDs may remain `dg_<epoch>`, while new IDs may be generated as `<prefix>_dg_<epoch>`.
 - Canonical CollectionBuilder CSV field names are unprefixed: `title`, `description`, `date`, and similar.
 - Treat `dc_` field names as legacy cleanup targets only.
 - Keep generated artifacts in `.DART-working-directory`, including `DART_*`, `csvdiff_*`, `dart_settings.json`, merge backups (`*.backup_*`), and temporary derivative files.
@@ -40,8 +41,8 @@ Use the narrowest validation that matches the edit.
 For Python and helper-script changes, prefer:
 
 ```bash
-python3 -m py_compile app.py rename_metadata_field.py fix_config_csv_fields.sh
-bash -n batch_rename_dublin_core.sh diagnose_rename_changes.sh
+python3 -m py_compile app.py scripts/rename_metadata_field.py scripts/fix_config_csv_fields.sh scripts/migrate_legacy_working_files.py
+bash -n scripts/batch_rename_dublin_core.sh scripts/diagnose_rename_changes.sh scripts/run.sh scripts/build_dmg.sh scripts/build_windows_zip.sh scripts/cleanup_old_backups.sh
 ```
 
 For docs or JSON-only edits, a focused readback, grep, or diff is usually sufficient.

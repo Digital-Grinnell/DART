@@ -129,15 +129,70 @@ DEFAULT_APP_SETTINGS = {
     "group_compound_objects": False,
     "use_working_folder_for_file_selection": False,
     "automatic_four": False,
+    "dg_prefix": "",
     "core_metadata_csv": "",
     "azure_blob_storage_path": "",
     "azure_connection_string": "",
     "file_to_id_map": {},  # Maps full file paths to assigned dg_<epoch> IDs
 }
 
+# Canonical CSV filename field and legacy alias support
+CSV_FILENAME_FIELD = "original_file_name"
+LEGACY_CSV_FILENAME_FIELD = "filename"
+CSV_FILENAME_FIELDS = [CSV_FILENAME_FIELD, LEGACY_CSV_FILENAME_FIELD]
+
 # Required CollectionBuilder CSV fields
-REQUIRED_CSV_FIELDS = ["objectid", "filename"]
+REQUIRED_CSV_FIELDS = ["objectid", CSV_FILENAME_FIELD]
 RECOMMENDED_CSV_FIELDS = ["title", "format", "date"]
+
+
+def get_csv_filename_value(row: dict) -> str:
+    """Return filename value from canonical or legacy CSV field names."""
+    if not isinstance(row, dict):
+        return ""
+    return str(row.get(CSV_FILENAME_FIELD) or row.get(LEGACY_CSV_FILENAME_FIELD) or "").strip()
+
+
+def normalize_csv_filename_columns(fieldnames: list, rows: list) -> tuple[list, list]:
+    """Normalize filename columns so CSV operations consistently use original_file_name."""
+    normalized_fieldnames = []
+    seen = set()
+    for col in fieldnames or []:
+        mapped = CSV_FILENAME_FIELD if col == LEGACY_CSV_FILENAME_FIELD else col
+        if mapped not in seen:
+            normalized_fieldnames.append(mapped)
+            seen.add(mapped)
+
+    if CSV_FILENAME_FIELD not in seen:
+        normalized_fieldnames.append(CSV_FILENAME_FIELD)
+
+    normalized_rows = []
+    for row in rows:
+        normalized = dict(row)
+        filename = get_csv_filename_value(normalized)
+        if filename:
+            normalized[CSV_FILENAME_FIELD] = filename
+        normalized.pop(LEGACY_CSV_FILENAME_FIELD, None)
+        normalized_rows.append(normalized)
+
+    return normalized_fieldnames, normalized_rows
+
+
+def get_merged_row_filename_value(row: dict) -> str:
+    """Get filename-like identifier from merged comparison rows (new/old variants)."""
+    candidates = [
+        f"{CSV_FILENAME_FIELD}_new",
+        f"{CSV_FILENAME_FIELD}_old",
+        f"{LEGACY_CSV_FILENAME_FIELD}_new",
+        f"{LEGACY_CSV_FILENAME_FIELD}_old",
+        CSV_FILENAME_FIELD,
+        LEGACY_CSV_FILENAME_FIELD,
+    ]
+    for key in candidates:
+        value = row.get(key, "") if isinstance(row, dict) else row.get(key)
+        if pd.notna(value) and str(value).strip():
+            return str(value).strip()
+    return ""
 
 
 class PersistentStorage:
@@ -386,6 +441,27 @@ def parse_bool_text(value: str) -> Optional[bool]:
     return None
 
 
+def validate_dg_prefix(value: str) -> Tuple[bool, str, str]:
+    """Validate and normalize optional DG prefix setting.
+
+    Returns (is_valid, normalized_value, message).
+    Blank is allowed. Non-blank values are lowercased, limited to 4 chars,
+    and may contain letters and numbers only.
+    """
+    normalized = (value or "").strip().lower()
+
+    if not normalized:
+        return True, "", ""
+
+    if len(normalized) > 4:
+        return False, normalized, "dg_prefix must be 4 characters or fewer"
+
+    if not re.fullmatch(r"[a-z0-9]+", normalized):
+        return False, normalized, "dg_prefix may contain only letters and numbers"
+
+    return True, normalized, ""
+
+
 def load_help_document(filename: str) -> str:
     """Load help documentation from markdown file."""
     try:
@@ -422,8 +498,12 @@ def validate_csv_structure(csv_path: str) -> Tuple[bool, str, list]:
             # Normalize headers (lowercase, strip whitespace)
             headers = [h.strip().lower() for h in headers]
             
-            # Check for required fields
-            missing_fields = [field for field in REQUIRED_CSV_FIELDS if field.lower() not in headers]
+            # Check for required fields, allowing legacy filename header for compatibility
+            missing_fields = []
+            if "objectid" not in headers:
+                missing_fields.append("objectid")
+            if CSV_FILENAME_FIELD.lower() not in headers and LEGACY_CSV_FILENAME_FIELD.lower() not in headers:
+                missing_fields.append(CSV_FILENAME_FIELD)
             
             if missing_fields:
                 return False, f"Missing required fields: {', '.join(missing_fields)}", headers
@@ -1198,6 +1278,13 @@ def main(page: ft.Page):
             hint_text="true or false - automatically run Functions 2, 3, 4 after Function 1 completes",
             width=320,
         )
+        dg_prefix_field = ft.TextField(
+            label="dg_prefix",
+            value=str(settings.get("dg_prefix", "")),
+            hint_text="Optional 1-4 character prefix added as <prefix>_dg_<epoch>",
+            width=320,
+            max_length=4,
+        )
         
         # Core Metadata CSV field with picker
         core_csv_field = ft.TextField(
@@ -1333,6 +1420,11 @@ def main(page: ft.Page):
                     is_error=True,
                 )
                 return
+
+            dg_prefix_valid, parsed_dg_prefix, dg_prefix_error = validate_dg_prefix(dg_prefix_field.value)
+            if not dg_prefix_valid:
+                update_status(f"Error: {dg_prefix_error}", is_error=True)
+                return
             
             # Validate core metadata CSV if provided
             core_csv_path = (core_csv_field.value or "").strip()
@@ -1362,14 +1454,16 @@ def main(page: ft.Page):
                     update_status(f"Azure path validation failed: {msg}", is_error=True)
                     return
 
-            new_settings = {
+            new_settings = dict(settings)
+            new_settings.update({
                 "group_compound_objects": parsed_group_compound,
                 "use_working_folder_for_file_selection": parsed_use_working_folder,
                 "automatic_four": parsed_automatic_four,
+                "dg_prefix": parsed_dg_prefix,
                 "core_metadata_csv": core_csv_path,
                 "azure_blob_storage_path": azure_path_value,
                 "azure_connection_string": (azure_connection_field.value or "").strip(),
-            }
+            })
             ok, save_result = save_app_settings(working_dir, new_settings)
             if not ok:
                 update_status(save_result, is_error=True)
@@ -1402,6 +1496,7 @@ def main(page: ft.Page):
                         group_compound_field,
                         use_working_folder_field,
                         automatic_four_field,
+                        dg_prefix_field,
                         ft.Container(height=8),
                         ft.Text(
                             "Core Metadata CSV:",
@@ -1448,7 +1543,7 @@ def main(page: ft.Page):
         settings_dialog.open = True
         page.update()
 
-    def analyze_compound_objects(objects, group_compound, file_to_id_map, page):
+    def analyze_compound_objects(objects, group_compound, file_to_id_map, page, dg_prefix=""):
         """
         Analyze objects for compound grouping patterns and assign parent/child relationships.
         
@@ -1462,6 +1557,7 @@ def main(page: ft.Page):
             group_compound: Boolean, whether to perform compound grouping
             file_to_id_map: Dict of existing file/compound ID mappings
             page: Flet page object for ID generation
+            dg_prefix: Optional project prefix for newly generated IDs
             
         Returns:
             tuple: (compound_objects, file_to_id_map, new_mappings, reused_mappings)
@@ -1703,7 +1799,7 @@ def main(page: ft.Page):
                     logger.info(f"[DEBUG] Reused compound: {compound_id} | Folder: {folder_path} | Base: '{text_base}'")
                 else:
                     # Generate new compound object ID
-                    compound_id = generate_unique_id(page)
+                    compound_id = generate_unique_id(page, dg_prefix)
                     file_to_id_map[compound_key] = compound_id
                     compound_new_mappings += 1
                     add_log_message(f"[DEBUG] Created new compound {compound_id} for '{text_base}' in {folder_path}")
@@ -1771,9 +1867,11 @@ def main(page: ft.Page):
         # Load settings to check compound object grouping
         working_dir = output_dir_field.value
         group_compound = False
+        dg_prefix = ""
         if working_dir:
             settings, _ = load_app_settings(working_dir)
             group_compound = settings.get("group_compound_objects", False)
+            dg_prefix = settings.get("dg_prefix", "")
         
         # DEBUG: Log settings
         add_log_message(f"[DEBUG] Working/Outputs Folder: {working_dir or 'Not set'}")
@@ -1835,8 +1933,12 @@ def main(page: ft.Page):
             logger.info(f"[DEBUG] Existing mappings: {file_to_id_map}")
 
         # Generate or retrieve standard DG identifiers for each file
-        add_log_message(f"[DEBUG] Assigning standard dg_<epoch> identifiers")
-        logger.info("[DEBUG] Using standard DG identifier format: dg_<epoch_time>")
+        if dg_prefix:
+            add_log_message(f"[DEBUG] Assigning prefixed DG identifiers using '{dg_prefix}_dg_<epoch>' format")
+            logger.info(f"[DEBUG] Using prefixed DG identifier format: {dg_prefix}_dg_<epoch_time>")
+        else:
+            add_log_message(f"[DEBUG] Assigning standard dg_<epoch> identifiers")
+            logger.info("[DEBUG] Using standard DG identifier format: dg_<epoch_time>")
         
         objects = []
         new_mappings = 0
@@ -1854,7 +1956,7 @@ def main(page: ft.Page):
                 logger.info(f"[DEBUG] Reusing existing: {unique_id} → {stable_path} (full: {file_path_str})")
             else:
                 # Generate new unique DG identifier
-                unique_id = generate_unique_id(page)
+                unique_id = generate_unique_id(page, dg_prefix)
                 file_to_id_map[stable_path] = unique_id
                 new_mappings += 1
                 logger.info(f"[DEBUG] Generated new: {unique_id} → {stable_path} (full: {file_path_str})")
@@ -1871,7 +1973,7 @@ def main(page: ft.Page):
         
         # Process compound object grouping if enabled (using shared function)
         compound_objects, file_to_id_map, compound_new, compound_reused = analyze_compound_objects(
-            objects, group_compound, file_to_id_map, page
+            objects, group_compound, file_to_id_map, page, dg_prefix
         )
         
         # Update mapping counts
@@ -2183,6 +2285,7 @@ def main(page: ft.Page):
 
         # Get files to process (similar to Function 1)
         group_compound = settings.get("group_compound_objects", False)
+        dg_prefix = settings.get("dg_prefix", "")
         
         asset_extensions = {
             '.jpg', '.jpeg', '.png', '.gif', '.tif', '.tiff', '.bmp', '.webp',
@@ -2230,7 +2333,7 @@ def main(page: ft.Page):
                 unique_id = file_to_id_map[stable_path]
                 reused_mappings += 1
             else:
-                unique_id = generate_unique_id(page)
+                unique_id = generate_unique_id(page, dg_prefix)
                 file_to_id_map[stable_path] = unique_id
                 new_mappings += 1
             
@@ -2248,7 +2351,7 @@ def main(page: ft.Page):
         
         # Process compound object grouping if enabled (using shared function)
         compound_objects, file_to_id_map, compound_new, compound_reused = analyze_compound_objects(
-            objects, group_compound, file_to_id_map, page
+            objects, group_compound, file_to_id_map, page, dg_prefix
         )
         
         # Update mapping counts
@@ -2370,12 +2473,16 @@ def main(page: ft.Page):
         dart_working_dir = get_dart_working_dir(working_dir)
         csv_output_path = dart_working_dir / csv_filename
 
+        # Normalize to canonical filename column and ensure filepath is present.
+        export_columns = [CSV_FILENAME_FIELD if c == LEGACY_CSV_FILENAME_FIELD else c for c in template_columns]
+        if CSV_FILENAME_FIELD not in export_columns:
+            export_columns.insert(1 if 'objectid' in export_columns else 0, CSV_FILENAME_FIELD)
+
         # Ensure 'filepath' column is included (required by Function 3 for derivative generation)
-        export_columns = list(template_columns)
         if 'filepath' not in export_columns:
-            # Insert filepath after filename for logical grouping
-            if 'filename' in export_columns:
-                filename_idx = export_columns.index('filename')
+            # Insert filepath after original_file_name for logical grouping
+            if CSV_FILENAME_FIELD in export_columns:
+                filename_idx = export_columns.index(CSV_FILENAME_FIELD)
                 export_columns.insert(filename_idx + 1, 'filepath')
             else:
                 # No filename column? Add filepath at beginning
@@ -2395,9 +2502,9 @@ def main(page: ft.Page):
                         for col in export_columns:
                             if col == 'objectid':
                                 row[col] = compound.get('objectid', '')
-                            elif col == 'filename':
+                            elif col == CSV_FILENAME_FIELD:
                                 # Use first child's filename with underscore prefix for indexing
-                                # This maintains filename as source of truth for ALL objects
+                                # This maintains original_file_name as source of truth for ALL objects
                                 first_child = compound.get('first_child_filename', '')
                                 row[col] = f"_{first_child}" if first_child else ''
                             elif col == 'filepath':
@@ -2428,7 +2535,7 @@ def main(page: ft.Page):
                         # Map known fields
                         if col == 'objectid':
                             row[col] = obj.get('objectid', '')
-                        elif col == 'filename':
+                        elif col == CSV_FILENAME_FIELD:
                             row[col] = obj.get('filename', '')
                         elif col == 'filepath':
                             row[col] = obj.get('filepath', '')
@@ -2500,11 +2607,11 @@ def main(page: ft.Page):
             
             result_text += f"\nAuto-populated fields:\n"
             result_text += f"• objectid (unique DG identifier)\n"
-            result_text += f"• filename (original filename)\n"
+            result_text += f"• original_file_name (original filename)\n"
             result_text += f"• filepath (full path to source file, for Function 3)\n"
             
             # List fields actually in the template
-            populated_fields = ['objectid', 'filename', 'filepath']
+            populated_fields = ['objectid', CSV_FILENAME_FIELD, 'filepath']
             if 'parentid' in export_columns:
                 result_text += f"• parentid (compound object parent ID)\n"
                 populated_fields.append('parentid')
@@ -2697,7 +2804,7 @@ def main(page: ft.Page):
         no_filename = 0
         non_image = 0
         for row in rows:
-            filename = row.get('filename', '').strip()
+            filename = get_csv_filename_value(row)
             if not filename:
                 no_filename += 1
             elif filename.startswith('_'):
@@ -2726,11 +2833,11 @@ def main(page: ft.Page):
                 break
             
             # Skip rows without files (compound parents have underscore-prefixed filenames)
-            filename = row.get('filename', '').strip()
+            filename = get_csv_filename_value(row)
             if not filename:
                 objectid = row.get('objectid', 'unknown')
                 title = row.get('title', '')[:50] if row.get('title') else 'no title'
-                add_log_message(f"[SKIP #{idx+1}] No filename (objectid: {objectid}, title: {title}...)")
+                add_log_message(f"[SKIP #{idx+1}] No original_file_name (objectid: {objectid}, title: {title}...)")
                 skipped_count += 1
                 continue
             
@@ -2914,7 +3021,7 @@ def main(page: ft.Page):
         compound_derivatives_populated = 0
         
         for row in rows:
-            filename = row.get('filename', '').strip()
+            filename = get_csv_filename_value(row)
             if filename.startswith('_'):
                 # Compound parent - find matching first child
                 child_filename = filename[1:]  # Remove leading underscore
@@ -2922,7 +3029,7 @@ def main(page: ft.Page):
                 # Find the child row with this filename
                 child_row = None
                 for potential_child in rows:
-                    if potential_child.get('filename', '').strip() == child_filename:
+                    if get_csv_filename_value(potential_child) == child_filename:
                         child_row = potential_child
                         break
                 
@@ -3175,7 +3282,7 @@ def main(page: ft.Page):
             parent_rows_map = {}  # parentid -> parent row
             
             for idx, row in all_merged_df.iterrows():
-                filename = row.get('filename', '')
+                filename = get_merged_row_filename_value(row)
                 if pd.notna(filename) and str(filename).strip().startswith('_'):
                     # This is a parent (underscore-prefixed filename)
                     objectid_new = row.get('objectid_new', '')
@@ -3224,7 +3331,7 @@ def main(page: ft.Page):
                             processed_indices.add(parent_id_str)
                             
                             # Show parent
-                            parent_filename = parent_row.get('filename', '')
+                            parent_filename = get_merged_row_filename_value(parent_row)
                             parent_objectid = parent_row.get('objectid_new', parent_row.get('objectid_old', ''))
                             parent_status = parent_row.get('status', 'match')
                             parent_icon = {
@@ -3256,7 +3363,7 @@ def main(page: ft.Page):
                                         'missing_in_new': '⚠️'
                                     }.get(child_row['status'], '•')
                                     
-                                    identifier = child_row.get('filename', '')
+                                    identifier = get_merged_row_filename_value(child_row)
                                     if pd.isna(identifier) or str(identifier).strip() == '':
                                         identifier = child_row.get('objectid_old', child_row.get('objectid_new', f'Row {child_idx}'))
                                     
@@ -3279,7 +3386,7 @@ def main(page: ft.Page):
                         'missing_in_new': '⚠️'
                     }.get(row['status'], '•')
                     
-                    identifier = row.get('filename', '')
+                    identifier = get_merged_row_filename_value(row)
                     if pd.isna(identifier) or str(identifier).strip() == '':
                         identifier = row.get('objectid_old', row.get('objectid_new', f'Row {idx}'))
                         if pd.isna(identifier) or str(identifier).strip() == '':
@@ -3381,12 +3488,14 @@ def main(page: ft.Page):
                         reader = csv.DictReader(f)
                         old_fieldnames = [col for col in reader.fieldnames if col != 'filepath']
                         old_rows = list(reader)
+                    old_fieldnames, old_rows = normalize_csv_filename_columns(old_fieldnames, old_rows)
                     
                     # Read and filter new CSV
                     with open(selected_new_csv, 'r', encoding='utf-8') as f:
                         reader = csv.DictReader(f)
                         new_fieldnames = [col for col in reader.fieldnames if col != 'filepath']
                         new_rows = list(reader)
+                    new_fieldnames, new_rows = normalize_csv_filename_columns(new_fieldnames, new_rows)
                     
                     # Create temporary filtered CSV files
                     temp_old = tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False, encoding='utf-8', newline='')
@@ -3403,8 +3512,8 @@ def main(page: ft.Page):
                     
                     add_log_message("[DEBUG] Stripped 'filepath' column from both CSVs for comparison")
                     
-                    # Use csvdiff to compare filtered files with filename as key
-                    diff_result = diff_files(temp_old.name, temp_new.name, index_columns=['filename'])
+                    # Use csvdiff to compare filtered files with original_file_name as key.
+                    diff_result = diff_files(temp_old.name, temp_new.name, index_columns=[CSV_FILENAME_FIELD])
                     
                     # Clean up temp files
                     import os
@@ -3467,8 +3576,8 @@ Detailed results: {output_diff.name}
                             view_rows = []
                             
                             # Create field order based on new CSV columns (for consistent display)
-                            # Remove 'filename' since it's the key, not a changed field
-                            field_order = [f for f in new_fieldnames if f != 'filename']
+                            # Remove filename key columns since they are identifiers, not merge targets.
+                            field_order = [f for f in new_fieldnames if f not in CSV_FILENAME_FIELDS]
                             
                             # Count data loss warnings (old value replaced with empty)
                             data_loss_count = 0
@@ -3523,7 +3632,7 @@ Detailed results: {output_diff.name}
                                 view_rows.append(ft.Divider(height=1))
                                 
                                 for idx, record in enumerate(diff_result.get('added', [])):
-                                    filename = record.get('filename', 'Unknown')
+                                    filename = get_csv_filename_value(record) or 'Unknown'
                                     objectid = record.get('objectid', '')
                                     title = record.get('title', '')
                                     
@@ -3558,7 +3667,7 @@ Detailed results: {output_diff.name}
                                 view_rows.append(ft.Divider(height=1))
                                 
                                 for idx, record in enumerate(diff_result.get('removed', [])[:20]):  # Show first 20
-                                    filename = record.get('filename', 'Unknown')
+                                    filename = get_csv_filename_value(record) or 'Unknown'
                                     objectid = record.get('objectid', '')
                                     title = record.get('title', '')
                                     
@@ -3593,7 +3702,7 @@ Detailed results: {output_diff.name}
                                 
                                 # First pass: identify parents from added records
                                 for idx, record in enumerate(diff_result.get('added', [])):
-                                    filename = record.get('filename', '')
+                                    filename = get_csv_filename_value(record)
                                     if filename and filename.startswith('_'):
                                         # This is a parent
                                         parent_id = record.get('objectid', '')
@@ -4086,9 +4195,14 @@ Detailed results: {output_diff.name}
                                                 reader = csv.DictReader(f)
                                                 fieldnames = reader.fieldnames
                                                 core_rows = list(reader)
+                                            fieldnames, core_rows = normalize_csv_filename_columns(fieldnames, core_rows)
                                             
-                                            # Create filename-to-row mapping
-                                            core_by_filename = {row['filename']: row for row in core_rows if row.get('filename')}
+                                            # Create filename-to-row mapping (canonical field + legacy fallback)
+                                            core_by_filename = {}
+                                            for row in core_rows:
+                                                filename_key = get_csv_filename_value(row)
+                                                if filename_key:
+                                                    core_by_filename[filename_key] = row
                                             
                                             # Apply selected additions
                                             added_records = diff_result.get('added', [])
@@ -4096,7 +4210,7 @@ Detailed results: {output_diff.name}
                                                 if idx < len(added_records):
                                                     new_record = added_records[idx]
                                                     core_rows.append(new_record)
-                                                    add_log_message(f"[INFO] Added: {new_record.get('filename', 'Unknown')}")
+                                                    add_log_message(f"[INFO] Added: {get_csv_filename_value(new_record) or 'Unknown'}")
                                             
                                             # Apply selected field changes
                                             changed_records = diff_result.get('changed', [])
@@ -4433,7 +4547,7 @@ Detailed results: {output_diff.name}
                 # Read core CSV template to get structure
                 with open(core_csv_path, 'r', encoding='utf-8') as f:
                     core_reader = csv.DictReader(f)
-                    core_columns = list(core_reader.fieldnames)
+                    core_columns = [CSV_FILENAME_FIELD if c == LEGACY_CSV_FILENAME_FIELD else c for c in core_reader.fieldnames]
 
                 # Identify unmapped Seeklight columns that contain data
                 # These will be added as new columns with underscore prefix
@@ -4493,7 +4607,7 @@ Detailed results: {output_diff.name}
                     for col in core_columns:
                         if col == 'objectid':
                             new_row[col] = objectid  # Empty if no match
-                        elif col == 'filename':
+                        elif col == CSV_FILENAME_FIELD:
                             new_row[col] = filename
                         elif col in field_mapping.values():
                             # Find Seeklight column that maps to this core column
@@ -4733,11 +4847,14 @@ Detailed results: {output_diff.name}
                     reader = csv.DictReader(f)
                     core_fieldnames = list(reader.fieldnames)
                     core_rows = list(reader)
+                core_fieldnames, core_rows = normalize_csv_filename_columns(core_fieldnames, core_rows)
                 
                 with open(selected_new_csv, 'r', encoding='utf-8') as f:
                     reader = csv.DictReader(f)
                     seeklight_fieldnames = list(reader.fieldnames)
                     seeklight_rows = list(reader)
+                seeklight_fieldnames = [CSV_FILENAME_FIELD if c == LEGACY_CSV_FILENAME_FIELD else c for c in seeklight_fieldnames]
+                _, seeklight_rows = normalize_csv_filename_columns(seeklight_fieldnames, seeklight_rows)
                 
                 # Build mapping: objectid -> core row
                 core_by_objectid = {}
@@ -4753,10 +4870,10 @@ Detailed results: {output_diff.name}
                 
                 for seeklight_row in seeklight_rows:
                     # Get filename from Seeklight row and extract basename (without extension)
-                    filename = seeklight_row.get('filename', '').strip()
+                    filename = get_csv_filename_value(seeklight_row)
                     
                     if not filename:
-                        add_log_message(f"[WARNING] Seeklight row missing filename, skipping")
+                        add_log_message(f"[WARNING] Seeklight row missing original_file_name, skipping")
                         continue
                     
                     # Extract basename without extension
@@ -4770,7 +4887,7 @@ Detailed results: {output_diff.name}
                         
                         for field in seeklight_fieldnames:
                             # Skip matching keys and internal fields - these should never be merged
-                            if field in ['filepath', 'objectid', 'filename']:
+                            if field in ['filepath', 'objectid', CSV_FILENAME_FIELD, LEGACY_CSV_FILENAME_FIELD]:
                                 continue
                             
                             seeklight_val = seeklight_row.get(field, '').strip()
@@ -4785,7 +4902,7 @@ Detailed results: {output_diff.name}
                         if changed_fields:
                             changed_records.append({
                                 'objectid': basename,  # Use basename as the identifier
-                                'filename': filename,
+                                CSV_FILENAME_FIELD: filename,
                                 'fields': changed_fields
                             })
                         else:
@@ -4835,7 +4952,7 @@ Detailed results: {output_diff.name}
                         
                         for idx, record in enumerate(new_records):
                             objectid = record.get('objectid', '')
-                            filename = record.get('filename', '')
+                            filename = get_csv_filename_value(record)
                             title = record.get('title', '')
                             
                             checkbox = ft.Checkbox(value=True, label=f"Add: {filename} ({objectid}) - {title}"[:80])
@@ -4851,7 +4968,7 @@ Detailed results: {output_diff.name}
                         
                         for idx, change in enumerate(changed_records):
                             objectid = change['objectid']
-                            filename = change['filename']
+                            filename = change.get(CSV_FILENAME_FIELD, '')
                             fields = change['fields']
                             
                             merge_rows.append(ft.Text(f"📄 {filename} ({objectid})", weight=ft.FontWeight.BOLD, size=13))
@@ -4926,6 +5043,7 @@ Detailed results: {output_diff.name}
                                 reader = csv.DictReader(f)
                                 fieldnames = list(reader.fieldnames)
                                 core_rows_list = list(reader)
+                            fieldnames, core_rows_list = normalize_csv_filename_columns(fieldnames, core_rows_list)
                             
                             # Detect new fields from Seeklight records that aren't in core CSV
                             new_fields = set()
@@ -4960,7 +5078,7 @@ Detailed results: {output_diff.name}
                                         if field not in new_record:
                                             new_record[field] = ''
                                     core_rows_list.append(new_record)
-                                    add_log_message(f"[INFO] Added: {new_record.get('filename', '')}")
+                                    add_log_message(f"[INFO] Added: {get_csv_filename_value(new_record)}")
                             
                             # Apply field changes
                             core_by_id = {row.get('objectid', '').strip(): row for row in core_rows_list}

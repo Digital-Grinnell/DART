@@ -37,8 +37,8 @@ Use this function when you want to:
 
 The function automatically populates these CollectionBuilder fields from your assets:
 
-- **objectid**: Unique DG identifier (format: `dg_<epoch>`)
-- **filename**: Original filename for files; underscore-prefixed first child filename for compound parents
+- **objectid**: Unique DG identifier (format: `dg_<epoch>` or `<prefix>_dg_<epoch>` when `dg_prefix` is configured in Function 0)
+- **original_file_name**: Original filename for files; underscore-prefixed first child filename for compound parents
   - Example: `photo_001.jpg` for a regular file
   - Example: `_photo_001.jpg` for a compound parent (no physical file, just an index)
   - The underscore prefix differentiates compound parents from actual files
@@ -87,8 +87,8 @@ When Azure is configured in Function 0 settings, Function 2 automatically:
    - No manual Azure portal setup required
 
 3. **Uploads files to Azure** during export (skips files that already exist)
-   - Each file is uploaded with its `dg_<epoch>` identifier as the filename
-   - Original extension is preserved (e.g., `dg_1715614222.jpg`)
+   - Each file is uploaded with its object identifier as the filename
+   - Original extension is preserved (e.g., `dg_1715614222.jpg` or `tdps_dg_1715614222.jpg`)
    - Files are uploaded to the path specified in settings (e.g., `objs/tdps_archive`)
    - Content-Type headers are set automatically based on file extension
    - **Safe to re-run**: Checks if file exists before uploading, skips if already present
@@ -120,7 +120,7 @@ To enable Azure uploads:
 ### Azure Storage Structure
 
 DART uses a three-folder structure in Azure:
-- `/objs/` - Original source files (renamed to dg_<epoch>.ext)
+- `/objs/` - Original source files (renamed to objectid.ext)
 - `/smalls/` - Medium-sized derivatives (future functions)
 - `/thumbs/` - Thumbnail derivatives (future functions)
 
@@ -209,10 +209,10 @@ DART automatically maps file types to appropriate layouts. For compound objects 
 
 ### Simple Export (No Compound Grouping)
 
-Given a template with columns: `objectid,filename,title,creator,date,display_template,format,object_location`
+Given a template with columns: `objectid,original_file_name,title,creator,date,display_template,format,object_location`
 
 ```csv
-objectid,filename,title,creator,date,display_template,format,object_location
+objectid,original_file_name,title,creator,date,display_template,format,object_location
 dg_1715614222,photo_001.jpg,,,,image,jpg,https://account.blob.core.windows.net/objs/collection/dg_1715614222.jpg
 dg_1715614223,photo_002.jpg,,,,image,jpg,https://account.blob.core.windows.net/objs/collection/dg_1715614223.jpg
 dg_1715614224,document.pdf,,,,pdf,pdf,https://account.blob.core.windows.net/objs/collection/dg_1715614224.pdf
@@ -223,12 +223,12 @@ dg_1715614225,recording.mp3,,,,audio,mp3,https://account.blob.core.windows.net/o
 
 ### Compound Object Export (Grouping Enabled)
 
-Given a template with columns: `objectid,parentid,filename,title,display_template,format,object_location`
+Given a template with columns: `objectid,parentid,original_file_name,title,display_template,format,object_location`
 
 With files: `wit_001.jpg`, `wit_002.jpg`, `wit_003.jpg`
 
 ```csv
-objectid,parentid,filename,title,display_template,format,object_location
+objectid,parentid,original_file_name,title,display_template,format,object_location
 dg_1715614220,,_wit_001.jpg,Wit,compound_object,,
 dg_1715614221,dg_1715614220,wit_001.jpg,,image,jpg,https://account.blob.core.windows.net/objs/collection/dg_1715614221.jpg
 dg_1715614222,dg_1715614220,wit_002.jpg,,image,jpg,https://account.blob.core.windows.net/objs/collection/dg_1715614222.jpg
@@ -236,8 +236,8 @@ dg_1715614223,dg_1715614220,wit_003.jpg,,image,jpg,https://account.blob.core.win
 ```
 
 **Note**: 
-- Compound parent (first row) has underscore-prefixed filename `_wit_001.jpg` (no physical file, just an index based on first child)
-- This maintains filename as the source of truth for ALL objects, eliminating the need for objectid fallback
+- Compound parent (first row) has underscore-prefixed original_file_name `_wit_001.jpg` (no physical file, just an index based on first child)
+- This maintains original_file_name as the source of truth for ALL objects, eliminating the need for objectid fallback
 - Child objects have Azure URLs in their object_location field 
 - Compound parent has suggested title, display_template is `compound_object`
 - Child objects (following rows) have the parent's objectid in their `parentid` field
@@ -308,7 +308,7 @@ Use the **🛑 Kill Switch** button when you need to stop a long-running Azure u
 - Object IDs are never reassigned - once a file has an ID, it keeps it
 - Compound object IDs are also persistent (same pattern = same compound ID)
 - Empty template columns are preserved for manual or automated metadata population
-- CollectionBuilder requires `objectid` and `filename` at minimum (both are auto-populated)
+- CollectionBuilder requires `objectid` and `original_file_name` at minimum (both are auto-populated)
 - For compound objects, `parentid` is required to link children to parents
 - Compound parent objects are written first in the CSV, followed by their children
 - Timestamps ensure you never overwrite previous exports

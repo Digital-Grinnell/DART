@@ -15,8 +15,8 @@ Use this function when you want to:
 - **Working/Outputs folder** must be set
 - **Core metadata CSV** must be configured in Function 0 settings
 - **At least 1 DART_export CSV file** must exist in the `.DART-working-directory` subfolder (for comparison)
-- Both CSV files must have a `filename` column (unique identifier)
-- No duplicate `filename` values within each file
+- Both CSV files must have an `original_file_name` column (unique identifier)
+- No duplicate `original_file_name` values within each file
 - **csvdiff Python package** must be installed (included in requirements)
 
 **Note**: DART automatically creates a `.DART-working-directory` subfolder within your working/outputs folder to keep DART_export files isolated from other project files. The core metadata CSV can be located anywhere (inside or outside the working directory).
@@ -83,13 +83,13 @@ Function 4 uses the csvdiff Python library for comparison:
 ## What Gets Compared
 
 DART automatically:
-- Uses `filename` as the unique identifier for matching records between files
-- Detects all shared columns between both files (excludes `filename` and `filepath`)
+- Uses `original_file_name` as the unique identifier for matching records between files
+- Detects all shared columns between both files (excludes `original_file_name` and `filepath`)
 - Performs **case-sensitive** comparison of all values
 - Normalizes whitespace (strips leading/trailing spaces)
 - Treats empty strings and missing values (NaN) as equivalent
-- Validates that `filename` is unique in both files
-- For display purposes: Uses `filename` to identify records
+- Validates that `original_file_name` is unique in both files
+- For display purposes: Uses `original_file_name` to identify records
   - Note: Compound parent objects now have underscore-prefixed filenames (e.g., `_photo_001.jpg`) rather than blank
 
 ## Row Order Preservation
@@ -140,7 +140,7 @@ Contains detailed diff structure with:
 - `added`: Array of new records (only in new file)
 - `removed`: Array of records missing in new file (only in old/core file)
 - `changed`: Array of records with different values
-  - `key`: The `filename` identifier
+  - `key`: The `original_file_name` identifier
   - `fields`: Object showing which fields changed (from → to)
 
 **Use this for**: Programmatic processing, detailed analysis, archival
@@ -162,9 +162,9 @@ Human-readable summary with:
 
 Records are classified into three categories:
 
-- **added**: `filename` exists only in new file (new records to potentially add to core)
-- **removed**: `filename` exists only in old/core file (records missing from new file)
-- **changed**: `filename` exists in both files, but at least one field value differs
+- **added**: `original_file_name` exists only in new file (new records to potentially add to core)
+- **removed**: `original_file_name` exists only in old/core file (records missing from new file)
+- **changed**: `original_file_name` exists in both files, but at least one field value differs
 
 Note: Records that match exactly (identical values in all fields) are not included in the output files.
 
@@ -180,15 +180,15 @@ After comparison completes, a dialog displays:
      - Parent displayed with 📦 icon and **[COMPOUND PARENT]** label in bold purple
      - Children indented with `↳` arrow under their parent
      - Family members grouped together for easier review
-   - Object ID or filename
+  - Object ID or original_file_name
    - List of fields that changed
 4. **Output Files**: Names of the three generated files
 5. **Log Link**: Clickable button to view detailed processing log
 Core metadata CSV is configured in settings
 - Core CSV file exists and is accessible
 - At least 1 CSV file available in working directory
-- Both files have `filename` column
-- No duplicate `filename` values in either file
+- Both files have `original_file_name` column
+- No duplicate `original_file_name` values in either file
 
 **Common errors:**
 
@@ -196,8 +196,8 @@ Core metadata CSV is configured in settings
 - **"Core CSV file not found"**: Verify core_metadata_csv path is correct in settings
 - **"No DART_export CSV files found"**: Run Function 2 to generate a CSV export
 - **"Only core CSV found, no DART_export files to compare"**: Run Function 2 to generate a new export to compare
-- **"Missing filename column"**: Both files must have this column
-- **"Duplicate filename values"**: Fix duplicates before comparison
+- **"Missing original_file_name column"**: Both files must have this column
+- **"Duplicate original_file_name values"**: Fix duplicates before comparison
 - **"Error comparing CSVs"**: Check log for csvdiff or data format issues
 
 ## Comparison Logic
@@ -207,9 +207,9 @@ Function 4 implements CSV comparison using csvdiff:
 1. Load both CSV files and validate structure
 2. Strip `filepath` column from both CSVs (internal DART data)
 3. Write temporary filtered CSV files for comparison
-4. Normalize `filename` (strip whitespace)
-5. Validate uniqueness of `filename` in both files
-6. Run csvdiff with `filename` as the key column
+4. Normalize `original_file_name` (strip whitespace)
+5. Validate uniqueness of `original_file_name` in both files
+6. Run csvdiff with `original_file_name` as the key column
 7. Parse JSON output to identify added, removed, and changed records
 8. Generate text summary with counts
 9. Display interactive merge viewer for selective application

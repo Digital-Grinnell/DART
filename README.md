@@ -41,6 +41,10 @@ DART is focused on providing a valid import/ingest-compatible CSV metadata file 
   - Working files stay in isolated subfolder
 - Maintain consistency and avoid duplicate identifiers across workflow phases
 
+**Identifier format note:** Epoch cutoff `1782237851` marks the introduction of the optional `dg_prefix` setting. IDs with earlier epoch values are legacy `dg_<epoch>` IDs. IDs generated after that cutoff may appear either as `dg_<epoch>` when the prefix is blank or as `<prefix>_dg_<epoch>` when a prefix is configured.
+
+**Recommended prefix convention:** When using `dg_prefix`, choose a stable 2-4 character project code such as `tdps`, `csm`, or `ohm`. Keep it consistent for the life of the project so new IDs remain recognizable and sort together.
+
 ## Purpose
 
 DART provides a comprehensive platform for digital asset management workflows:
@@ -56,14 +60,14 @@ DART provides a comprehensive platform for digital asset management workflows:
 ### Core Platform Features
 - **Persistent Settings**: Automatic saving/loading of window position, directories, and user preferences
 - **Persistent File Selection**: Selected files are remembered across app restarts - no need to re-select
-- **Permanent ID Assignment**: Files receive unique `dg_<epoch>` identifiers that never change once assigned
+- **Permanent ID Assignment**: Files receive unique permanent identifiers that never change once assigned: legacy `dg_<epoch>` by default, or optional `<prefix>_dg_<epoch>` when `dg_prefix` is configured in Function 0
 - **CSV Metadata Management**: Template-based CSV generation with intelligent merging into master metadata file
 - **Isolated Working Directory**: Automatic `.DART-working-directory` subfolder for temporary files
   - DART_export CSV files written to hidden subfolder
   - Keeps working files separate from project files
   - Core metadata CSV can be located anywhere
   - Merges always update the core CSV (not working directory)
-- **CollectionBuilder Compatibility**: Validates CSV structure for required fields (objectid, filename)
+- **CollectionBuilder Compatibility**: Validates CSV structure for required fields (objectid, original_file_name)
 - **Azure Blob Storage Integration**: Automatic file uploads with encrypted connection strings
 - **Kill Switch**: Emergency stop button for batch operations (stops cleanly without data corruption)
 - **Professional Logging**: Timestamped log files in `{working_folder}/logfiles/` with real-time display
@@ -89,18 +93,19 @@ DART provides a comprehensive platform for digital asset management workflows:
   - Creates a seamless workflow from asset analysis through metadata merge
   - Stops immediately if any errors occur
   - Automatically resets to `false` at start of each new session (opt-in per session)
+  - **Optional DG Prefix**: Set `dg_prefix` (up to 4 letters/numbers) to generate new IDs as `<prefix>_dg_<epoch>` for multi-project uniqueness
 - **Function 1** 🎯: Analyze digital assets and generate standard DG identifiers (dg_<epoch>)
   - Creates compound objects for related file groups (optional)
   - Permanent ID assignment with folder-based compound tracking
   - When `automatic_four` is enabled, automatically triggers Functions 2, 3, and 4
 - **Function 2** 📊: Export Assets to CSV and Azure
   - Generates CollectionBuilder-compatible metadata files
-  - Auto-populates objectid, filename, parentid, display_template, format, and object_location fields
+  - Auto-populates objectid, original_file_name, parentid, display_template, format, and object_location fields
   - Supports compound object export with parent/child relationships
   - Maps file types to CollectionBuilder layouts (image/video/audio/pdf/compound_object)
   - **Azure Blob Storage integration**: Automatically uploads files and generates object_location URLs
   - **Auto-creates Azure containers**: No manual Azure Portal setup required
-  - Files uploaded with DG identifiers as filenames (e.g., dg_1715614222.jpg)
+  - Files uploaded with object identifiers as filenames (e.g., `dg_1715614222.jpg` or `tdps_dg_1715614222.jpg`)
   - **Kill Switch**: Emergency stop for long-running Azure uploads (stops cleanly after current file)
   - Timestamped exports to `.DART-working-directory` subfolder
 - **Function 3** 🖼️: Generate Derivatives for CSV and Azure
@@ -115,7 +120,7 @@ DART provides a comprehensive platform for digital asset management workflows:
   - **Kill Switch**: Emergency stop for long-running derivative generation
 - **Function 4** 🔀: Compare and Merge CSV Files
   - **CSV comparison using csvdiff tool**: Fast, accurate comparison with JSON output
-  - Compare two CSV files by filename with detailed change tracking
+  - Compare two CSV files by original_file_name with detailed change tracking
   - Auto-selects newest DART_export CSV from `.DART-working-directory` subfolder
   - Classifies records: added (new), removed (missing in new), changed (different values)
   - Generates JSON diff results and text summary
@@ -134,7 +139,7 @@ DART provides a comprehensive platform for digital asset management workflows:
   - Complete Seeklight web workflow documentation in help system
 - **Function 6** 🔗: Compare and Merge Seeklight CSV
   - Compare Seeklight-transformed CSV files with core metadata
-  - Basename-to-objectid matching (Seeklight filename basename matched to core objectid)
+  - Basename-to-objectid matching (Seeklight original_file_name basename matched to core objectid)
   - Interactive merge with field-level checkboxes for granular control
   - Data loss protection: unchecks fields where Seeklight value is empty
   - Selective merging: choose exactly which changes to accept
@@ -205,7 +210,7 @@ DART for macOS features an **automated installer** that requires no admin permis
 
 3
 3. **Run the launcher:**
-   - Double-click: `run.bat`
+  - Double-click: `scripts/run.bat`
 
 4. **First launch:**
    - Command Prompt opens and installs dependencies (1-2 minutes, first time only)
@@ -216,7 +221,7 @@ DART for macOS features an **automated installer** that requires no admin permis
 - Download from [python.org/downloads](https://python.org/downloads)
 - Verify: `python --version` in Command Prompt
 
-**Optional:** Create desktop shortcut: Right-click `run.bat` → Send to → Desktop
+**Optional:** Create desktop shortcut: Right-click `scripts/run.bat` → Send to → Desktop
 
 📖 **For detailed instructions, see [INSTALLATION.md](INSTALLATION.md)**
 
@@ -230,10 +235,10 @@ DART for macOS features an **automated installer** that requires no admin permis
 2. **Run the application**
    ```bash
    # macOS/Linux
-   ./run.sh
+  ./scripts/run.sh
    
    # Windows
-   run.bat
+  scripts\\run.bat
    ```
 
 The run scripts automatically:
@@ -258,10 +263,17 @@ All dependencies are installed automatically by the run scripts.
 ```
 DART/
 ├── app.py                      # Main application
-├── run.sh                      # macOS/Linux launcher
-├── run.bat                     # Windows launcher
-├── build_dmg.sh               # macOS installer builder
-├── build_windows_zip.sh       # Windows package builder
+├── scripts/                    # Stand-alone launchers and helper scripts
+│   ├── run.sh                  # macOS/Linux launcher
+│   ├── run.bat                 # Windows launcher
+│   ├── build_dmg.sh            # macOS installer builder
+│   ├── build_windows_zip.sh    # Windows package builder
+│   ├── rename_metadata_field.py
+│   ├── fix_config_csv_fields.sh
+│   ├── batch_rename_dublin_core.sh
+│   ├── cleanup_old_backups.sh
+│   ├── diagnose_rename_changes.sh
+│   └── migrate_legacy_working_files.py
 ├── VERSION                     # Version number file
 ├── python_requirements.txt     # Python dependencies
 ├── .gitignore                  # Git exclusions
@@ -275,10 +287,6 @@ DART/
 ├── FUNCTION_2_EXPORT_CSV.md     # Help docs for Function 2 (CSV and Azure export)
 ├── FUNCTION_3_GENERATE_DERIVATIVES.md  # Help docs for Function 3 (Derivatives)
 ├── FUNCTION_4_COMPARE_MERGE_CSV.md  # Help docs for Function 4 (Compare/Merge)
-├── rename_metadata_field.py    # Script to rename CSV/CollectionBuilder fields
-├── batch_rename_dublin_core.sh # Batch normalize legacy dc_ fields to standard names
-├── migrate_legacy_working_files.py # One-time migration helper for old DART artifacts
-├── cleanup_old_backups.sh      # Remove old non-hidden backup files from CollectionBuilder
 ├── RENAME_METADATA_FIELD.md    # Documentation for field renaming tools
 ├── FIXING_RENAME_ISSUES.md     # Troubleshooting guide for renaming problems
 ├── FIX_COLON_TO_UNDERSCORE.md  # Guide for normalizing legacy dc: / dc. / dc_ field variants
@@ -318,7 +326,7 @@ Update these items throughout the codebase:
 - `page.title` in `app.py`
 - Data directory name (`DART-data` → `YourApp-data`)
 - Window title and header text
-- Script headers in `run.sh` and `run.bat`
+- Script headers in `scripts/run.sh` and `scripts/run.bat`
 - README title and descriptions
 
 ### 2. Add Your Own Functions
@@ -492,13 +500,13 @@ This creates `DART_v2.0.dmg` with:
 Create a distributable DMG file:
 DART_v2.0_Windows.zip` with:
 - All source files including common-DG-utilities
-- `run.bat` launcher
+- `scripts/run.bat` launcher
 - Automatic dependency installation on first launch
 - No admin permissions required
 
 **Distribution:**
 - Send the ZIP file to users
-- Users extract and run `run.bat`
+- Users extract and run `scripts/run.bat`
 - First launch installs dependencies automatically
 
 Recipients need Python 3.8+ installed with "Add Python to PATH" checked
@@ -516,7 +524,7 @@ bash build_windows_zip.sh 1.0
 
 This creates `YourApp_v1.0_Windows.zip` with:
 - All source files
-- `run.bat` launcher
+- `scripts/run.bat` launcher
 - Automatic dependency installation on first launch
 
 Recipients need Python 3 installed (one-time setup).
@@ -563,7 +571,7 @@ Create help documentation for each function to guide users.
 
 After modifying `app.py`, just rerun:
 ```bash
-./run.sh  # or run.bat on Windows
+  ./scripts/run.sh  # or scripts\\run.bat on Windows
 ```
 
 The virtual environment and dependencies are cached, so subsequent runs are fast.
@@ -595,19 +603,19 @@ DART includes utility scripts for coordinating metadata field name changes acros
 
 To stay in sync with Digital-Grinnell/collectionbuilder-csv and its upstream CollectionBuilder CSV repository, DART now treats plain field names such as `title`, `description`, and `date` as canonical. If an older project still has `dc_`-prefixed CSV headers or config fields, remove those prefixes before continuing.
 
-### rename_metadata_field.py
+### scripts/rename_metadata_field.py
 
 Python script for renaming individual fields with automatic backup and preview:
 
 ```bash
 # Preview changes (dry run)
-python rename_metadata_field.py \
+python3 scripts/rename_metadata_field.py \
   --csv metadata.csv \
   --old-field dc_title \
   --new-field title
 
 # Apply changes to CSV and CollectionBuilder
-python rename_metadata_field.py \
+python3 scripts/rename_metadata_field.py \
   --csv metadata.csv \
   --old-field dc_title \
   --new-field title \
@@ -630,18 +638,18 @@ python rename_metadata_field.py \
 
 ```bash
 # Update CSV config files after removing legacy dc_ prefixes
-python3 fix_config_csv_fields.sh ~/GitHub/collectionbuilder
+python3 scripts/fix_config_csv_fields.sh ~/GitHub/collectionbuilder
 ```
 
 This fixes the 'field' column in config-browse.csv, config-metadata.csv, etc.
 
-### batch_rename_dublin_core.sh
+### scripts/batch_rename_dublin_core.sh
 
 Bash script for batch normalizing legacy `dc_` field names back to standard CollectionBuilder CSV fields:
 
 ```bash
 # Remove legacy dc_ prefixes from all standard fields
-bash batch_rename_dublin_core.sh metadata.csv ../collectionbuilder
+bash scripts/batch_rename_dublin_core.sh metadata.csv ../collectionbuilder
 ```
 
 **Renames these fields (if present):**
@@ -660,16 +668,16 @@ bash batch_rename_dublin_core.sh metadata.csv ../collectionbuilder
 - Processes multiple fields in one operation
 - Creates backups for all modified files
 
-### migrate_legacy_working_files.py
+### scripts/migrate_legacy_working_files.py
 
 One-time helper for older projects that still have DART-generated artifacts outside `.DART-working-directory`.
 
 ```bash
 # Preview what would be moved (dry run)
-python3 migrate_legacy_working_files.py /path/to/working-folder
+python3 scripts/migrate_legacy_working_files.py /path/to/working-folder
 
 # Apply migration
-python3 migrate_legacy_working_files.py /path/to/working-folder --apply
+python3 scripts/migrate_legacy_working_files.py /path/to/working-folder --apply
 ```
 
 This migrates legacy files such as `dart_settings.json`, `DART_*`, `csvdiff_*`, and `*.backup_*` into `.DART-working-directory/legacy-migrated/`.

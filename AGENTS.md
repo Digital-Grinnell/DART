@@ -10,7 +10,7 @@ Always make the smallest change at the highest appropriate layer before editing 
 
 1. `seeklight_mapping_template.json` — Seeklight field mapping and default metadata values
 2. `FUNCTION_*.md`, `README.md`, `INSTALLATION.md`, `QUICKSTART.md`, and related docs — workflow guidance and expected user behavior
-3. Targeted helper scripts such as `rename_metadata_field.py`, `fix_config_csv_fields.sh`, `batch_rename_dublin_core.sh`, and packaging scripts
+3. Targeted helper scripts such as `scripts/rename_metadata_field.py`, `scripts/fix_config_csv_fields.sh`, `scripts/batch_rename_dublin_core.sh`, and packaging scripts
 4. `app.py` — core application logic and UI behavior
 5. Build/distribution artifacts only when explicitly requested
 
@@ -20,12 +20,14 @@ If a behavior is driven by documentation, mappings, or a focused helper script, 
 
 ### Core Metadata CSV
 - Treat the core metadata CSV as the project's source of truth
-- Preserve `objectid` and `filename` semantics unless the user explicitly asks to change them
+- Preserve `objectid` and `original_file_name` semantics unless the user explicitly asks to change them
 - Canonical CollectionBuilder CSV field names are unprefixed: `title`, `description`, `date`, and similar
 - Treat `dc_`-prefixed field names as legacy cleanup targets, not new canonical names
 
 ### Durable Identifiers
 - `dg_<epoch>` object identifiers are intended to be permanent once assigned
+- New projects may optionally generate IDs as `<prefix>_dg_<epoch>` using the Function 0 `dg_prefix` setting; preserve that prefix when present
+- `dg_prefix` values are optional, limited to 4 alphanumeric characters, and should be treated as project-scoped uniqueness aids rather than editable metadata
 - Do not rewrite existing identifier mappings casually
 - Be careful with logic touching `file_to_id_map`, compound object IDs, or merge matching behavior
 
@@ -51,7 +53,8 @@ If a behavior is driven by documentation, mappings, or a focused helper script, 
 - Do not hardcode credentials, connection strings, or machine-specific paths into source files
 
 ### Packaging and Launchers
-- `run.sh`, `run.bat`, `build_dmg.sh`, and `build_windows_zip.sh` are operational scripts
+- `scripts/run.sh`, `scripts/run.bat`, `scripts/build_dmg.sh`, and `scripts/build_windows_zip.sh` are operational scripts
+- All stand-alone scripts now live under `scripts/` and should be referenced from that directory, not from the project root
 - Avoid changing packaging behavior when the request is about application logic or metadata workflow
 
 ## Ask Before Doing These
@@ -73,12 +76,12 @@ Explain your plan and get confirmation before:
 | `seeklight_mapping_template.json` | Function 5 field mapping and default values |
 | `FUNCTION_0_APP_SETTINGS.md` through `FUNCTION_6_COMPARE_MERGE_SEEKLIGHT.md` | User help for each workflow function |
 | `README.md` / `QUICKSTART.md` / `INSTALLATION.md` | High-level onboarding, setup, and workflow documentation |
-| `rename_metadata_field.py` | Targeted metadata field renaming across CSV/config contexts |
-| `fix_config_csv_fields.sh` | Cleanup of CSV-based CollectionBuilder config field references |
-| `batch_rename_dublin_core.sh` | Bulk normalization of legacy Dublin Core-style field names |
-| `diagnose_rename_changes.sh` | Troubleshooting legacy field rename fallout |
-| `migrate_legacy_working_files.py` | One-time migration of legacy DART artifacts into `.DART-working-directory` |
-| `build_dmg.sh` / `build_windows_zip.sh` | Distribution packaging |
+| `scripts/rename_metadata_field.py` | Targeted metadata field renaming across CSV/config contexts |
+| `scripts/fix_config_csv_fields.sh` | Cleanup of CSV-based CollectionBuilder config field references |
+| `scripts/batch_rename_dublin_core.sh` | Bulk normalization of legacy Dublin Core-style field names |
+| `scripts/diagnose_rename_changes.sh` | Troubleshooting legacy field rename fallout |
+| `scripts/migrate_legacy_working_files.py` | One-time migration of legacy DART artifacts into `.DART-working-directory` |
+| `scripts/build_dmg.sh` / `scripts/build_windows_zip.sh` | Distribution packaging |
 | `python_requirements.txt` | Python dependencies |
 
 ## Common Mistakes to Avoid
@@ -108,8 +111,8 @@ Consult these repo documents when needed:
 Use focused validation that matches the edit:
 
 ```bash
-python3 -m py_compile app.py rename_metadata_field.py fix_config_csv_fields.sh
-bash -n batch_rename_dublin_core.sh diagnose_rename_changes.sh
+python3 -m py_compile app.py scripts/rename_metadata_field.py scripts/fix_config_csv_fields.sh scripts/migrate_legacy_working_files.py
+bash -n scripts/batch_rename_dublin_core.sh scripts/diagnose_rename_changes.sh scripts/run.sh scripts/build_dmg.sh scripts/build_windows_zip.sh scripts/cleanup_old_backups.sh
 ```
 
 If a change affects launch or packaging, use the narrowest relevant command or script. If a change affects only docs or JSON mappings, a grep or diff may be sufficient.

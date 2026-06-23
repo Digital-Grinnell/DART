@@ -5,7 +5,12 @@ Coordinates field name changes between CSV metadata files and CollectionBuilder 
 
 Usage:
     python rename_metadata_field.py --csv path/to/metadata.csv --old-field dc_title --new-field title
-    python rename_metadata_field.py --csv path/to/metadata.csv --old-field dc_title --new-field title --cb-dir path/to/collectionbuilder --apply
+    python3 scripts/rename_metadata_field.py --csv path/to/metadata.csv --old-field dc_title --new-field title
+    python3 scripts/rename_metadata_field.py --csv path/to/metadata.csv --old-field dc_title --new-field title --cb-dir path/to/collectionbuilder --apply
+    print("Usage: python3 scripts/rename_metadata_field.py --csv path/to/metadata.csv --old-field dc_title --new-field title")
+    print("  python3 scripts/rename_metadata_field.py --csv metadata.csv --old-field title --new-field dc:title")
+    print("  python3 scripts/rename_metadata_field.py --csv metadata.csv --old-field title --new-field dc:title --apply")
+    print("  python3 scripts/rename_metadata_field.py --csv metadata.csv --old-field title --new-field dc:title --cb-dir ../collectionbuilder --apply")
 
 Options:
     --csv               Path to the CSV metadata file

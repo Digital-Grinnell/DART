@@ -1,3 +1,5 @@
+    echo "Usage: bash scripts/diagnose_rename_changes.sh <collectionbuilder_dir> <old_field> [new_field]"
+    echo "  bash scripts/diagnose_rename_changes.sh ~/GitHub/GCCB-TDPS-Archive dc_title title"
 #!/bin/bash
 # diagnose_rename_changes.sh
 # Diagnose what changed when renaming a metadata field

@@ -65,7 +65,8 @@ DART is installed to: `~/DART/` (your home directory)
 ~/DART/
 ├── Launch DART.command   # Double-click to start DART
 ├── app.py                # Main application
-├── run.sh                # Launcher script
+├── scripts/              # Launcher and helper scripts
+│   └── run.sh            # Launcher script
 ├── common_dg_utilities/  # Utility functions (included)
 ├── INSTALLATION.md       # This file
 ├── README.md            # Full documentation
@@ -205,7 +206,7 @@ DART runs from source on Linux systems.
 
 3. **Run DART**
    ```bash
-   ./run.sh
+   ./scripts/run.sh
    ```
 
 4. **First Launch**
@@ -225,7 +226,7 @@ Create `~/.local/share/applications/dart.desktop`:
 Type=Application
 Name=DART
 Comment=Digital Asset Routing and Transformation
-Exec=/path/to/DART/run.sh
+Exec=/path/to/DART/scripts/run.sh
 Icon=utilities-terminal
 Terminal=false
 Categories=Utility;
@@ -275,7 +276,7 @@ The following Python packages are installed automatically on first launch:
 - **PyMuPDF (fitz)** — PDF processing
 - **pandas** — Data manipulation
 
-**You don't need to install these manually** — the `run.sh` / `run.bat` scripts handle everything.
+**You don't need to install these manually** — the `scripts/run.sh` / `scripts/run.bat` scripts handle everything.
 
 ---
 
@@ -322,7 +323,7 @@ python3 --version
 **Solution:**
 1. Open Terminal
 2. Navigate: `cd ~/DART`
-3. Run manually: `bash run.sh`
+3. Run manually: `bash scripts/run.sh`
 4. Watch for error messages
 
 ### Windows Issues
@@ -347,7 +348,7 @@ python3 --version
 python -m pip install --upgrade pip
 
 # Then re-run DART
-run.bat
+scripts\run.bat
 ```
 
 #### Virtual environment errors
@@ -360,19 +361,19 @@ run.bat
 rmdir /s .venv
 
 # Re-run launcher (recreates .venv)
-run.bat
+scripts\run.bat
 ```
 
 ### Linux Issues
 
-#### `./run.sh`: Permission denied
+#### `./scripts/run.sh`: Permission denied
 
 **Cause:** Script not executable
 
 **Solution:**
 ```bash
-chmod +x run.sh
-./run.sh
+chmod +x scripts/run.sh
+./scripts/run.sh
 ```
 
 #### "No module named 'tkinter'"

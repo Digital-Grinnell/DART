@@ -121,15 +121,15 @@ Examples:
 1. **No derivative generation**: Compound parents have no physical files, so no derivatives are generated
 2. **Automatic URL population**: After all child files are processed, compound parents automatically inherit their first child's derivative URLs
 3. **URL inheritance logic**: 
-   - Compound parent filename: `_photo_001.jpg`
-   - First child filename: `photo_001.jpg` (underscore removed)
+   - Compound parent original_file_name: `_photo_001.jpg`
+   - First child original_file_name: `photo_001.jpg` (underscore removed)
    - DART finds the child row and copies its `image_small` and `image_thumb` values to the parent
 4. **Derivatives already exist**: The first child's derivatives were already generated and uploaded to Azure, so the parent simply references the same URLs
 5. **No duplicate uploads**: This approach avoids uploading duplicate files to Azure while ensuring compound parents have proper derivative references
 
 **Example**:
 ```csv
-objectid,filename,parentid,image_small,image_thumb
+objectid,original_file_name,parentid,image_small,image_thumb
 dg_1234,_photo_001.jpg,,https://.../smalls/.../dg_1235_SMALL.jpg,https://.../thumbs/.../dg_1235_TN.jpg
 dg_1235,photo_001.jpg,dg_1234,https://.../smalls/.../dg_1235_SMALL.jpg,https://.../thumbs/.../dg_1235_TN.jpg
 dg_1236,photo_002.jpg,dg_1234,https://.../smalls/.../dg_1236_SMALL.jpg,https://.../thumbs/.../dg_1236_TN.jpg
@@ -241,14 +241,14 @@ The log file is also saved to `logfiles/` in your working directory for later re
 
 **Before Function 3** (output from Function 2):
 ```csv
-objectid,filename,title,display_template,object_location
+objectid,original_file_name,title,display_template,object_location
 dg_1715614222,photo_001.jpg,,image,https://account.blob.core.windows.net/objs/collection/dg_1715614222.jpg
 dg_1715614223,photo_002.jpg,,image,https://account.blob.core.windows.net/objs/collection/dg_1715614223.jpg
 ```
 
 **After Function 3**:
 ```csv
-objectid,filename,title,display_template,object_location,image_small,image_thumb
+objectid,original_file_name,title,display_template,object_location,image_small,image_thumb
 dg_1715614222,photo_001.jpg,,image,https://account.blob.core.windows.net/objs/collection/dg_1715614222.jpg,https://account.blob.core.windows.net/smalls/collection/dg_1715614222_SMALL.jpg,https://account.blob.core.windows.net/thumbs/collection/dg_1715614222_TN.jpg
 dg_1715614223,photo_002.jpg,,image,https://account.blob.core.windows.net/objs/collection/dg_1715614223.jpg,https://account.blob.core.windows.net/smalls/collection/dg_1715614223_SMALL.jpg,https://account.blob.core.windows.net/thumbs/collection/dg_1715614223_TN.jpg
 ```
@@ -279,7 +279,7 @@ The kill switch is useful when:
 
 ### What Gets Processed
 - ✓ Image files with valid extensions (jpg, png, gif, tif, bmp, webp)
-- ✓ Rows with both objectid and filename populated
+- ✓ Rows with both objectid and original_file_name populated
 - ✓ Files where source can be located
 - ✓ Compound parent objects (automatically inherit first child's derivative URLs)
 

@@ -9,7 +9,7 @@ This application was created by extracting the proven UI framework from OHM (Ora
 ### Core Files
 - **app.py** - Main application with 3 example functions
 - **python_requirements.txt** - Just Flet dependencies
-- **run.sh** / **run.bat** - Launch scripts for macOS/Linux and Windows
+- **scripts/run.sh** / **scripts/run.bat** - Launch scripts for macOS/Linux and Windows
 - **.gitignore** - Python/Flet-appropriate exclusions
 
 ### Documentation
@@ -32,7 +32,7 @@ This application was created by extracting the proven UI framework from OHM (Ora
 
 ```bash
 cd /Users/mcfatem/GitHub/DART
-./run.sh
+./scripts/run.sh
 ```
 
 This will:

@@ -5,13 +5,14 @@
 set -e  # Exit on error
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
+    ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+    cd "$ROOT_DIR"
 
 echo "=== DART — Digital Asset Routing and Transformation ==="
 echo
 
 # Check if running from a read-only volume
-if [ ! -w "$SCRIPT_DIR" ]; then
+    if [ ! -w "$ROOT_DIR" ]; then
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "❌ ERROR: Cannot run from a read-only location"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

@@ -46,7 +46,7 @@ Once you have downloaded the Seeklight-generated metadata:
    - **Convert multi-value separators**: Seeklight's pipe separators (` | `) → DART's semicolon separators (`;`)
    - **Automatically add new columns**: For any Seeklight field with data that isn't mapped in the template, a new column is created with an underscore prefix and spaces converted to underscores (e.g., "Named Entities" becomes "_named_entities")
    - **Leave objectid empty** (Seeklight generates new metadata without objectids)
-   - Set filename from Seeklight data
+  - Set original_file_name from Seeklight data
    - Create a timestamped CSV: `DART_seeklight_transformed_YYYYMMDD_HHMMSS.csv`
    - Save to your `.DART-working-directory` folder
 
@@ -83,9 +83,9 @@ Edit `seeklight_mapping_template.json` in the DART folder to customize how Seekl
 - **filename_column**: Identifies which Seeklight column contains filenames
 - **Multi-value fields**: Seeklight uses pipe separators (` | `) for multi-value fields. The transformation automatically converts these to DART's semicolon separators (`;`) for compatibility.
 - **Unmapped fields**: If Seeklight provides data in fields not listed in your mapping template, new columns are automatically created in the output CSV. These column names start with an underscore and use lowercase with spaces converted to underscores (e.g., "Named Entities" → "_named_entities"). You can later add these to your mapping template if desired.
-- **Target Record Override**: Use this when you want to merge Seeklight metadata with a different record than what the Seeklight filename would normally match. Common use cases:
+- **Target Record Override**: Use this when you want to merge Seeklight metadata with a different record than what the Seeklight original_file_name would normally match. Common use cases:
   - You renamed the file after uploading to Seeklight
   - Seeklight data is for a compound parent object while filenames reference children
   - You want to merge multiple Seeklight analyses into a single target record
-  - When checked and filled in, ALL rows in the transformed CSV will use the specified filename instead of the Seeklight filename values
-- **objectid handling**: The transformation **always leaves objectid empty** because Seeklight generates new metadata. Use Function 6 to compare and merge with existing core metadata using filename-based matching.
+  - When checked and filled in, ALL rows in the transformed CSV will use the specified original_file_name instead of the Seeklight filename values
+- **objectid handling**: The transformation **always leaves objectid empty** because Seeklight generates new metadata. Use Function 6 to compare and merge with existing core metadata using original_file_name-based matching.

@@ -14,7 +14,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VERSION_FILE="$SCRIPT_DIR/VERSION"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+VERSION_FILE="$ROOT_DIR/VERSION"
 
 # Function to increment patch version (e.g., 2.2.1 -> 2.2.2)
 increment_version() {
@@ -60,7 +61,7 @@ echo "Updated VERSION file: $VERSION"
 APP_NAME="DART"
 DISPLAY_NAME="DART — Digital Asset Routing and Transformation"
 DMG_NAME="${APP_NAME}_v${VERSION}.dmg"
-DMG_OUT="$SCRIPT_DIR/$DMG_NAME"
+DMG_OUT="$ROOT_DIR/$DMG_NAME"
 
 STAGING="$(mktemp -d)"
 trap 'rm -rf "$STAGING"' EXIT
@@ -138,7 +139,7 @@ echo "▶ Creating launcher..."
 cat > "$INSTALL_DIR/Launch DART.command" << 'LAUNCHER'
 #!/usr/bin/env bash
 cd "$(dirname "$0")"
-bash run.sh
+bash scripts/run.sh
 LAUNCHER
 chmod +x "$INSTALL_DIR/Launch DART.command"
 
@@ -203,7 +204,8 @@ echo "  ✓ Removed editable common-DG-utilities reference"
 # ── 5. Copy common-DG-utilities ──────────────────────────────────────────
 echo "▶ Copying common-DG-utilities..."
 
-COMMON_UTILS_SRC="$SCRIPT_DIR/../common-DG-utilities/common_dg_utilities"
+COMMON_UTILS_SRC="$ROOT_DIR/../common-DG-utilities/common_dg_utilities"
+    "$ROOT_DIR/" "$SRC_DIR/"
 if [ -d "$COMMON_UTILS_SRC" ]; then
     rsync -a \
         --exclude='__pycache__/' \

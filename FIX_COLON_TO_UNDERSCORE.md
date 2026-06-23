@@ -24,7 +24,7 @@ Do not keep any of these legacy variants in active CSV/config/template files:
 Rename legacy fields back to their standard CollectionBuilder CSV names.
 
 ```bash
-python rename_metadata_field.py \
+python3 scripts/rename_metadata_field.py \
   --csv ~/GitHub/GCCB-TDPS-Archive/_data/TDPS_DART_Core.csv \
   --old-field dc_title \
   --new-field title \
@@ -35,7 +35,7 @@ python rename_metadata_field.py \
 If you used colon or period variants, normalize those to the same plain field name:
 
 ```bash
-python rename_metadata_field.py \
+python3 scripts/rename_metadata_field.py \
   --csv ~/GitHub/GCCB-TDPS-Archive/_data/TDPS_DART_Core.csv \
   --old-field "dc:title" \
   --new-field title \
@@ -48,7 +48,7 @@ python rename_metadata_field.py \
 To remove legacy prefixes from all standard Dublin Core fields in one pass:
 
 ```bash
-bash batch_rename_dublin_core.sh \
+bash scripts/batch_rename_dublin_core.sh \
   ~/GitHub/GCCB-TDPS-Archive/_data/TDPS_DART_Core.csv \
   ~/GitHub/GCCB-TDPS-Archive
 ```
@@ -56,7 +56,7 @@ bash batch_rename_dublin_core.sh \
 If your CollectionBuilder theme uses CSV-based metadata configs, also run:
 
 ```bash
-python3 fix_config_csv_fields.sh ~/GitHub/GCCB-TDPS-Archive
+python3 scripts/fix_config_csv_fields.sh ~/GitHub/GCCB-TDPS-Archive
 ```
 
 ## Why This Matters

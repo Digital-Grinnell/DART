@@ -29,10 +29,10 @@ FIELD_MAP = {
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: python3 fix_config_csv_fields.sh <collectionbuilder_dir>")
+        print("Usage: python3 scripts/fix_config_csv_fields.sh <collectionbuilder_dir>")
         print("")
         print("Example:")
-        print("  python3 fix_config_csv_fields.sh ~/GitHub/GCCB-TDPS-Archive")
+        print("  python3 scripts/fix_config_csv_fields.sh ~/GitHub/GCCB-TDPS-Archive")
         sys.exit(1)
     
     cb_dir = Path(sys.argv[1]).expanduser()

@@ -41,7 +41,7 @@ grep "^title:" _config.yml
 Normalize the CSV header and related metadata references:
 
 ```bash
-python3 rename_metadata_field.py \
+python3 scripts/rename_metadata_field.py \
   --csv metadata.csv \
   --old-field dc_title \
   --new-field title \
@@ -52,7 +52,7 @@ python3 rename_metadata_field.py \
 Normalize CSV-based config files if needed:
 
 ```bash
-python3 fix_config_csv_fields.sh ~/GitHub/GCCB-TDPS-Archive
+python3 scripts/fix_config_csv_fields.sh ~/GitHub/GCCB-TDPS-Archive
 ```
 
 ## Template Distinction

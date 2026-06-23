@@ -12,6 +12,7 @@ The encryption key is stored separately in `~/.DART-data/encryption_key` with re
 - **group_compound_objects**: When `true`, groups similar filenames as compound objects in asset analysis. **[BOOLEAN]**
 - **use_working_folder_for_file_selection**: When `true`, the File Selector opens in the working/outputs folder. When `false`, it opens in the inputs folder. **[BOOLEAN]**
 - **automatic_four**: When `true`, automatically executes Functions 2, 3, and 4 sequentially after Function 1 completes successfully. This creates a seamless workflow from asset analysis through CSV export, derivative generation, and metadata merge. Automatically resets to `false` at the start of each new session. **[BOOLEAN]**
+- **dg_prefix**: Optional project prefix for newly generated DG identifiers. Leave blank to keep the legacy `dg_<epoch>` format. When set, DART generates IDs as `<prefix>_dg_<epoch>`. Limited to 4 letters/numbers; the trailing underscore is added automatically. **[OPTIONAL, MAX 4]**
 - **core_metadata_csv**: Path to your core metadata CSV file. This file serves two purposes: (1) defines the column structure/template for metadata exports, and (2) acts as the master metadata file that future functions will update and merge into. **[VALIDATED]**
 - **azure_blob_storage_path**: Azure Blob Storage path for cloud storage operations. **[VALIDATED]**
   - **REQUIRED**: Path must contain `/objs/` folder (this holds original source files)
@@ -55,6 +56,11 @@ For `group_compound_objects` and `use_working_folder_for_file_selection`, you ca
 - Sensitive fields (marked **[ENCRYPTED]**) are stored encrypted in the JSON file
 - `group_compound_objects` controls whether Function 1 groups similar filenames as compound objects
 - `use_working_folder_for_file_selection` controls where the File Selector dialog opens (working/outputs folder when true, inputs folder when false)
+- `dg_prefix` is highly recommended when DART is used across multiple projects at the same time, but it is not required
+- Recommended convention: use a short 2-4 character project code such as `tdps`, `csm`, or `ohm`
+- Keep the prefix stable for the life of a project so newly assigned IDs sort consistently and remain easy to recognize
+- IDs created before epoch `1782237851` will always be in legacy `dg_<epoch>` form
+- IDs created at or after epoch `1782237851` may appear either as legacy `dg_<epoch>` (blank prefix) or new `<prefix>_dg_<epoch>` values
 - `azure_blob_storage_path` should use forward slashes and follow Azure Blob Storage path conventions (e.g., `container/folder/subfolder`)
 - `azure_connection_string` is your Azure Storage account connection string from the Azure portal (stored encrypted)
 - You can customize the sensitive fields list and default settings in `app.py`
@@ -69,7 +75,7 @@ The `core_metadata_csv` setting identifies your core metadata CSV file - this si
 
 **Required Fields:**
 - `objectid` - Unique identifier for each object (automatically generated as `dg_<epoch>`)
-- `filename` - Original filename of the digital asset
+- `original_file_name` - Original filename of the digital asset
 
 **Recommended Fields:**
 - `title` - Title or name of the object
@@ -88,7 +94,7 @@ ore_metadata_csv
 
 **Example template CSV:**
 ```csv
-objectid,filename,title,format,date,description,subject,creator
+objectid,original_file_name,title,format,date,description,subject,creator
 ```
 
 **Purpose:**
@@ -106,12 +112,12 @@ objectid,filename,title,format,date,description,subject,creator
 
 **File structure validation:**
 - File exists and is readable
-- Has required CollectionBuilder fields (`objectid`, `filename`)
+- Has required CollectionBuilder fields (`objectid`, `original_file_name`)
 - Reports column count and compatibility status
 
 **Workflow example:**
 1. Create/select a CSV file with your desired metadata columns (can be anywhere on your system)
-2. The file should have headers like: `objectid,filename,title,format,date,description,subject,creator`
+2. The file should have headers like: `objectid,original_file_name,title,format,date,description,subject,creator`
 3. Save settings - file is automatically copied to your working directory
 4. Use Function 2 to analyze assets and generate new metadata rows
 5. Future functions will merge new data into this CSV following its column structure

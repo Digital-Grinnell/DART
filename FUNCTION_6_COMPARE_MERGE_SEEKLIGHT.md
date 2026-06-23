@@ -45,7 +45,7 @@ All field changes are shown in this format:
 
 **Protected Fields**: The following fields are never shown as changeable:
 - `objectid` - Used for matching, never modified
-- `filename` - Used for matching, never modified  
+- `original_file_name` - Used for matching, never modified  
 - `filepath` - Internal DART field
 
 #### Change Categories
@@ -85,13 +85,13 @@ All field changes are shown in this format:
 ## Matching Logic
 
 Function 6 uses **basename-to-objectid matching**:
-- Seeklight CSV `filename` basename (without extension) ↔ Core CSV `objectid`
-- Example: Seeklight filename "image001.jpg" → basename "image001" → matches core objectid "image001"
-- This differs from Function 4 which matches `filename` to `filename`
+- Seeklight CSV `original_file_name` basename (without extension) ↔ Core CSV `objectid`
+- Example: Seeklight original_file_name "image001.jpg" → basename "image001" → matches core objectid "image001"
+- This differs from Function 4 which matches `original_file_name` to `original_file_name`
 
 **How it works:**
 1. For each row in the Seeklight transformed CSV:
-   - Extract the `filename` field (e.g., "image001.jpg")
+   - Extract the `original_file_name` field (e.g., "image001.jpg")
    - Get the basename without extension (e.g., "image001")
    - Look for a core CSV row where `objectid` equals that basename
 2. If match found: Compare field values and track changes
@@ -122,7 +122,7 @@ This matching method assumes your core metadata uses the file basename as the ob
 | Feature | Function 4 | Function 6 |
 |---------|-----------|-----------|
 | **Input Files** | DART_export_*.csv | DART_seeklight_transformed_*.csv |
-| **Matching** | filename to filename | filename basename to objectid |
+| **Matching** | original_file_name to original_file_name | original_file_name basename to objectid |
 | **Purpose** | Merge new asset batches | Merge AI-generated metadata |
 | **Source** | Function 2 exports | Function 5 transformations |
 | **Compound Objects** | Full support with parent/child | Standard field-level |
@@ -157,7 +157,7 @@ This matching method assumes your core metadata uses the file basename as the ob
 **Records don't match / All marked as "new"**
 - Check that your core CSV `objectid` values are the file basenames (without extensions)
 - Example: For file "image001.jpg", core CSV should have objectid="image001"
-- Verify Seeklight CSV has correct filenames in the `filename` column
+- Verify Seeklight CSV has correct filenames in the `original_file_name` column
 - Check for case sensitivity differences (Function 6 is case-sensitive)
 
 **Fields not appearing**

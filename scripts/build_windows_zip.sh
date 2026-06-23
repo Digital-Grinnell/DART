@@ -13,7 +13,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VERSION_FILE="$SCRIPT_DIR/VERSION"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+VERSION_FILE="$ROOT_DIR/VERSION"
 
 # Function to increment patch version (e.g., 2.2.1 -> 2.2.2)
 increment_version() {
@@ -59,7 +60,8 @@ echo "Updated VERSION file: $VERSION"
 APP_NAME="DART"
 DISPLAY_NAME="DART — Digital Asset Routing and Transformation"
 ZIP_NAME="${APP_NAME}_v${VERSION}_Windows.zip"
-ZIP_OUT="$SCRIPT_DIR/$ZIP_NAME"
+ZIP_OUT="$ROOT_DIR/$ZIP_NAME"
+    "$ROOT_DIR/" "$STAGE_DIR/"
 
 STAGING="$(mktemp -d)"
 trap 'rm -rf "$STAGING"' EXIT
@@ -99,7 +101,7 @@ echo "  ✓ Removed editable common-DG-utilities reference"
 # ── 4. Copy common-DG-utilities into the package ──────────────────────────
 echo "▶ Copying common-DG-utilities..."
 
-COMMON_UTILS_SRC="$SCRIPT_DIR/../common-DG-utilities/common_dg_utilities"
+COMMON_UTILS_SRC="$ROOT_DIR/../common-DG-utilities/common_dg_utilities"
 if [ -d "$COMMON_UTILS_SRC" ]; then
     rsync -a \
         --exclude='__pycache__/' \
@@ -133,7 +135,7 @@ echo "   1. Extract DART_v${VERSION}_Windows.zip to a convenient folder"
 echo "   2. Open the extracted ${APP_NAME}_v${VERSION} folder"
 echo
 echo " First launch:"
-echo "   • Double-click run.bat"
+echo "   • Double-click scripts/run.bat"
 echo "   • A console window opens and installs dependencies automatically"
 echo "     (first run only — may take a few minutes)"
 echo "   • The DART window opens when setup is complete"

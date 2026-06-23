@@ -1,3 +1,5 @@
+    bash scripts/batch_rename_dublin_core.sh metadata.csv
+    bash scripts/batch_rename_dublin_core.sh metadata.csv ../collectionbuilder
 #!/usr/bin/env bash
 # batch_rename_dublin_core.sh - Normalize legacy Dublin Core field names
 #

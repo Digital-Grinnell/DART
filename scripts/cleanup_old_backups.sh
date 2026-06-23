@@ -1,3 +1,5 @@
+    echo "Usage: bash scripts/cleanup_old_backups.sh <collectionbuilder_directory>"
+    echo "  bash scripts/cleanup_old_backups.sh ~/GitHub/GCCB-TDPS-Archive"
 #!/bin/bash
 # cleanup_old_backups.sh
 # Remove old non-hidden backup files from a CollectionBuilder repository

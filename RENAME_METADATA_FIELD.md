@@ -23,7 +23,7 @@ Typical examples:
 ## Usage
 
 ```bash
-python rename_metadata_field.py --csv <path> --old-field <name> --new-field <name> [options]
+python3 scripts/rename_metadata_field.py --csv <path> --old-field <name> --new-field <name> [options]
 ```
 
 Options:
@@ -39,7 +39,7 @@ Options:
 Preview a header cleanup:
 
 ```bash
-python rename_metadata_field.py \
+python3 scripts/rename_metadata_field.py \
   --csv ~/Documents/TDPS-Archive-data/TDPS_DART_Core.csv \
   --old-field dc_title \
   --new-field title
@@ -48,7 +48,7 @@ python rename_metadata_field.py \
 Apply the same cleanup to CSV plus CollectionBuilder configs:
 
 ```bash
-python rename_metadata_field.py \
+python3 scripts/rename_metadata_field.py \
   --csv ~/Documents/TDPS-Archive-data/TDPS_DART_Core.csv \
   --old-field dc_title \
   --new-field title \
@@ -59,7 +59,7 @@ python rename_metadata_field.py \
 Normalize another standard field:
 
 ```bash
-python rename_metadata_field.py \
+python3 scripts/rename_metadata_field.py \
   --csv ~/Documents/TDPS-Archive-data/TDPS_DART_Core.csv \
   --old-field dc_description \
   --new-field description \
@@ -102,13 +102,13 @@ What does not change:
 For standard Dublin Core fields, use the batch helper:
 
 ```bash
-bash batch_rename_dublin_core.sh metadata.csv ../collectionbuilder
+bash scripts/batch_rename_dublin_core.sh metadata.csv ../collectionbuilder
 ```
 
 For CSV-based metadata config files that still reference `dc_` field names:
 
 ```bash
-python3 fix_config_csv_fields.sh ../collectionbuilder
+python3 scripts/fix_config_csv_fields.sh ../collectionbuilder
 ```
 
 ## Validation Rules
