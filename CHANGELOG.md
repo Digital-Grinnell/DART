@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.3.1] - 2026-06-23
+
+### Changed
+- Normalized DART back to plain CollectionBuilder CSV field names by removing legacy `dc_` prefixes from the shipped Seeklight mapping template, merge UI expectations, and CSV/config maintenance scripts.
+
+### Documentation
+- Documented that removing `dc_` prefixes is a required sync step for compatibility with Digital-Grinnell/collectionbuilder-csv and its upstream CollectionBuilder CSV repository.
+
+---
+
 ## [2.3.0] - 2026-06-16
 
 ### Added

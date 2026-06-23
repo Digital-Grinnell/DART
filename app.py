@@ -4817,7 +4817,7 @@ Detailed results: {output_diff.name}
                         for idx, record in enumerate(new_records):
                             objectid = record.get('objectid', '')
                             filename = record.get('filename', '')
-                            title = record.get('title', record.get('dc_title', ''))
+                            title = record.get('title', '')
                             
                             checkbox = ft.Checkbox(value=True, label=f"Add: {filename} ({objectid}) - {title}"[:80])
                             selections['new'][idx] = checkbox

@@ -41,7 +41,7 @@ All field changes are shown in this format:
 - The **arrow points LEFT** (←) meaning "replace core value with Seeklight value"
 - **Left side**: Current value in your core metadata (what you have now)
 - **Right side**: New value from Seeklight AI (what will replace it if checked)
-- Example: `dc_title: "Untitled" ← "Portrait of a Woman"` means replace "Untitled" with "Portrait of a Woman"
+- Example: `title: "Untitled" ← "Portrait of a Woman"` means replace "Untitled" with "Portrait of a Woman"
 
 **Protected Fields**: The following fields are never shown as changeable:
 - `objectid` - Used for matching, never modified

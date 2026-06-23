@@ -1,185 +1,81 @@
-# Fixing Over-Aggressive Field Renaming
+# Fixing Legacy Prefix Renaming Issues
 
 ## Problem
-When renaming a metadata field like "title", the script may have changed references that shouldn't be changed, such as:
-- Site title in `_config.yml`
-- Page titles in front matter
-- UI labels and display text
 
-## Updated Script (v2.2.1+)
+If an older DART workflow renamed metadata fields to `dc_`-prefixed versions, CollectionBuilder pages may stop rendering titles or browse metadata correctly because current CollectionBuilder CSV themes expect plain field names such as `title`.
 
-The script has been updated to be more selective:
+## What Should Exist Now
 
-### What Gets Changed (Metadata Fields Only):
-✅ **Liquid variable references** (always metadata):
--  `item.title` → `item.dc_title`
-- `page.title` → `page.dc_title` 
-- `site.data.metadata.title` → `site.data.metadata.dc_title`
+Metadata references:
+- `item.title`
+- `site.data.metadata.title`
+- `field,title` rows in CSV config files
 
-✅ **Metadata config files** (`_data/config-*.yml`):
-- YAML keys: `title:` → `dc_title:`
-- Quoted values: `"title"` → `"dc_title"`
+Page/front-matter references:
+- `page.title`
+- `site.title`
 
-### What DOESN'T Get Changed (Site Configuration):
-❌ **Site-level config** in `_config.yml`:
-- `title:` (site title) - NOT changed
-- `url:`, `baseurl:`, etc. - NOT changed
+## Common Symptoms
 
-❌ **Page front matter** in individual `.md` files:
-- `title:` (page title) - may still change, see below
+- Browse page has blank titles or dates
+- Item layouts still reference `item.dc_title`
+- Config CSV rows still point at `dc_title`
+- `_config.yml` or page front matter was changed accidentally
 
-## If Your Site Title Disappeared
+## Quick Checks
 
-### Check _config.yml
+Check for lingering legacy metadata references:
+
 ```bash
-cd ~/GitHub/GCCB-TDPS-Archive
+grep -r "dc_" _data _includes _layouts pages
+```
+
+Check the site title:
+
+```bash
 grep "^title:" _config.yml
 ```
 
-**If it shows `dc.title:` or `dc_title:`** instead of `title:`:
-```bash
-# Find the backup
-ls -la | grep "\.config\.backup"
+## Fixes
 
-# Restore from backup
-mv .config.backup_TIMESTAMP.yml _config.yml
-```
-
-**Or manually fix it:**
-```bash
-# Edit _config.yml
-nano _config.yml
-
-# Change this:
-dc_title: Your Site Name
-
-# Back to this:
-title: Your Site Name
-```
-
-### Check Banner/Layout Files
-
-If the banner is looking for `page.title` but pages now have `page.dc_title`:
+Normalize the CSV header and related metadata references:
 
 ```bash
-# Search for changed references in layouts
-grep -r "page\.dc_title\|page\.dc\.title" _includes/ _layouts/
-
-# Search for what the banner actually uses
-grep -A 5 "banner\|title" _includes/collection-banner.html
-```
-
-## Preventing Future Issues
-
-### 1. Always Preview First
-```bash
-# DRY RUN - see what would change
 python3 rename_metadata_field.py \
   --csv metadata.csv \
-  --old-field title \
-  --new-field dc_title \
-  --cb-dir ~/GitHub/GCCB-TDPS-Archive
-```
-
-Review the output carefully before adding `--apply`.
-
-### 2. Rename Less Common Fields First
-Test with a field that's less commonly used:
-```bash
-# Try with a less common field first
-python3 rename_metadata_field.py \
-  --csv metadata.csv \
-  --old-field creator \
-  --new-field dc_creator \
+  --old-field dc_title \
+  --new-field title \
   --cb-dir ~/GitHub/GCCB-TDPS-Archive \
   --apply
 ```
 
-### 3. Test Your Site After Each Field
+Normalize CSV-based config files if needed:
+
 ```bash
-cd ~/GitHub/GCCB-TDPS-Archive
-bundle exec jekyll serve
+python3 fix_config_csv_fields.sh ~/GitHub/GCCB-TDPS-Archive
 ```
 
-Visit http://localhost:4000 and verify everything works before renaming the next field.
+## Template Distinction
 
-### 4. Keep Backups
-Don't delete backup files until you've verified the site works:
-```bash
-# List all backup files
-find ~/GitHub/GCCB-TDPS-Archive -name ".*.backup_*" -type f
-
-# These are your safety net!
-```
-
-## Manual Fixes for Common Issues
-
-### Site Title Missing
-**File:** `_config.yml`
-**Fix:** Ensure `title:` exists at the top level
-```yaml
-title: Your Site Name
-tagline: Your tagline
-```
-
-### Page Banner Title Missing
-**Files:** `_layouts/*.html`, `_includes/*.html`
-**Issue:** Looking for `page.title` but metadata field was renamed
-**Fix:** Site pages should use `page.title` (page's front matter), items should use `item.dc_title` (metadata field)
+Use `page.title` for site pages and `item.title` for item metadata.
 
 ```liquid
-<!-- For site pages (About, Browse, etc.) -->
-<h1>{{ page.title }}</h1>
-
-<!-- For collection items (actual artifacts) -->
-<h1>{{ item.dc_title }}</h1>
-```
-
-### Distinguish Between Page Title and Metadata Title
-
-In CollectionBuilder:
-- **Page title** = The title of a site page (About, Browse, Home) - stored in page front matter
-- **Metadata title** = The title field in your CSV metadata - used for collection items
-
-These are DIFFERENT and should be handled differently:
-
-```liquid
-<!-- Page layouts (_layouts/page.html, etc.) -->
-<!-- These use page.title from front matter - DON'T rename -->
 <title>{{ page.title }} | {{ site.title }}</title>
-
-<!-- Item layouts (_layouts/item.html, etc.) -->
-<!-- These use metadata fields - DO rename -->
-<h1>{{ item.dc_title }}</h1>
+<h1>{{ item.title }}</h1>
 ```
 
-## Restore Everything from Backups
+## Restore From Backup
 
-If you want to start over:
+If the rename touched the wrong files, restore the hidden backups:
 
 ```bash
-cd ~/GitHub/GCCB-TDPS-Archive
-
-# Find all backup files
-find . -name ".*.backup_*" -type f > backup_list.txt
-
-# Restore each one (example)
-while read backup; do
-    original="${backup%.backup_*}"
-    original="${original#.}"  # Remove leading dot
-    if [ -f "$backup" ]; then
-        echo "Restoring: $original"
-        cp "$backup" "$original"
-    fi
-done < backup_list.txt
+find . -name ".*.backup_*" -type f
 ```
 
-## Contact / Help
+Then copy the needed backup over the modified file and rerun the rename in dry-run mode first.
 
-If you're still having issues:
-1. Check what changed: `git diff` (if using version control)
-2. Look at the dry-run output before applying changes
-3. Test each field rename individually
-4. Keep backup files until everything works
+## Prevention
 
-The updated script (v2.2.1+) is more conservative and should prevent most issues, but always preview changes first!
+- Always preview with dry-run before applying changes.
+- Keep backups until the site renders correctly.
+- Treat removing `dc_` prefixes as part of syncing a DART collection with Digital-Grinnell/collectionbuilder-csv and upstream CollectionBuilder CSV.

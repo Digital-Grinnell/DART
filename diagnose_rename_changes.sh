@@ -8,7 +8,7 @@ if [ $# -lt 2 ]; then
     echo "Usage: bash diagnose_rename_changes.sh <collectionbuilder_dir> <old_field> [new_field]"
     echo ""
     echo "Example:"
-    echo "  bash diagnose_rename_changes.sh ~/GitHub/GCCB-TDPS-Archive title dc_title"
+    echo "  bash diagnose_rename_changes.sh ~/GitHub/GCCB-TDPS-Archive dc_title title"
     echo ""
     echo "This will show you where the field was changed and help identify issues."
     exit 1

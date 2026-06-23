@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# batch_rename_dublin_core.sh - Rename multiple metadata fields to Dublin Core format
+# batch_rename_dublin_core.sh - Normalize legacy Dublin Core field names
 #
 # Usage:
 #   bash batch_rename_dublin_core.sh path/to/metadata.csv [path/to/collectionbuilder]
 #
-# This script renames common metadata fields to include Dublin Core (dc:) prefixes.
+# This script removes legacy dc_ prefixes from standard metadata fields.
 # It runs in preview mode first, then prompts before applying changes.
 
 set -euo pipefail
@@ -21,55 +21,55 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Dublin Core field mappings (old_field:new_field)
+# Standard field mappings (legacy_field:canonical_field)
 DC_FIELDS=(
-    "title:dc_title"
-    "description:dc_description"
-    "creator:dc_creator"
-    "subject:dc_subject"
-    "date:dc_date"
-    "format:dc_format"
-    "rights:dc_rights"
-    "source:dc_source"
-    "coverage:dc_coverage"
-    "language:dc_language"
-    "relation:dc_relation"
-    "identifier:dc_identifier"
-    "contributor:dc_contributor"
-    "publisher:dc_publisher"
+    "dc_title:title"
+    "dc_description:description"
+    "dc_creator:creator"
+    "dc_subject:subject"
+    "dc_date:date"
+    "dc_format:format"
+    "dc_rights:rights"
+    "dc_source:source"
+    "dc_coverage:coverage"
+    "dc_language:language"
+    "dc_relation:relation"
+    "dc_identifier:identifier"
+    "dc_contributor:contributor"
+    "dc_publisher:publisher"
 )
 
 usage() {
     cat << EOF
 Usage: bash batch_rename_dublin_core.sh CSV_FILE [COLLECTIONBUILDER_DIR]
 
-Rename multiple metadata fields to Dublin Core format in one operation.
+Remove legacy dc_ prefixes from standard metadata fields in one operation.
 
 Arguments:
     CSV_FILE              Path to CSV metadata file (required)
     COLLECTIONBUILDER_DIR Path to CollectionBuilder repository (optional)
 
 Fields that will be renamed (if they exist):
-    title       → dc_title
-    description → dc_description
-    creator     → dc_creator
-    subject     → dc_subject
-    date        → dc_date
-    format      → dc_format
-    rights      → dc_rights
-    source      → dc_source
-    coverage    → dc_coverage
-    language    → dc_language
-    relation    → dc_relation
-    identifier  → dc_identifier
-    contributor → dc_contributor
-    publisher   → dc_publisher
+    dc_title       → title
+    dc_description → description
+    dc_creator     → creator
+    dc_subject     → subject
+    dc_date        → date
+    dc_format      → format
+    dc_rights      → rights
+    dc_source      → source
+    dc_coverage    → coverage
+    dc_language    → language
+    dc_relation    → relation
+    dc_identifier  → identifier
+    dc_contributor → contributor
+    dc_publisher   → publisher
 
 Examples:
-    # Rename in CSV only
+    # Normalize headers in CSV only
     bash batch_rename_dublin_core.sh metadata.csv
     
-    # Rename in CSV and CollectionBuilder configs
+    # Normalize CSV and CollectionBuilder configs
     bash batch_rename_dublin_core.sh metadata.csv ../collectionbuilder
 
 EOF
@@ -93,7 +93,7 @@ if [ ! -f "$RENAME_SCRIPT" ]; then
 fi
 
 echo "======================================================================"
-echo "Batch Dublin Core Field Renamer"
+echo "Batch Legacy Field Normalizer"
 echo "======================================================================"
 echo
 echo -e "CSV File: ${BLUE}$CSV_FILE${NC}"
@@ -125,7 +125,7 @@ done
 if [ ${#FIELDS_TO_RENAME[@]} -eq 0 ]; then
     echo -e "${YELLOW}⚠️  No fields need renaming.${NC}"
     echo "Possible reasons:"
-    echo "  • Fields are already renamed to dc_ format"
+    echo "  • Fields already use standard CollectionBuilder CSV names"
     echo "  • CSV doesn't contain standard metadata fields"
     echo
     exit 0

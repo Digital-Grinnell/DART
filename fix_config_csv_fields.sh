@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Fix CSV config files to use dc_ prefix for renamed fields.
+Fix CSV config files to remove legacy dc_ prefixes from standard fields.
 This updates config-browse.csv, config-metadata.csv, etc.
 """
 
@@ -9,22 +9,22 @@ import sys
 from pathlib import Path
 from datetime import datetime
 
-# Field mappings (old_name -> new_name)
+# Field mappings (legacy_name -> standard_name)
 FIELD_MAP = {
-    'title': 'dc_title',
-    'description': 'dc_description',
-    'creator': 'dc_creator',
-    'subject': 'dc_subject',
-    'date': 'dc_date',
-    'format': 'dc_format',
-    'rights': 'dc_rights',
-    'source': 'dc_source',
-    'coverage': 'dc_coverage',
-    'language': 'dc_language',
-    'relation': 'dc_relation',
-    'identifier': 'dc_identifier',
-    'contributor': 'dc_contributor',
-    'publisher': 'dc_publisher',
+    'dc_title': 'title',
+    'dc_description': 'description',
+    'dc_creator': 'creator',
+    'dc_subject': 'subject',
+    'dc_date': 'date',
+    'dc_format': 'format',
+    'dc_rights': 'rights',
+    'dc_source': 'source',
+    'dc_coverage': 'coverage',
+    'dc_language': 'language',
+    'dc_relation': 'relation',
+    'dc_identifier': 'identifier',
+    'dc_contributor': 'contributor',
+    'dc_publisher': 'publisher',
 }
 
 def main():
@@ -43,7 +43,7 @@ def main():
         sys.exit(1)
     
     print("=" * 70)
-    print("Fix CSV Config Fields - Update to dc_ Prefix")
+    print("Fix CSV Config Fields - Remove dc_ Prefixes")
     print("=" * 70)
     print()
     print(f"CollectionBuilder: {cb_dir}")

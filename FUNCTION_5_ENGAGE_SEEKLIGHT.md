@@ -64,18 +64,19 @@ Edit `seeklight_mapping_template.json` in the DART folder to customize how Seekl
 ```json
 {
   "field_mapping": {
-    "Title": "dc_title",
-    "Description": "dc_description",
+    "Title": "title",
+    "Description": "description",
     "Creator": "creator"
   },
   "default_values": {
-    "dc_language": "eng"
+    "language": "eng"
   },
   "filename_column": "Filename"
 }
 ```
 
 - **field_mapping**: Maps Seeklight column names (left) to your core CSV column names (right)
+  - **Sync note**: Use plain CollectionBuilder CSV field names here to stay aligned with Digital-Grinnell/collectionbuilder-csv and its upstream repository.
   - **Note**: Seeklight columns may have bracketed numbers like `Title[3101377]`. The mapping handles both `Title` and `Title[3101377]` automatically - you only need to specify the base name without brackets.
   - **Empty string values** (e.g., `"Keywords": ""`) are treated as unmapped - those fields will be auto-created as new columns if Seeklight provides data for them.
 - **default_values**: Sets default values for columns not provided by Seeklight

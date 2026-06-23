@@ -269,7 +269,7 @@ DART/
 ├── cleanup_old_backups.sh      # Remove old non-hidden backup files from CollectionBuilder
 ├── RENAME_METADATA_FIELD.md    # Documentation for field renaming tools
 ├── FIXING_RENAME_ISSUES.md     # Troubleshooting guide for renaming problems
-├── FIX_COLON_TO_UNDERSCORE.md  # Guide for converting dc:field to dc_field format
+├── FIX_COLON_TO_UNDERSCORE.md  # Guide for normalizing legacy dc: / dc. / dc_ field variants
 └── common_dg_utilities/        # Shared utility functions (auto-included in builds)
 ```
 
@@ -577,6 +577,8 @@ The included `.gitignore` excludes:
 
 DART includes utility scripts for coordinating metadata field name changes across CSV files and CollectionBuilder configuration.
 
+To stay in sync with Digital-Grinnell/collectionbuilder-csv and its upstream CollectionBuilder CSV repository, DART now treats plain field names such as `title`, `description`, and `date` as canonical. If an older project still has `dc_`-prefixed CSV headers or config fields, remove those prefixes before continuing.
+
 ### rename_metadata_field.py
 
 Python script for renaming individual fields with automatic backup and preview:
@@ -585,14 +587,14 @@ Python script for renaming individual fields with automatic backup and preview:
 # Preview changes (dry run)
 python rename_metadata_field.py \
   --csv metadata.csv \
-  --old-field title \
-  --new-field dc_title
+  --old-field dc_title \
+  --new-field title
 
 # Apply changes to CSV and CollectionBuilder
 python rename_metadata_field.py \
   --csv metadata.csv \
-  --old-field title \
-  --new-field dc_title \
+  --old-field dc_title \
+  --new-field title \
   --cb-dir ../collectionbuilder \
   --apply
 ```
@@ -600,7 +602,7 @@ python rename_metadata_field.py \
 **Features:**
 - Safe dry-run preview mode (default)
 - Field name validation (prevents colons, periods, and other problematic characters)
-- **Enforces underscore separators**: Recommends `dc_title` format, blocks `dc:title` and `dc.title`
+- Rejects legacy `dc_` target names so exports stay aligned with CollectionBuilder CSV
 - Automatic timestamped hidden backups (dotted filenames)
 - Updates CSV headers and CollectionBuilder config files
 - Pattern matching for Liquid metadata variables (`item.field`), YAML in config files
@@ -611,7 +613,7 @@ python rename_metadata_field.py \
 **Fix script** for CSV-based CollectionBuilder configs (if main script missed them):
 
 ```bash
-# Update CSV config files after batch renaming
+# Update CSV config files after removing legacy dc_ prefixes
 python3 fix_config_csv_fields.sh ~/GitHub/collectionbuilder
 ```
 
@@ -619,21 +621,21 @@ This fixes the 'field' column in config-browse.csv, config-metadata.csv, etc.
 
 ### batch_rename_dublin_core.sh
 
-Bash script for batch renaming multiple fields to Dublin Core format:
+Bash script for batch normalizing legacy `dc_` field names back to standard CollectionBuilder CSV fields:
 
 ```bash
-# Rename all standard fields to dc_ format
+# Remove legacy dc_ prefixes from all standard fields
 bash batch_rename_dublin_core.sh metadata.csv ../collectionbuilder
 ```
 
 **Renames these fields (if present):**
-- `title` → `dc_title`
-- `description` → `dc_description`
-- `creator` → `dc_creator`
-- `subject` → `dc_subject`
-- `date` → `dc_date`
-- `format` → `dc_format`
-- `rights` → `dc_rights`
+- `dc_title` → `title`
+- `dc_description` → `description`
+- `dc_creator` → `creator`
+- `dc_subject` → `subject`
+- `dc_date` → `date`
+- `dc_format` → `format`
+- `dc_rights` → `rights`
 - Plus more (see RENAME_METADATA_FIELD.md)
 
 **Features:**

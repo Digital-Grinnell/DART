@@ -4,8 +4,8 @@ Rename Metadata Field Script
 Coordinates field name changes between CSV metadata files and CollectionBuilder configuration.
 
 Usage:
-    python rename_metadata_field.py --csv path/to/metadata.csv --old-field title --new-field dc_title
-    python rename_metadata_field.py --csv path/to/metadata.csv --old-field title --new-field dc_title --cb-dir path/to/collectionbuilder --apply
+    python rename_metadata_field.py --csv path/to/metadata.csv --old-field dc_title --new-field title
+    python rename_metadata_field.py --csv path/to/metadata.csv --old-field dc_title --new-field title --cb-dir path/to/collectionbuilder --apply
 
 Options:
     --csv               Path to the CSV metadata file
@@ -17,8 +17,9 @@ Options:
     --no-backup         Skip backup creation (not recommended)
 
 Note:
-    Use underscores in field names (e.g., dc_title) not colons (dc:title).
-    Colons cause syntax issues in YAML and Liquid templates.
+    Use plain CollectionBuilder CSV field names (e.g., title) when syncing with
+    Digital-Grinnell/collectionbuilder-csv and upstream CollectionBuilder CSV.
+    Colons and periods still cause syntax issues in YAML and Liquid templates.
 """
 
 import csv
@@ -45,23 +46,33 @@ class MetadataFieldRenamer:
         
     def validate_inputs(self):
         """Validate that required files and directories exist."""
+        if self.new_field.startswith('dc_'):
+            suggested_name = self.new_field[3:] or 'title'
+            raise ValueError(
+                f"Field name '{self.new_field}' uses the retired 'dc_' prefix.\n"
+                f"  Suggestion: Use the plain field name instead. For example: '{suggested_name}'\n"
+                f"  Why: DART now stays in sync with Digital-Grinnell/collectionbuilder-csv\n"
+                f"  and upstream CollectionBuilder CSV by using unprefixed field names."
+            )
+
         # Validate field names - check for colons
         if ':' in self.new_field:
+            suggested_name = self.new_field.split(':')[-1].replace(':', '_') or 'title'
             raise ValueError(
                 f"Field name '{self.new_field}' contains a colon (:) which causes issues in YAML and Liquid templates.\n"
-                f"  Suggestion: Use underscores instead. For example: '{self.new_field.replace(':', '_')}'\n"
+                f"  Suggestion: Use a plain field name instead. For example: '{suggested_name}'\n"
                 f"  Why: Colons require special quoting in YAML and can break Liquid template parsing.\n"
                 f"  See FIX_COLON_TO_UNDERSCORE.md for more information."
             )
         
         # Check for periods - conflicts with Liquid object notation
         if '.' in self.new_field:
+            suggested_name = self.new_field.split('.')[-1].replace('.', '_') or 'title'
             raise ValueError(
                 f"Field name '{self.new_field}' contains a period (.) which conflicts with Liquid template syntax.\n"
-                f"  Suggestion: Use underscores instead. For example: '{self.new_field.replace('.', '_')}'\n"
+                f"  Suggestion: Use a plain field name instead. For example: '{suggested_name}'\n"
                 f"  Why: Liquid uses dots for object properties (e.g., item.title, page.title).\n"
-                f"  A field named 'dc.title' would create ambiguity with Liquid's object notation.\n"
-                f"  Recommended: Use underscores like 'dc_title' instead."
+                f"  A field named 'dc.title' would create ambiguity with Liquid's object notation."
             )
         
         # Check for other problematic characters
