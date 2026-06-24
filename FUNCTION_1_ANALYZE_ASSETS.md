@@ -215,6 +215,9 @@ This helps you understand:
 2. Select **Function 1: Analyze Digital Assets & Generate Standard DG Identifiers** from the dropdown
 3. Click **Execute Function**
 4. Review the analysis results in the dialog
+5. Choose one of the result actions:
+   - **Close**: Accepts the analysis, saves updated ID mappings, and advances workflow tracking
+   - **Cancel**: Discards the latest Function 1 analysis results, does not save new mappings, and does not advance the suggested Next function
 
 ### Option 2: Scan Entire Folder
 1. Leave Files Selection empty
@@ -222,6 +225,7 @@ This helps you understand:
 3. Select **Function 1: Analyze Digital Assets & Generate Standard DG Identifiers** from the dropdown
 4. Click **Execute Function**
 5. Review the analysis results in the dialog
+6. Choose **Close** to keep results or **Cancel** to back out the latest analysis without saving
 
 ## Output
 The function displays:

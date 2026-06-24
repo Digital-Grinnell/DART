@@ -1862,7 +1862,6 @@ def main(page: ft.Page):
 
     def on_function_1_list_files(e):
         """Function 1: Analyze digital assets and generate standard DG identifiers."""
-        storage.record_function_usage("Function 1")
 
         # Load settings to check compound object grouping
         working_dir = output_dir_field.value
@@ -1926,9 +1925,11 @@ def main(page: ft.Page):
 
         # Load existing file-to-ID mappings
         file_to_id_map = {}
+        original_file_to_id_map = {}
         if working_dir:
             settings, _ = load_app_settings(working_dir)
             file_to_id_map = settings.get("file_to_id_map", {})
+            original_file_to_id_map = dict(file_to_id_map)
             add_log_message(f"[DEBUG] Loaded {len(file_to_id_map)} existing file-to-ID mappings")
             logger.info(f"[DEBUG] Existing mappings: {file_to_id_map}")
 
@@ -1980,18 +1981,6 @@ def main(page: ft.Page):
         new_mappings += compound_new
         reused_mappings += compound_reused
         
-        # Save updated file-to-ID mappings (save whenever files were processed)
-        if working_dir and (new_mappings > 0 or reused_mappings > 0):
-            settings["file_to_id_map"] = file_to_id_map
-            ok, save_result = save_app_settings(working_dir, settings)
-            if ok:
-                add_log_message(f"[DEBUG] Saved {len(file_to_id_map)} file-to-ID mappings to settings")
-                logger.info(f"[DEBUG] Settings saved: {save_result}")
-            else:
-                logger.error(f"[DEBUG] Failed to save mappings: {save_result}")
-                add_log_message(f"[DEBUG] Warning: Could not save ID mappings - {save_result}")
-
-
         # Validate uniqueness of object IDs (should always be unique with epoch-based IDs)
         objectid_counts = {}
         for obj in objects:
@@ -2043,6 +2032,7 @@ def main(page: ft.Page):
         result_lines = [f"Found {len(files)} digital asset file(s) {source_description}"]
         result_lines.append(f"Identifiers: {new_mappings} new, {reused_mappings} reused (IDs never change once assigned)")
         result_lines.append(f"Compound object grouping: {'ENABLED' if group_compound else 'DISABLED'}")
+        result_lines.append("Action note: Close saves this Function 1 run and advances workflow; Cancel discards this run and keeps workflow position unchanged.")
         
         if group_compound:
             result_lines.append(f"Total: {len(compound_objects)} compound objects, {len(objects)} file objects")
@@ -2102,9 +2092,94 @@ def main(page: ft.Page):
 
         result_text = "\n".join(result_lines)
 
+        # Load automatic workflow preference once; run only after user confirms with Close.
+        automatic_four = False
+        if working_dir:
+            latest_settings, _ = load_app_settings(working_dir)
+            automatic_four = latest_settings.get("automatic_four", False)
+
+        def commit_function_1_results() -> bool:
+            """Persist Function 1 outputs only after user confirms they are acceptable."""
+            if working_dir and file_to_id_map != original_file_to_id_map:
+                settings["file_to_id_map"] = file_to_id_map
+                ok, save_result = save_app_settings(working_dir, settings)
+                if ok:
+                    add_log_message(f"[DEBUG] Saved {len(file_to_id_map)} file-to-ID mappings to settings")
+                    logger.info(f"[DEBUG] Settings saved: {save_result}")
+                else:
+                    logger.error(f"[DEBUG] Failed to save mappings: {save_result}")
+                    add_log_message(f"[DEBUG] Warning: Could not save ID mappings - {save_result}")
+                    update_status("Error: Could not save Function 1 mappings", is_error=True)
+                    return False
+
+            storage.record_function_usage("Function 1")
+            active_function_dropdown.options = get_sorted_function_options(active_functions)
+            page.update()
+            return True
+
+        def run_automatic_four_workflow():
+            """Run Functions 2, 3, and 4 automatically after confirmed Function 1 results."""
+            add_log_message("[INFO] automatic_four enabled - will run Functions 2, 3, and 4 automatically")
+            logger.info("automatic_four enabled - starting automatic workflow")
+
+            # Execute Function 2 (Export CSV)
+            add_log_message("[INFO] Starting Function 2 (Export CSV)...")
+            logger.info("Automatic workflow: Starting Function 2")
+            try:
+                on_function_2_export_csv(None)
+                add_log_message("[SUCCESS] Function 2 completed")
+                logger.info("Automatic workflow: Function 2 completed successfully")
+            except Exception as ex:
+                error_msg = f"Error in Function 2: {str(ex)}"
+                add_log_message(f"[ERROR] {error_msg}")
+                logger.error(f"Automatic workflow failed at Function 2: {ex}")
+                update_status(f"Automatic workflow stopped: {error_msg}", is_error=True)
+                return
+
+            # Execute Function 3 (Generate Derivatives)
+            add_log_message("[INFO] Starting Function 3 (Generate Derivatives)...")
+            logger.info("Automatic workflow: Starting Function 3")
+            try:
+                on_function_3_generate_derivatives(None)
+                add_log_message("[SUCCESS] Function 3 completed")
+                logger.info("Automatic workflow: Function 3 completed successfully")
+            except Exception as ex:
+                error_msg = f"Error in Function 3: {str(ex)}"
+                add_log_message(f"[ERROR] {error_msg}")
+                logger.error(f"Automatic workflow failed at Function 3: {ex}")
+                update_status(f"Automatic workflow stopped: {error_msg}", is_error=True)
+                return
+
+            # Execute Function 4 (Compare/Merge CSV)
+            add_log_message("[INFO] Starting Function 4 (Compare/Merge CSV)...")
+            logger.info("Automatic workflow: Starting Function 4")
+            try:
+                on_function_4_compare_merge(None)
+                add_log_message("[SUCCESS] Function 4 completed")
+                logger.info("Automatic workflow: Function 4 completed successfully")
+                update_status("✅ Automatic workflow completed: Functions 1-4 executed successfully")
+            except Exception as ex:
+                error_msg = f"Error in Function 4: {str(ex)}"
+                add_log_message(f"[ERROR] {error_msg}")
+                logger.error(f"Automatic workflow failed at Function 4: {ex}")
+                update_status(f"Automatic workflow stopped: {error_msg}", is_error=True)
+
         def close_dialog(e):
+            if not commit_function_1_results():
+                return
+
             dialog.open = False
             page.update()
+
+            if automatic_four:
+                run_automatic_four_workflow()
+
+        def cancel_dialog(e):
+            dialog.open = False
+            page.update()
+
+            update_status("Function 1 canceled: latest analysis results were not saved")
+            add_log_message("[INFO] Function 1 canceled by user; ID mappings and workflow progression unchanged")
 
         dialog = ft.AlertDialog(
             modal=True,
@@ -2114,7 +2189,10 @@ def main(page: ft.Page):
                 width=700,
                 height=500,
             ),
-            actions=[ft.TextButton("Close", on_click=close_dialog)],
+            actions=[
+                ft.TextButton("Cancel", on_click=cancel_dialog),
+                ft.TextButton("Close", on_click=close_dialog),
+            ],
         )
 
         page.overlay.append(dialog)
@@ -2128,61 +2206,7 @@ def main(page: ft.Page):
             update_status(f"Analyzed {len(files)} file(s), generated {len(objects)} unique object ID(s)")
             logger.info(f"Function 1: Analyzed {len(files)} files, generated {len(objects)} unique object IDs")
         
-        # Check if automatic_four is enabled - if so, chain Functions 2, 3, and 4
-        if working_dir:
-            settings, _ = load_app_settings(working_dir)
-            automatic_four = settings.get("automatic_four", False)
-            
-            if automatic_four:
-                add_log_message("[INFO] automatic_four enabled - will run Functions 2, 3, and 4 automatically")
-                logger.info("automatic_four enabled - starting automatic workflow")
-                
-                # Close the Function 1 dialog first
-                dialog.open = False
-                page.update()
-                
-                # Execute Function 2 (Export CSV)
-                add_log_message("[INFO] Starting Function 2 (Export CSV)...")
-                logger.info("Automatic workflow: Starting Function 2")
-                try:
-                    on_function_2_export_csv(None)
-                    add_log_message("[SUCCESS] Function 2 completed")
-                    logger.info("Automatic workflow: Function 2 completed successfully")
-                except Exception as e:
-                    error_msg = f"Error in Function 2: {str(e)}"
-                    add_log_message(f"[ERROR] {error_msg}")
-                    logger.error(f"Automatic workflow failed at Function 2: {e}")
-                    update_status(f"Automatic workflow stopped: {error_msg}", is_error=True)
-                    return
-                
-                # Execute Function 3 (Generate Derivatives)
-                add_log_message("[INFO] Starting Function 3 (Generate Derivatives)...")
-                logger.info("Automatic workflow: Starting Function 3")
-                try:
-                    on_function_3_generate_derivatives(None)
-                    add_log_message("[SUCCESS] Function 3 completed")
-                    logger.info("Automatic workflow: Function 3 completed successfully")
-                except Exception as e:
-                    error_msg = f"Error in Function 3: {str(e)}"
-                    add_log_message(f"[ERROR] {error_msg}")
-                    logger.error(f"Automatic workflow failed at Function 3: {e}")
-                    update_status(f"Automatic workflow stopped: {error_msg}", is_error=True)
-                    return
-                
-                # Execute Function 4 (Compare/Merge CSV)
-                add_log_message("[INFO] Starting Function 4 (Compare/Merge CSV)...")
-                logger.info("Automatic workflow: Starting Function 4")
-                try:
-                    on_function_4_compare_merge(None)
-                    add_log_message("[SUCCESS] Function 4 completed")
-                    logger.info("Automatic workflow: Function 4 completed successfully")
-                    update_status("✅ Automatic workflow completed: Functions 1-4 executed successfully")
-                except Exception as e:
-                    error_msg = f"Error in Function 4: {str(e)}"
-                    add_log_message(f"[ERROR] {error_msg}")
-                    logger.error(f"Automatic workflow failed at Function 4: {e}")
-                    update_status(f"Automatic workflow stopped: {error_msg}", is_error=True)
-                    return
+        # Automatic workflow (if enabled) now starts only after user confirms with Close.
 
     def get_display_template(file_extension):
         """
