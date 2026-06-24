@@ -190,13 +190,17 @@ rsync -a \
     --exclude='logfiles/' \
     --exclude='*.pyc' \
     --exclude='__pycache__/' \
-    "$SCRIPT_DIR/" "$SRC_DIR/"
+    "$ROOT_DIR/" "$SRC_DIR/"
 
 echo "  ✓ $(find "$SRC_DIR" -type f | wc -l | tr -d ' ') files copied"
 
 # ── 4. Fix python_requirements.txt for distribution ──────────────────────
 echo "▶ Fixing python_requirements.txt for distribution..."
 # Remove the editable install line for common-DG-utilities since we bundle it directly
+if [ ! -f "$SRC_DIR/python_requirements.txt" ]; then
+    echo "Error: python_requirements.txt not found in staged DMG content at $SRC_DIR" >&2
+    exit 1
+fi
 grep -v "^-e.*common-DG-utilities" "$SRC_DIR/python_requirements.txt" > "$SRC_DIR/python_requirements.txt.tmp"
 mv "$SRC_DIR/python_requirements.txt.tmp" "$SRC_DIR/python_requirements.txt"
 echo "  ✓ Removed editable common-DG-utilities reference"
@@ -205,20 +209,18 @@ echo "  ✓ Removed editable common-DG-utilities reference"
 echo "▶ Copying common-DG-utilities..."
 
 COMMON_UTILS_SRC="$ROOT_DIR/../common-DG-utilities/common_dg_utilities"
-    "$ROOT_DIR/" "$SRC_DIR/"
 if [ -d "$COMMON_UTILS_SRC" ]; then
     rsync -a \
         --exclude='__pycache__/' \
         --exclude='*.pyc' \
         "$COMMON_UTILS_SRC" "$SRC_DIR/"
-# ── 6. Create README in DMG ───────────────────────────────────────────────
 else
     echo "  ⚠️  WARNING: common-DG-utilities not found at $COMMON_UTILS_SRC"
     echo "     The DMG may not function correctly without these utilities."
-    echo "     Expected location: $SCRIPT_DIR/../common-DG-utilities/"
+    echo "     Expected location: $ROOT_DIR/../common-DG-utilities/"
 fi
 
-# ── 5. Create README in DMG ───────────────────────────────────────────────
+# ── 6. Create README in DMG ───────────────────────────────────────────────
 echo "▶ Creating DMG README..."
 cat > "$DMG_CONTENT_DIR/README.txt" << 'DMGREADME'
 ╔════════════════════════════════════════════════════╗
