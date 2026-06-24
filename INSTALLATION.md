@@ -30,7 +30,7 @@ DART for macOS is distributed as a DMG file with an automated installer that req
 ### Installation Steps
 
 1. **Download the DMG**
-   - Download `DART_v2.x.dmg` from your distribution source
+   - Download `DART_vX.x.dmg` from your distribution source
 
 2. **Open the DMG**
    - Double-click the downloaded DMG file
@@ -42,7 +42,8 @@ DART for macOS is distributed as a DMG file with an automated installer that req
    **Note for first-time users (unsigned app):**
    - If the installer won't open, macOS Gatekeeper is blocking it
    - Right-click on `Install DART.command` → select "Open"
-   - Click "Open" in the security dialog
+   - If the app is blocked close the dialog then proceed to `System Settings...` and `Privacy & Security` 
+   - The key is to look for a statement like "Install DART.command was blocked..." and there should be an `Open Anyway` button beside it.  Click that button to allow the install.  
    - This is only needed once
 
 4. **Follow the Installation**
