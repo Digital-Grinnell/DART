@@ -816,9 +816,33 @@ def generate_derivative(
     """
     try:
         logger.info(f"Generating derivative: {output_path} (max {max_width}x{max_height})")
-        
+        source_path_for_derivative = input_path
+        temp_normalized_path = None
+
+        # Normalize TIFFs to a temporary JPEG before creating derivatives.
+        # This leaves preservation source files unchanged while improving
+        # browser-safe derivative output quality.
+        input_ext = Path(input_path).suffix.lower()
+        if input_ext in {'.tif', '.tiff'}:
+            temp_file = tempfile.NamedTemporaryFile(suffix='.jpg', delete=False)
+            temp_file.close()
+            temp_normalized_path = temp_file.name
+
+            normalize_success, normalize_msg = normalize_image_for_web(
+                input_path,
+                temp_normalized_path,
+                quality=95
+            )
+
+            if normalize_success:
+                source_path_for_derivative = temp_normalized_path
+                logger.info(f"Using temporary normalized TIFF source for derivative: {temp_normalized_path}")
+            else:
+                # Fall back to original TIFF path if normalization fails.
+                logger.warning(f"TIFF normalization failed, using original source: {normalize_msg}")
+
         # Open and process image
-        with Image.open(input_path) as img:
+        with Image.open(source_path_for_derivative) as img:
             # Handle EXIF orientation
             img = ImageOps.exif_transpose(img)
             
@@ -841,7 +865,7 @@ def generate_derivative(
             
             logger.info(f"Successfully created derivative: {output_path} ({img.size[0]}x{img.size[1]})")
             return True, f"✓ Created {os.path.basename(output_path)} ({img.size[0]}x{img.size[1]})"
-            
+
     except FileNotFoundError:
         logger.error(f"Input file not found: {input_path}")
         return False, f"Input file not found: {input_path}"
@@ -851,6 +875,54 @@ def generate_derivative(
     except Exception as e:
         logger.error(f"Error generating derivative: {str(e)}")
         return False, f"Error generating derivative: {str(e)}"
+    finally:
+        if 'temp_normalized_path' in locals() and temp_normalized_path and os.path.exists(temp_normalized_path):
+            try:
+                os.unlink(temp_normalized_path)
+            except Exception:
+                pass
+
+
+def normalize_image_for_web(
+    input_path: str,
+    output_path: str,
+    quality: int = 92
+) -> Tuple[bool, str]:
+    """
+    Normalize an image to a web-safe JPEG without resizing.
+
+    This is intended for source TIFF files that render poorly in browsers even
+    though they may look fine in desktop viewers.
+    """
+    try:
+        logger.info(f"Normalizing image for web delivery: {output_path}")
+
+        with Image.open(input_path) as img:
+            img = ImageOps.exif_transpose(img)
+
+            if img.mode in ('RGBA', 'LA', 'P'):
+                background = Image.new('RGB', img.size, (255, 255, 255))
+                if img.mode == 'P':
+                    img = img.convert('RGBA')
+                background.paste(img, mask=img.split()[-1] if 'A' in img.mode else None)
+                img = background
+            elif img.mode not in ('RGB', 'L'):
+                img = img.convert('RGB')
+
+            img.save(output_path, 'JPEG', quality=quality, optimize=True)
+
+        logger.info(f"Successfully normalized image for web: {output_path}")
+        return True, f"✓ Normalized {os.path.basename(output_path)}"
+
+    except FileNotFoundError:
+        logger.error(f"Input file not found: {input_path}")
+        return False, f"Input file not found: {input_path}"
+    except PermissionError:
+        logger.error(f"Permission denied: {input_path}")
+        return False, f"Permission denied: {input_path}"
+    except Exception as e:
+        logger.error(f"Error normalizing image for web: {str(e)}")
+        return False, f"Error normalizing image for web: {str(e)}"
 
 
 def generate_pdf_derivative(

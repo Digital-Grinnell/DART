@@ -67,6 +67,8 @@ The following file formats are processed:
 - **PNG**: `.png` (converted to JPEG with white background for transparency)
 - **GIF**: `.gif`
 - **TIFF**: `.tif`, `.tiff`
+   - TIFF sources are normalized to a temporary web-safe image during derivative generation
+   - Original source TIFF files are not modified
 - **BMP**: `.bmp`
 - **WebP**: `.webp`
 
