@@ -86,13 +86,13 @@ When Azure is configured in Function 0 settings, Function 2 automatically:
    - Handles concurrent creation gracefully
    - No manual Azure portal setup required
 
-3. **Uploads files to Azure** during export (skips files that already exist)
+3. **Uploads files to Azure** during export
    - Each file is uploaded with its object identifier as the filename
    - Original extension is preserved (e.g., `dg_1715614222.jpg` or `tdps_dg_1715614222.jpg`)
    - Files are uploaded to the path specified in settings (e.g., `objs/tdps_archive`)
    - Content-Type headers are set automatically based on file extension
-   - **Safe to re-run**: Checks if file exists before uploading, skips if already present
-   - Only uploads new or changed files, never overwrites existing files
+   - **Default behavior (safe re-run)**: Checks if file exists before uploading and skips existing files
+   - **Optional overwrite mode**: If `overwrite_existing_azure_files=true` in Function 0, existing blobs are replaced with new uploads
 
 4. **Builds object_location URLs** for each file
    - Complete Azure Blob Storage URL
@@ -114,6 +114,7 @@ To enable Azure uploads:
 1. Configure in **Function 0: App Settings**:
    - `azure_blob_storage_path`: Must contain `/objs/` folder (e.g., `objs/tdps_archive`)
    - `azure_connection_string`: Full connection string from Azure Portal (encrypted)
+   - `overwrite_existing_azure_files`: Optional `true/false` switch for replacing existing blobs
 2. Ensure your template includes `object_location` column to store URLs
 3. Files will be automatically uploaded when you run Function 2
 

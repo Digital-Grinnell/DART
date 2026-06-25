@@ -7,16 +7,21 @@ This application was created by extracting the proven UI framework from OHM (Ora
 ## What's Included
 
 ### Core Files
-- **app.py** - Main application with 3 example functions
-- **python_requirements.txt** - Just Flet dependencies
+- **app.py** - Main DART application
+- **python_requirements.txt** - Python dependency list
+- **run.sh** - Root compatibility launcher for macOS/Linux
 - **scripts/run.sh** / **scripts/run.bat** - Launch scripts for macOS/Linux and Windows
 - **.gitignore** - Python/Flet-appropriate exclusions
 
 ### Documentation
 - **README.md** - Comprehensive guide to using and customizing DART
+- **FUNCTION_0_APP_SETTINGS.md** - Help for Function 0: App Settings
 - **FUNCTION_1_ANALYZE_ASSETS.md** - Help for Function 1: Analyze digital assets
 - **FUNCTION_2_EXPORT_CSV.md** - Help for CSV export function
-- **FUNCTION_3_SYSTEM_INFO.md** - Help for example function 3
+- **FUNCTION_3_GENERATE_DERIVATIVES.md** - Help for Function 3: Generate derivatives
+- **FUNCTION_4_COMPARE_MERGE_CSV.md** - Help for Function 4: Compare and merge CSV metadata
+- **FUNCTION_5_ENGAGE_SEEKLIGHT.md** - Help for Function 5: Transform Seeklight metadata
+- **FUNCTION_6_COMPARE_MERGE_SEEKLIGHT.md** - Help for Function 6: Merge Seeklight metadata
 - **CHANGELOG.md** - Version history starting at 1.0.0
 - **LICENSE** - MIT license
 
@@ -32,7 +37,7 @@ This application was created by extracting the proven UI framework from OHM (Ora
 
 ```bash
 cd /Users/mcfatem/GitHub/DART
-./scripts/run.sh
+./run.sh
 ```
 
 This will:
@@ -49,7 +54,9 @@ The app includes multiple functions:
   - **Tip**: Enable `automatic_four` for automated workflow (Functions 1→2→3→4 run automatically)
 - **Function 1**: Analyze Digital Assets & Generate Standard DG Identifiers
 - **Function 2**: Export Assets to CSV and Azure
+  - **Tip**: Set `overwrite_existing_azure_files = true` in Function 0 to replace existing Azure blobs when needed
 - **Function 3**: Generate Derivatives for CSV and Azure
+  - **Tip**: TIFF derivatives now preserve scanner/grayscale ICC intent by converting embedded profiles to sRGB before JPEG output
 - **Function 4**: Compare and Merge CSV Files
 - **Function 5**: Engage Seeklight Metadata Generation (transform AI-generated metadata)
 - **Function 6**: Compare and Merge Seeklight CSV (merge AI metadata into core)

@@ -65,6 +65,7 @@ DART is installed to: `~/DART/` (your home directory)
 ```
 ~/DART/
 ├── Launch DART.command   # Double-click to start DART
+├── run.sh                # Root compatibility launcher
 ├── app.py                # Main application
 ├── scripts/              # Launcher and helper scripts
 │   └── run.sh            # Launcher script
@@ -207,7 +208,7 @@ DART runs from source on Linux systems.
 
 3. **Run DART**
    ```bash
-   ./scripts/run.sh
+   ./run.sh
    ```
 
 4. **First Launch**
@@ -277,7 +278,7 @@ The following Python packages are installed automatically on first launch:
 - **PyMuPDF (fitz)** — PDF processing
 - **pandas** — Data manipulation
 
-**You don't need to install these manually** — the `scripts/run.sh` / `scripts/run.bat` scripts handle everything.
+**You don't need to install these manually** — the `run.sh` / `scripts/run.sh` / `scripts/run.bat` launchers handle everything.
 
 ---
 
@@ -324,7 +325,7 @@ python3 --version
 **Solution:**
 1. Open Terminal
 2. Navigate: `cd ~/DART`
-3. Run manually: `bash scripts/run.sh`
+3. Run manually: `bash run.sh`
 4. Watch for error messages
 
 ### Windows Issues
@@ -367,14 +368,14 @@ scripts\run.bat
 
 ### Linux Issues
 
-#### `./scripts/run.sh`: Permission denied
+#### `./run.sh`: Permission denied
 
 **Cause:** Script not executable
 
 **Solution:**
 ```bash
-chmod +x scripts/run.sh
-./scripts/run.sh
+chmod +x run.sh scripts/run.sh
+./run.sh
 ```
 
 #### "No module named 'tkinter'"

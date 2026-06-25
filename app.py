@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Optional, Tuple
 from cryptography.fernet import Fernet, InvalidToken
 from azure.storage.blob import BlobServiceClient, ContentSettings
-from PIL import Image, ImageOps
+from PIL import Image, ImageOps, ImageCms
 import io
 import fitz  # PyMuPDF for PDF processing
 
@@ -129,6 +129,7 @@ DEFAULT_APP_SETTINGS = {
     "group_compound_objects": False,
     "use_working_folder_for_file_selection": False,
     "automatic_four": False,
+    "overwrite_existing_azure_files": False,
     "dg_prefix": "",
     "core_metadata_csv": "",
     "azure_blob_storage_path": "",
@@ -896,9 +897,21 @@ def normalize_image_for_web(
     """
     try:
         logger.info(f"Normalizing image for web delivery: {output_path}")
+        srgb_profile = ImageCms.createProfile('sRGB')
+        srgb_profile_bytes = ImageCms.ImageCmsProfile(srgb_profile).tobytes()
 
         with Image.open(input_path) as img:
             img = ImageOps.exif_transpose(img)
+
+            embedded_icc = img.info.get('icc_profile')
+            if embedded_icc:
+                try:
+                    src_profile = ImageCms.ImageCmsProfile(io.BytesIO(embedded_icc))
+                    output_mode = 'RGB' if img.mode != 'L' else 'RGB'
+                    img = ImageCms.profileToProfile(img, src_profile, srgb_profile, outputMode=output_mode)
+                    logger.info(f"Applied embedded ICC profile transform to sRGB for {input_path}")
+                except Exception as profile_ex:
+                    logger.warning(f"ICC profile transform failed for {input_path}: {profile_ex}")
 
             if img.mode in ('RGBA', 'LA', 'P'):
                 background = Image.new('RGB', img.size, (255, 255, 255))
@@ -909,7 +922,7 @@ def normalize_image_for_web(
             elif img.mode not in ('RGB', 'L'):
                 img = img.convert('RGB')
 
-            img.save(output_path, 'JPEG', quality=quality, optimize=True)
+            img.save(output_path, 'JPEG', quality=quality, optimize=True, icc_profile=srgb_profile_bytes)
 
         logger.info(f"Successfully normalized image for web: {output_path}")
         return True, f"✓ Normalized {os.path.basename(output_path)}"
@@ -1350,6 +1363,12 @@ def main(page: ft.Page):
             hint_text="true or false - automatically run Functions 2, 3, 4 after Function 1 completes",
             width=320,
         )
+        overwrite_existing_azure_files_field = ft.TextField(
+            label="overwrite_existing_azure_files",
+            value=str(settings.get("overwrite_existing_azure_files", False)).lower(),
+            hint_text="true or false - replace existing Azure blobs during Function 2/3 uploads",
+            width=320,
+        )
         dg_prefix_field = ft.TextField(
             label="dg_prefix",
             value=str(settings.get("dg_prefix", "")),
@@ -1493,6 +1512,14 @@ def main(page: ft.Page):
                 )
                 return
 
+            parsed_overwrite_existing_azure_files = parse_bool_text(overwrite_existing_azure_files_field.value)
+            if parsed_overwrite_existing_azure_files is None:
+                update_status(
+                    "Error: overwrite_existing_azure_files must be true/false (or yes/no, 1/0)",
+                    is_error=True,
+                )
+                return
+
             dg_prefix_valid, parsed_dg_prefix, dg_prefix_error = validate_dg_prefix(dg_prefix_field.value)
             if not dg_prefix_valid:
                 update_status(f"Error: {dg_prefix_error}", is_error=True)
@@ -1531,6 +1558,7 @@ def main(page: ft.Page):
                 "group_compound_objects": parsed_group_compound,
                 "use_working_folder_for_file_selection": parsed_use_working_folder,
                 "automatic_four": parsed_automatic_four,
+                "overwrite_existing_azure_files": parsed_overwrite_existing_azure_files,
                 "dg_prefix": parsed_dg_prefix,
                 "core_metadata_csv": core_csv_path,
                 "azure_blob_storage_path": azure_path_value,
@@ -1568,6 +1596,7 @@ def main(page: ft.Page):
                         group_compound_field,
                         use_working_folder_field,
                         automatic_four_field,
+                        overwrite_existing_azure_files_field,
                         dg_prefix_field,
                         ft.Container(height=8),
                         ft.Text(
@@ -2457,7 +2486,9 @@ def main(page: ft.Page):
         # Build object_location URLs and upload files to Azure if enabled
         upload_success_count = 0
         upload_skip_count = 0
+        upload_overwrite_count = 0
         upload_fail_count = 0
+        overwrite_existing_azure_files = bool(settings.get("overwrite_existing_azure_files", False))
         
         if azure_enabled and blob_service_client:
             # Ensure the target Azure container exists
@@ -2482,6 +2513,10 @@ def main(page: ft.Page):
             
             if azure_enabled:
                 add_log_message(f"[INFO] Starting Azure uploads for {len(objects)} files...")
+                if overwrite_existing_azure_files:
+                    add_log_message("[INFO] Azure overwrite mode ENABLED - existing blobs will be replaced")
+                else:
+                    add_log_message("[INFO] Azure overwrite mode DISABLED - existing blobs will be skipped")
                 
                 for obj in objects:
                     # Check kill switch
@@ -2526,37 +2561,42 @@ def main(page: ft.Page):
                             file_exists = False
                         
                         if file_exists:
-                            # File already exists - skip upload
                             azure_filename = f"{object_id}{file_extension}"
-                            add_log_message(f"  ⏩ {obj['filename']} ({azure_filename}) already exists in Azure - skipping upload")
-                            logger.info(f"Skipped upload (file exists): {obj['filename']} → {blob_name}")
-                            # Count as skipped
-                            upload_skip_count += 1
+                            if not overwrite_existing_azure_files:
+                                # File already exists - skip upload
+                                add_log_message(f"  ⏩ {obj['filename']} ({azure_filename}) already exists in Azure - skipping upload")
+                                logger.info(f"Skipped upload (file exists): {obj['filename']} → {blob_name}")
+                                upload_skip_count += 1
+                                continue
+
+                            add_log_message(f"  🔁 {obj['filename']} ({azure_filename}) already exists in Azure - replacing")
+                            logger.info(f"Overwriting existing Azure blob: {obj['filename']} → {blob_name}")
+                            upload_overwrite_count += 1
+
+                        # Upload file to Azure
+                        upload_success, upload_msg = upload_to_azure(
+                            blob_service_client,
+                            file_path,
+                            azure_path,
+                            object_id,
+                            file_extension
+                        )
+                        
+                        if upload_success:
+                            upload_success_count += 1
+                            add_log_message(f"[SUCCESS] {upload_msg}")
                         else:
-                            # Upload file to Azure
-                            upload_success, upload_msg = upload_to_azure(
-                                blob_service_client,
-                                file_path,
-                                azure_path,
-                                object_id,
-                                file_extension
-                            )
-                            
-                            if upload_success:
-                                upload_success_count += 1
-                                add_log_message(f"[SUCCESS] {upload_msg}")
-                            else:
-                                upload_fail_count += 1
-                                logger.error(f"Upload failed: {upload_msg}")
-                                add_log_message(f"[ERROR] {upload_msg}")
-                                # Still include object_location in CSV even if upload failed
+                            upload_fail_count += 1
+                            logger.error(f"Upload failed: {upload_msg}")
+                            add_log_message(f"[ERROR] {upload_msg}")
+                            # Still include object_location in CSV even if upload failed
                     else:
                         obj['object_location'] = ''
                         logger.error(f"Failed to build object_location: {msg}")
                         add_log_message(f"[ERROR] {msg}")
                 
-                logger.info(f"Azure upload complete: {upload_success_count} uploaded, {upload_skip_count} skipped (already exist), {upload_fail_count} failed")
-                add_log_message(f"[INFO] Upload complete: {upload_success_count} uploaded, {upload_skip_count} skipped, {upload_fail_count} failed")
+                logger.info(f"Azure upload complete: {upload_success_count} uploaded, {upload_overwrite_count} replaced, {upload_skip_count} skipped (already exist), {upload_fail_count} failed")
+                add_log_message(f"[INFO] Upload complete: {upload_success_count} uploaded, {upload_overwrite_count} replaced, {upload_skip_count} skipped, {upload_fail_count} failed")
         else:
             # Azure not enabled - set empty object_location for all objects
             for obj in objects:
@@ -2693,6 +2733,8 @@ def main(page: ft.Page):
                 result_text += f"Azure uploads: {'ENABLED' if azure_enabled else 'DISABLED'}\n"
                 if upload_success_count > 0 or upload_skip_count > 0 or upload_fail_count > 0:
                     result_text += f"  • Uploaded: {upload_success_count} new files\n"
+                    if upload_overwrite_count > 0:
+                        result_text += f"  • Replaced: {upload_overwrite_count} existing files\n"
                     if upload_skip_count > 0:
                         result_text += f"  • Skipped: {upload_skip_count} (already exist in Azure)\n"
                     if upload_fail_count > 0:
@@ -2782,6 +2824,7 @@ def main(page: ft.Page):
 
         # Load settings
         settings, _ = load_app_settings(working_dir)
+        overwrite_existing_azure_files = bool(settings.get("overwrite_existing_azure_files", False))
         
         # Check Azure configuration
         azure_path = settings.get("azure_blob_storage_path", "")
@@ -2881,6 +2924,10 @@ def main(page: ft.Page):
         add_log_message(f"[INFO] Derivatives will be uploaded to:")
         add_log_message(f"  • Small: {smalls_azure_path}")
         add_log_message(f"  • Thumbs: {thumbs_azure_path}")
+        if overwrite_existing_azure_files:
+            add_log_message("[INFO] Azure overwrite mode ENABLED - existing derivatives will be replaced")
+        else:
+            add_log_message("[INFO] Azure overwrite mode DISABLED - existing derivatives may be skipped")
         
         # Process each row
         total_rows = len(rows)
@@ -2989,7 +3036,7 @@ def main(page: ft.Page):
                 small_exists = False
                 thumb_exists = False
             
-            if small_exists and thumb_exists:
+            if small_exists and thumb_exists and not overwrite_existing_azure_files:
                 # Both derivatives already exist - skip generation
                 add_log_message(f"  ⏩ Derivatives ({small_filename}, {thumb_filename}) already exist in Azure - skipping")
                 # Build URLs for existing derivatives
@@ -3013,6 +3060,9 @@ def main(page: ft.Page):
                     thumb_success += 1
                 skipped_count += 1
                 continue
+
+            if overwrite_existing_azure_files and (small_exists or thumb_exists):
+                add_log_message(f"  🔁 Existing derivative(s) found for {objectid} - replacing in Azure")
             
             processed_count += 1
             

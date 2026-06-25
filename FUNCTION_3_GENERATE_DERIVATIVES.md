@@ -109,6 +109,10 @@ Examples:
 - LANCZOS resampling for high-quality resizing
 - Optimized JPEG encoding enabled
 
+### Color Profile Handling
+- Embedded ICC color profiles are converted to sRGB before JPEG derivatives are written
+- This is especially important for grayscale TIFFs whose original scanner profiles may render incorrectly in browsers
+
 ### PDF Processing
 - First page of PDF is rendered at 150 DPI
 - Converted to high-quality raster image
@@ -186,17 +190,21 @@ Function 3 intelligently checks Azure before generating new derivatives:
    - Looks for both `_SMALL.jpg` and `_TN.jpg` files in Azure
    - Uses Azure Blob Storage API for fast existence checks
 
-2. **Skips generation when both derivatives exist**
+2. **Skips generation when both derivatives exist** (default)
    - No unnecessary image processing
    - No redundant Azure uploads
    - Saves processing time on large collections
 
-3. **Builds URLs from existing files**
+3. **Optional overwrite mode**
+   - If `overwrite_existing_azure_files=true` in Function 0, existing derivatives are regenerated and replaced in Azure
+   - Useful when source files have changed or you need to refresh derivative quality
+
+4. **Builds URLs from existing files**
    - Populates `image_small` and `image_thumb` columns from existing Azure files
    - Includes skipped files in success counts
    - Logs skipped files as "⏩ Derivatives already exist in Azure - skipping"
 
-4. **Re-run safe**
+5. **Re-run safe**
    - You can safely re-run Function 3 on the same CSV
    - Only missing derivatives are generated
    - Useful for interrupted processes or partial failures

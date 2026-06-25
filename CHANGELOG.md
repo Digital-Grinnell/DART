@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Added
+- Restored a root-level `run.sh` compatibility launcher that forwards to `scripts/run.sh`, so existing macOS/Linux workflows can keep using `./run.sh`.
+- Added `overwrite_existing_azure_files` to Function 0 settings so Functions 2 and 3 can optionally replace existing Azure blobs instead of always skipping them.
+
+### Changed
+- Function 3 derivative generation now performs ICC-aware TIFF normalization, converting embedded grayscale/scanner profiles to sRGB before JPEG derivatives are created.
+- Function 2 continues to preserve original source files in `/objs/`, while Function 3 applies TIFF normalization only to generated derivatives.
+
+### Documentation
+- Updated README, QUICKSTART, INSTALLATION, and function help docs to reflect the restored root launcher, Azure overwrite option, and ICC-aware TIFF derivative behavior.
+
+---
+
 ## [2.3.2] - 2026-06-23
 
 ### Added

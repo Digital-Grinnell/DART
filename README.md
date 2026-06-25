@@ -106,13 +106,16 @@ DART provides a comprehensive platform for digital asset management workflows:
   - **Azure Blob Storage integration**: Automatically uploads files and generates object_location URLs
   - **Auto-creates Azure containers**: No manual Azure Portal setup required
   - Files uploaded with object identifiers as filenames (e.g., `dg_1715614222.jpg` or `tdps_dg_1715614222.jpg`)
+  - **Optional overwrite mode**: Set `overwrite_existing_azure_files=true` in Function 0 to replace existing Azure blobs instead of skipping them
   - **Kill Switch**: Emergency stop for long-running Azure uploads (stops cleanly after current file)
   - Timestamped exports to `.DART-working-directory` subfolder
 - **Function 3** 🖼️: Generate Derivatives for CSV and Azure
   - Creates small (800x800) and thumbnail (400x400) image derivatives
   - Uploads derivatives to Azure Blob Storage (/smalls/ and /thumbs/ folders)
   - **Auto-creates derivative containers**: Automatic /smalls/ and /thumbs/ container setup
-  - **Smart skip existing**: Checks Azure and skips files with existing derivatives (fast re-runs)
+  - **Smart skip existing**: Checks Azure and skips files with existing derivatives by default (fast re-runs)
+  - **ICC-aware TIFF handling**: Embedded grayscale/scanner profiles are converted to sRGB before JPEG derivatives are written
+  - **Optional overwrite mode**: Set `overwrite_existing_azure_files=true` in Function 0 to regenerate and replace existing derivatives in Azure
   - Automatically populates image_small and image_thumb CSV columns
   - Maintains aspect ratios, handles EXIF orientation and transparency
   - Reads from and writes to `.DART-working-directory` subfolder
@@ -235,7 +238,7 @@ DART for macOS features an **automated installer** that requires no admin permis
 2. **Run the application**
    ```bash
    # macOS/Linux
-  ./scripts/run.sh
+  ./run.sh
    
    # Windows
   scripts\\run.bat
@@ -244,6 +247,8 @@ DART for macOS features an **automated installer** that requires no admin permis
 The run scripts automatically:
 - Create a Python virtual environment
 - Install dependencies
+
+On macOS/Linux, `./run.sh` is the compatibility launcher in the project root and forwards to `scripts/run.sh`.
 - Launch the application
 
 ## Requirements
@@ -262,6 +267,7 @@ All dependencies are installed automatically by the run scripts.
 
 ```
 DART/
+├── run.sh                      # Root compatibility launcher for macOS/Linux
 ├── app.py                      # Main application
 ├── scripts/                    # Stand-alone launchers and helper scripts
 │   ├── run.sh                  # macOS/Linux launcher
@@ -571,7 +577,7 @@ Create help documentation for each function to guide users.
 
 After modifying `app.py`, just rerun:
 ```bash
-  ./scripts/run.sh  # or scripts\\run.bat on Windows
+  ./run.sh  # or scripts\\run.bat on Windows
 ```
 
 The virtual environment and dependencies are cached, so subsequent runs are fast.
