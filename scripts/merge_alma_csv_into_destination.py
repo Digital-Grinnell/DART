@@ -155,7 +155,17 @@ def read_csv(path: Path) -> tuple[list[str], list[dict[str, str]]]:
 
 
 def normalize_key(value: str) -> str:
-    return str(value or "").strip()
+    # Normalize only for comparisons; original CSV values remain unchanged.
+    return str(value or "").strip().lower()
+
+
+def normalize_source_value(value: str) -> str:
+    # Alma source values can use pipe separators; convert to semicolon style.
+    text = str(value or "")
+    text = text.replace(" | ", "; ")
+    text = text.replace(" |", ";")
+    text = text.replace("|", ";")
+    return text
 
 
 def validate_unique_keys(rows: list[dict[str, str]], key_column: str, label: str) -> None:
@@ -239,7 +249,7 @@ def merge_rows(
             if target_col == CSV_DEST_MATCH_COLUMN:
                 continue
 
-            src_val = str(src.get(source_col, ""))
+            src_val = normalize_source_value(src.get(source_col, ""))
             dst_val = str(dest.get(target_col, ""))
 
             src_norm = src_val.strip()
