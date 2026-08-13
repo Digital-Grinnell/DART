@@ -22,6 +22,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [4.4] - 2026-08-13
+
+### Changed
+- Function 1 compound object grouping now creates one untitled `compound` object per **folder**, instead of one compound per detected filename pattern/group.
+- Within each folder's compound, any group with 2+ numbered files (a numeric sequence) is nested as its own `multiple`-type child object, with the sequenced files as its children.
+- Groups that are not numeric sequences (all-unnumbered files, or only 1 numbered file sharing a prefix) attach as direct children of the folder's compound, as siblings of any `multiple` objects.
+- Compound ID persistence key changed from `{folder_path}::COMPOUND::{text_base}` to `{folder_path}::COMPOUND` (one ID per folder). `multiple` objects introduced a new parallel key, `{folder_path}::MULTIPLE::{text_base}`.
+- Function 1's results dialog and Function 2's CSV export were updated to reflect the new compound → multiple → child hierarchy, including correct `parentid` values for nested `multiple` rows.
+
+### Breaking
+- Folders previously analyzed under the old per-prefix compound ID scheme will receive a new folder-level compound ID the next time Function 1 or Function 2 processes them; the old per-prefix compound IDs become unused.
+
+### Documentation
+- Updated `FUNCTION_1_ANALYZE_ASSETS.md` to describe per-folder compound objects, nested `multiple` sequence objects, the new ID key formats, and revised example output.
+
+---
+
 ## [2.3.2] - 2026-06-23
 
 ### Added

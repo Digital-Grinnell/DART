@@ -1662,9 +1662,9 @@ def main(page: ft.Page):
             
         Returns:
             tuple: (compound_objects, file_to_id_map, new_mappings, reused_mappings)
-                - compound_objects: List of compound parent objects created, plus any
-                  nested 'multiple' objects (type='multiple') that group 2+ numbered
-                  files under a compound via their own parentid
+                - compound_objects: One untitled 'compound' entry per folder, plus a
+                  nested 'multiple' entry (type='multiple', parentid=compound's objectid)
+                  for each numeric sequence (2+ numbered files) found in that folder
                 - file_to_id_map: Updated mapping dict (with new compound IDs)
                 - new_mappings: Count of new compound IDs created
                 - reused_mappings: Count of existing compound IDs reused
@@ -1880,71 +1880,72 @@ def main(page: ft.Page):
                 'items': items  # Keep parsed items for sorting
             }
         
-        # Create compound objects for groups with 2+ files
+        # Bucket groups (2+ files) by folder so each folder gets ONE top-level
+        # compound; sequence groups (2+ numbered files) become nested 'multiple'
+        # children, and non-sequence groups attach directly to the compound.
+        folder_buckets = {}
         for text_base, group_data in groups.items():
             group_files = group_data['files']
-            zero_pad_width = group_data['zero_pad_width']
-            
             if len(group_files) >= 2:
-                # Get the folder path from the first child (all children should be in same folder)
                 folder_path = str(Path(group_files[0]['filepath']).parent)
-                
-                # Create a compound key using stable path (folder + text_base) for network-agnostic mapping
-                stable_folder = get_stable_path(folder_path)
-                compound_key = f"{stable_folder}::COMPOUND::{text_base}"
-                
-                # Check if this compound already has an assigned ID
-                if compound_key in file_to_id_map:
-                    # Reuse existing compound ID
-                    compound_id = file_to_id_map[compound_key]
-                    compound_reused_mappings += 1
-                    add_log_message(f"[DEBUG] Reusing existing compound ID {compound_id} for '{text_base}' in {folder_path}")
-                    logger.info(f"[DEBUG] Reused compound: {compound_id} | Folder: {folder_path} | Base: '{text_base}'")
-                else:
-                    # Generate new compound object ID
-                    compound_id = generate_unique_id(page, dg_prefix)
-                    file_to_id_map[compound_key] = compound_id
-                    compound_new_mappings += 1
-                    add_log_message(f"[DEBUG] Created new compound {compound_id} for '{text_base}' in {folder_path}")
-                    logger.info(f"[DEBUG] New compound: {compound_id} | Folder: {folder_path} | Base: '{text_base}'")
-                
-                # Sort children to determine the deterministic "first" child for filename indexing
-                # Numbered children first (by sequence), then unnumbered (alphabetically)
+                folder_buckets.setdefault(folder_path, []).append((text_base, group_data))
+            else:
+                # Single file - not part of a compound
+                group_files[0]["parentid"] = None
+                group_files[0]["type"] = "single"
+                logger.info(f"[DEBUG] Single object (no compound): {group_files[0]['filename']}")
+
+        for folder_path, folder_group_list in folder_buckets.items():
+            stable_folder = get_stable_path(folder_path)
+            compound_key = f"{stable_folder}::COMPOUND"
+
+            if compound_key in file_to_id_map:
+                compound_id = file_to_id_map[compound_key]
+                compound_reused_mappings += 1
+                add_log_message(f"[DEBUG] Reusing existing compound ID {compound_id} for folder {folder_path}")
+                logger.info(f"[DEBUG] Reused compound: {compound_id} | Folder: {folder_path}")
+            else:
+                compound_id = generate_unique_id(page, dg_prefix)
+                file_to_id_map[compound_key] = compound_id
+                compound_new_mappings += 1
+                add_log_message(f"[DEBUG] Created new compound {compound_id} for folder {folder_path}")
+                logger.info(f"[DEBUG] New compound: {compound_id} | Folder: {folder_path}")
+
+            # Deterministic first-file across all groups in this folder (for CSV filename indexing)
+            all_items = [item for _, group_data in folder_group_list for item in group_data['items']]
+            first_child_filename = sorted(all_items, key=lambda x: x['filename'])[0]['filename']
+            total_child_count = sum(len(group_data['files']) for _, group_data in folder_group_list)
+
+            compound_objects.append({
+                "objectid": compound_id,
+                "text_base": "",
+                "display_text_base": "",  # Folder-level compound is untitled
+                "child_count": total_child_count,
+                "folder_path": folder_path,
+                "zero_pad_width": 0,
+                "type": "compound",
+                "first_child_filename": first_child_filename
+            })
+
+            for text_base, group_data in folder_group_list:
+                zero_pad_width = group_data['zero_pad_width']
                 parsed_items = group_data['items']
                 numbered_items = [item for item in parsed_items if item.get('number') is not None]
                 unnumbered_items = [item for item in parsed_items if item.get('number') is None]
                 numbered_items.sort(key=lambda x: x['number'])
                 unnumbered_items.sort(key=lambda x: x['filename'])
-                sorted_items = numbered_items + unnumbered_items
-                
-                # Use first child's filename as the compound's filename index (will be prefixed with _ in CSV)
-                first_child_filename = sorted_items[0]['filename']
-                
-                # Extract display text_base from first child's raw stem (preserves original case)
-                # The lowercase text_base is used for grouping, but display_text_base preserves case
-                first_raw_stem = sorted_items[0]['raw_stem']
+
+                first_raw_stem = (numbered_items + unnumbered_items)[0]['raw_stem']
                 prefix_length = len(text_base)
-                
-                # Extract the first prefix_length characters from raw_stem to get original case
                 if len(first_raw_stem) >= prefix_length:
                     display_text_base = first_raw_stem[:prefix_length]
                 else:
                     display_text_base = first_raw_stem
-                
-                compound_objects.append({
-                    "objectid": compound_id,
-                    "text_base": text_base,  # Lowercase version for internal use
-                    "display_text_base": display_text_base,  # Original case for display/titles
-                    "child_count": len(group_files),
-                    "folder_path": folder_path,
-                    "zero_pad_width": zero_pad_width,
-                    "type": "compound",
-                    "first_child_filename": first_child_filename
-                })
-                
-                # A numeric sequence of 2+ files gets its own 'multiple' parent nested
-                # under the compound; unnumbered files remain direct compound children.
+
                 if len(numbered_items) >= 2:
+                    # A numeric sequence of 2+ files gets its own 'multiple' parent
+                    # nested under the compound; unnumbered files in the same group
+                    # become direct children of the compound (siblings of 'multiple').
                     multiple_key = f"{stable_folder}::MULTIPLE::{text_base}"
                     if multiple_key in file_to_id_map:
                         multiple_id = file_to_id_map[multiple_key]
@@ -1980,21 +1981,14 @@ def main(page: ft.Page):
                         child_obj["type"] = "child"
                         child_obj["sequence_number"] = None
                 else:
-                    # Assign this compound ID as parentid to all children
-                    # Also store sequence numbers from parsed data for display
-                    # Use sorted_items to maintain consistent ordering
-                    for parsed_item in sorted_items:
+                    # Not a sequence - all items in this group are direct compound children
+                    for parsed_item in numbered_items + unnumbered_items:
                         child_obj = parsed_item['obj']
                         child_obj["parentid"] = compound_id
                         child_obj["type"] = "child"
-                        child_obj["sequence_number"] = parsed_item.get('number')  # Store for display
-                
-                logger.info(f"[DEBUG] Compound: {compound_id} | Base: '{text_base}' | Folder: {folder_path} | Children: {[f['filename'] for f in group_files]}")
-            else:
-                # Single file - not part of a compound
-                group_files[0]["parentid"] = None
-                group_files[0]["type"] = "single"
-                logger.info(f"[DEBUG] Single object (no compound): {group_files[0]['filename']}")
+                        child_obj["sequence_number"] = parsed_item.get('number')
+
+                logger.info(f"[DEBUG] Compound: {compound_id} | Folder: {folder_path} | Group base: '{text_base}' | Files: {[item['filename'] for item in parsed_items]}")
         
         add_log_message(f"[DEBUG] Compound analysis complete: {len(compound_objects)} compounds created")
         logger.info(f"[DEBUG] Total compound objects: {len(compound_objects)}")
@@ -2219,13 +2213,14 @@ def main(page: ft.Page):
                 if compound.get('type') != 'compound':
                     continue
                 zero_pad = compound.get('zero_pad_width', 0)
-                display_name = compound.get('display_text_base', compound.get('text_base', ''))
+                display_name = compound.get('display_text_base', compound.get('text_base', '')) or "untitled"
                 result_lines.append(f"📦 COMPOUND: {compound['objectid']} ('{display_name}' - {compound['child_count']} children)")
                 result_lines.append(f"    Folder: {compound['folder_path']}")
                 
                 # Nested 'multiple' parent for the numeric sequence, if any
                 for multiple in multiples_by_compound.get(compound['objectid'], []):
-                    result_lines.append(f"    ▣ MULTIPLE: {multiple['objectid']} ({multiple['child_count']} sequenced children)")
+                    multiple_name = multiple.get('display_text_base', multiple.get('text_base', ''))
+                    result_lines.append(f"    ▣ MULTIPLE: {multiple['objectid']} ('{multiple_name}' - {multiple['child_count']} sequenced children)")
                     if multiple['objectid'] in children_by_parent:
                         format_children(children_by_parent[multiple['objectid']], multiple.get('zero_pad_width', 0), "        ")
                 
