@@ -1662,7 +1662,9 @@ def main(page: ft.Page):
             
         Returns:
             tuple: (compound_objects, file_to_id_map, new_mappings, reused_mappings)
-                - compound_objects: List of compound parent objects created
+                - compound_objects: List of compound parent objects created, plus any
+                  nested 'multiple' objects (type='multiple') that group 2+ numbered
+                  files under a compound via their own parentid
                 - file_to_id_map: Updated mapping dict (with new compound IDs)
                 - new_mappings: Count of new compound IDs created
                 - reused_mappings: Count of existing compound IDs reused
@@ -1940,14 +1942,52 @@ def main(page: ft.Page):
                     "first_child_filename": first_child_filename
                 })
                 
-                # Assign this compound ID as parentid to all children
-                # Also store sequence numbers from parsed data for display
-                # Use sorted_items to maintain consistent ordering
-                for parsed_item in sorted_items:
-                    child_obj = parsed_item['obj']
-                    child_obj["parentid"] = compound_id
-                    child_obj["type"] = "child"
-                    child_obj["sequence_number"] = parsed_item.get('number')  # Store for display
+                # A numeric sequence of 2+ files gets its own 'multiple' parent nested
+                # under the compound; unnumbered files remain direct compound children.
+                if len(numbered_items) >= 2:
+                    multiple_key = f"{stable_folder}::MULTIPLE::{text_base}"
+                    if multiple_key in file_to_id_map:
+                        multiple_id = file_to_id_map[multiple_key]
+                        compound_reused_mappings += 1
+                        logger.info(f"[DEBUG] Reused multiple: {multiple_id} | Folder: {folder_path} | Base: '{text_base}'")
+                    else:
+                        multiple_id = generate_unique_id(page, dg_prefix)
+                        file_to_id_map[multiple_key] = multiple_id
+                        compound_new_mappings += 1
+                        logger.info(f"[DEBUG] New multiple: {multiple_id} | Folder: {folder_path} | Base: '{text_base}'")
+
+                    compound_objects.append({
+                        "objectid": multiple_id,
+                        "parentid": compound_id,
+                        "text_base": text_base,
+                        "display_text_base": display_text_base,
+                        "child_count": len(numbered_items),
+                        "folder_path": folder_path,
+                        "zero_pad_width": zero_pad_width,
+                        "type": "multiple",
+                        "first_child_filename": numbered_items[0]['filename']
+                    })
+
+                    for parsed_item in numbered_items:
+                        child_obj = parsed_item['obj']
+                        child_obj["parentid"] = multiple_id
+                        child_obj["type"] = "child"
+                        child_obj["sequence_number"] = parsed_item.get('number')
+
+                    for parsed_item in unnumbered_items:
+                        child_obj = parsed_item['obj']
+                        child_obj["parentid"] = compound_id
+                        child_obj["type"] = "child"
+                        child_obj["sequence_number"] = None
+                else:
+                    # Assign this compound ID as parentid to all children
+                    # Also store sequence numbers from parsed data for display
+                    # Use sorted_items to maintain consistent ordering
+                    for parsed_item in sorted_items:
+                        child_obj = parsed_item['obj']
+                        child_obj["parentid"] = compound_id
+                        child_obj["type"] = "child"
+                        child_obj["sequence_number"] = parsed_item.get('number')  # Store for display
                 
                 logger.info(f"[DEBUG] Compound: {compound_id} | Base: '{text_base}' | Folder: {folder_path} | Children: {[f['filename'] for f in group_files]}")
             else:
@@ -2142,7 +2182,7 @@ def main(page: ft.Page):
         
         # Display logic based on compound grouping
         if group_compound and compound_objects:
-            # Group children by parentid for organized display
+            # Group children (file objects) by parentid for organized display
             children_by_parent = {}
             standalone = []
             
@@ -2155,30 +2195,43 @@ def main(page: ft.Page):
                 else:
                     standalone.append(obj)
             
-            # Display compound objects with their children
+            # Nested 'multiple' objects (numeric sequences) are keyed by their compound parent
+            multiples_by_compound = {}
+            for entry in compound_objects:
+                if entry.get('type') == 'multiple':
+                    multiples_by_compound.setdefault(entry.get('parentid'), []).append(entry)
+            
+            def format_children(children, zero_pad, indent):
+                numbered = [c for c in children if c.get('sequence_number') is not None]
+                unnumbered = [c for c in children if c.get('sequence_number') is None]
+                numbered.sort(key=lambda x: x['sequence_number'])
+                unnumbered.sort(key=lambda x: x['filename'])
+                for child in numbered + unnumbered:
+                    seq_num = child.get('sequence_number')
+                    if seq_num is not None and zero_pad > 0:
+                        seq_display = f"[{str(seq_num).zfill(zero_pad)}]"
+                        result_lines.append(f"{indent}↳ {child['objectid']} {seq_display} → {child['filename']}")
+                    else:
+                        result_lines.append(f"{indent}↳ {child['objectid']} → {child['filename']}")
+            
+            # Display top-level compound objects with their children
             for compound in compound_objects:
+                if compound.get('type') != 'compound':
+                    continue
                 zero_pad = compound.get('zero_pad_width', 0)
                 display_name = compound.get('display_text_base', compound.get('text_base', ''))
                 result_lines.append(f"📦 COMPOUND: {compound['objectid']} ('{display_name}' - {compound['child_count']} children)")
                 result_lines.append(f"    Folder: {compound['folder_path']}")
                 
-                # Show children indented, sorted by sequence number
+                # Nested 'multiple' parent for the numeric sequence, if any
+                for multiple in multiples_by_compound.get(compound['objectid'], []):
+                    result_lines.append(f"    ▣ MULTIPLE: {multiple['objectid']} ({multiple['child_count']} sequenced children)")
+                    if multiple['objectid'] in children_by_parent:
+                        format_children(children_by_parent[multiple['objectid']], multiple.get('zero_pad_width', 0), "        ")
+                
+                # Unnumbered children remain direct children of the compound
                 if compound['objectid'] in children_by_parent:
-                    children = children_by_parent[compound['objectid']]
-                    
-                    # Sort: numbered files by sequence, then unnumbered alphabetically
-                    numbered = [c for c in children if c.get('sequence_number') is not None]
-                    unnumbered = [c for c in children if c.get('sequence_number') is None]
-                    numbered.sort(key=lambda x: x['sequence_number'])
-                    unnumbered.sort(key=lambda x: x['filename'])
-                    
-                    for child in numbered + unnumbered:
-                        seq_num = child.get('sequence_number')
-                        if seq_num is not None and zero_pad > 0:
-                            seq_display = f"[{str(seq_num).zfill(zero_pad)}]"
-                            result_lines.append(f"    ↳ {child['objectid']} {seq_display} → {child['filename']}")
-                        else:
-                            result_lines.append(f"    ↳ {child['objectid']} → {child['filename']}")
+                    format_children(children_by_parent[compound['objectid']], zero_pad, "    ")
                 result_lines.append("")  # Blank line between compounds
             
             # Display standalone objects
@@ -2647,8 +2700,9 @@ def main(page: ft.Page):
                                 # Compound parents have no physical file
                                 row[col] = ''
                             elif col == 'parentid':
-                                # Compound objects have no parent
-                                row[col] = ''
+                                # Top-level compounds have no parent; nested 'multiple'
+                                # objects (numeric sequences) point back to their compound
+                                row[col] = compound.get('parentid', '') or ''
                             elif col == 'display_template':
                                 # Set compound_object layout for parent
                                 row[col] = 'compound_object'

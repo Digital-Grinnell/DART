@@ -117,14 +117,20 @@ When `group_compound_objects` is enabled in Function 0:
    - A compound object is created with its own permanent identifier
    - The compound is associated with the **folder path** containing the children
    - Compound ID is reused if the same group (folder + text base) is processed again
-   - The compound ID becomes the `parentid` for all children
+   - The compound ID becomes the `parentid` for all direct children
 
-6. **Child Tracking**: Each child asset:
+6. **Multiple Object Creation (numeric sequences)**: If a group contains 2+ numbered files:
+   - A `multiple` object is created and nested under the compound (`parentid` = compound's objectid)
+   - All numbered files in the sequence become children of this `multiple` object, not the compound directly
+   - Unnumbered files in the same group remain direct children of the compound
+   - The `multiple` ID is reused if the same group (folder + text base) is processed again, just like compound IDs
+
+7. **Child Tracking**: Each child asset:
    - Has its own unique permanent identifier (objectid)
-   - Has a `parentid` field pointing to the compound object
+   - Has a `parentid` field pointing to its immediate parent (the compound, or the `multiple` object for sequenced files)
    - Retains its file path and other metadata
 
-7. **Standalone Objects**: Files that don't match any group:
+8. **Standalone Objects**: Files that don't match any group:
    - Prefix less than 3 characters (too short for matching)
    - Only file with that prefix (no group formed)
    - Have `parentid = None`
@@ -141,25 +147,38 @@ When `group_compound_objects` is enabled in Function 0:
   "folder_path": "/Users/username/assets"
 }
 
+# Multiple object (nested under compound; only created for 2+ numbered files)
+{
+  "objectid": "dg_1736712400",
+  "parentid": "dg_1736712345",  # Points to the compound
+  "type": "multiple",
+  "text_base": "photo",
+  "child_count": 2
+}
+
 # Child objects (have files)
 {
   "objectid": "dg_1736712346",
-  "parentid": "dg_1736712345",  # Points to compound
+  "parentid": "dg_1736712400",  # Points to the multiple object (or the compound if unnumbered)
   "type": "child",
   "filepath": "/Users/username/assets/photo_001.jpg",
   "filename": "photo_001.jpg"
 }
 ```
 
-### Compound ID Persistence
+### Compound and Multiple ID Persistence
 Compound IDs are tracked using a key format: `{folder_path}::COMPOUND::{text_base}`
 
 Example: `/Users/username/assets::COMPOUND::photo`
 
+Multiple IDs (created only when a group has 2+ numbered files) use a parallel key format: `{folder_path}::MULTIPLE::{text_base}`
+
+Example: `/Users/username/assets::MULTIPLE::photo`
+
 This ensures:
-- Same group in same folder always gets the same compound ID
+- Same group in same folder always gets the same compound ID and, if applicable, the same multiple ID
 - Different folders can have compounds with same text base (different IDs)
-- Compound IDs persist across runs just like file IDs
+- Compound and multiple IDs persist across runs just like file IDs
 
 ### ID Assignment and Persistence
 When you run Function 1:
@@ -247,14 +266,16 @@ Total: 2 compound objects, 6 file objects
 
 📦 COMPOUND: dg_1736712345 ('photo' - 3 children)
     Folder: /Users/username/assets
-    ↳ dg_1736712346 → photo_001.jpg
-    ↳ dg_1736712347 → photo_002.jpg
-    ↳ dg_1736712348 → photo_003.jpg
+    ▣ MULTIPLE: dg_1736712400 (3 sequenced children)
+        ↳ dg_1736712346 [1] → photo_001.jpg
+        ↳ dg_1736712347 [2] → photo_002.jpg
+        ↳ dg_1736712348 [3] → photo_003.jpg
 
 📦 COMPOUND: dg_1736712349 ('scan' - 2 children)
     Folder: /Users/username/documents
-    ↳ dg_1736712350 → scan_page_1.tif
-    ↳ dg_1736712351 → scan_page_2.tif
+    ▣ MULTIPLE: dg_1736712401 (2 sequenced children)
+        ↳ dg_1736712350 [1] → scan_page_1.tif
+        ↳ dg_1736712351 [2] → scan_page_2.tif
 
 📄 STANDALONE OBJECTS:
 • dg_1736712352 → poster.pdf
@@ -263,8 +284,9 @@ Total: 2 compound objects, 6 file objects
 In this example:
 - 2 compound objects created ("photo" group in /assets, "scan" group in /documents)
 - Each compound shows its associated folder path
+- Since each group has 2+ numbered files, a `multiple` object is nested under each compound, and the numbered files become its children instead of the compound's direct children
 - 1 standalone object (poster.pdf doesn't match any group)
-- Each compound has its own ID that serves as the parentid for its children
+- Each compound has its own ID; the `multiple` object's parentid points to the compound, and sequenced children's parentid points to the `multiple` object
 
 ## Notes
 - Only files with recognized digital asset extensions are analyzed
@@ -273,5 +295,6 @@ In this example:
 - When compound grouping is ENABLED, files are analyzed for text-based grouping
 - Compound objects are associated with the folder containing their children
 - Compound IDs persist: same folder + text base always produces same compound ID
-- Children track their parent via the `parentid` field
+- Groups with 2+ numbered files get a nested `multiple` object; its ID persists the same way as compound IDs
+- Children track their immediate parent via the `parentid` field (the `multiple` object for sequenced files, or the compound for unnumbered files)
 - Results are displayed in the dialog but not automatically saved (use other functions to export)
