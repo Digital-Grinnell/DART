@@ -34,12 +34,14 @@ DART for macOS is distributed as a DMG file with an automated installer that req
 
 2. **Open the DMG**
    - Double-click the downloaded DMG file
-   - A new window opens showing the installer contents
+   - A new window opens showing the installer contents. 
+
+Note for Mac users who are UPDATING DART to a new version:  You may need to remove or move your `~/DART/` folder to get it out of the way BEFORE the `Install DART.command` can run successfully!  
 
 3. **Run the Installer**
    - Double-click: `Install DART.command`
    
-   **Note for first-time users (unsigned app):**
+   **Note for first-time users (unsigned app) and updates:**
    - If the installer won't open, macOS Gatekeeper is blocking it
    - Right-click on `Install DART.command` → select "Open"
    - If the app is blocked close the dialog then proceed to `System Settings...` and `Privacy & Security` 
