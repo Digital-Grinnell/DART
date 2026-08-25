@@ -127,6 +127,7 @@ SENSITIVE_FIELDS = ["azure_connection_string"]
 APP_SETTINGS_FILENAME = "dart_settings.json"
 DEFAULT_APP_SETTINGS = {
     "group_compound_objects": False,
+    "process_OHM_data": False,
     "use_working_folder_for_file_selection": False,
     "automatic_four": False,
     "overwrite_existing_azure_files": False,
@@ -373,6 +374,206 @@ def get_app_settings_path(working_dir: str) -> Path:
 def get_legacy_app_settings_path(working_dir: str) -> Path:
     """Return the legacy settings file path at the working directory root."""
     return Path(working_dir) / APP_SETTINGS_FILENAME
+
+
+def find_ohm_data_mp3_files(input_directory: Path) -> Tuple[list, Path]:
+    """Find MP3 files recursively beneath an OHM-data directory."""
+    ohm_data_directory = input_directory if input_directory.name == "OHM-data" else input_directory / "OHM-data"
+    if not ohm_data_directory.is_dir():
+        return [], ohm_data_directory
+
+    files = [
+        path for path in ohm_data_directory.rglob("*")
+        if path.is_file() and path.suffix.lower() == ".mp3"
+    ]
+    return sorted(files), ohm_data_directory
+
+
+def find_ohm_transcript_csv(mp3_path: Path) -> Optional[Path]:
+    """Return the sole transcript CSV beside an OHM-data MP3, if present."""
+    transcript_files = sorted(mp3_path.parent.glob("*.csv"))
+    return transcript_files[0] if len(transcript_files) == 1 else None
+
+
+def get_ohm_filename_id(file_path: Path, dg_prefix: str = "") -> str:
+    """Build an OHM object ID from the existing filename stem."""
+    stem = file_path.stem
+    match = re.search(r"(?:[A-Za-z0-9]{1,4}_)?(dg_\d+)$", stem)
+    base_id = match.group(1) if match else stem
+    return f"{dg_prefix}_{base_id}" if dg_prefix else base_id
+
+
+def get_ohm_filename(file_path: Path, dg_prefix: str = "") -> str:
+    """Return the source filename with the optional project prefix prepended."""
+    object_id = get_ohm_filename_id(file_path, dg_prefix)
+    return f"{object_id}{file_path.suffix}"
+
+
+def get_ohm_sibling_azure_stem(sibling_path: Path, mp3_path: Path, dg_prefix: str = "") -> str:
+    """Build an OHM sibling Azure basename from its MP3's dg basename."""
+    dg_match = re.search(r"dg_\d+$", mp3_path.stem)
+    dg_basename = dg_match.group(0) if dg_match else mp3_path.stem
+    prefix = f"{dg_prefix}_" if dg_prefix else ""
+    if sibling_path.stem.startswith("dg_"):
+        return f"{prefix}{dg_basename}"
+    return f"{prefix}{sibling_path.stem}_{dg_basename}"
+
+
+def get_ohm_child_id(parent_id: str, child_number: int) -> str:
+    """Return a unique two-digit child ID within an OHM compound."""
+    if not 1 <= child_number <= 99:
+        raise ValueError(f"OHM compound child count exceeds 99: {parent_id}")
+    return f"{parent_id}-{child_number:02d}"
+
+
+def get_ohm_display_template(file_extension: str) -> str:
+    """Map an OHM sibling extension to its CollectionBuilder display template."""
+    ext = file_extension.lower().lstrip('.')
+    if ext in {'jpg', 'jpeg', 'png', 'gif', 'tif', 'tiff', 'bmp', 'webp'}:
+        return 'image'
+    if ext in {'mp4', 'mov', 'avi', 'mkv', 'wmv', 'flv', 'webm'}:
+        return 'video'
+    if ext in {'mp3', 'wav', 'flac', 'aac', 'ogg', 'm4a', 'wma'}:
+        return 'audio'
+    if ext == 'pdf':
+        return 'pdf'
+    if ext in {'zip', 'tar', 'gz', '7z', 'rar', 'bz2'}:
+        return 'record'
+    return ''
+
+
+def get_parallel_azure_path(azure_path: str, folder_name: str) -> str:
+    """Replace the Azure path's objs segment with a parallel folder segment."""
+    path_parts = [part for part in azure_path.strip().strip('/').split('/') if part]
+    try:
+        path_parts[path_parts.index('objs')] = folder_name
+    except ValueError:
+        if path_parts:
+            path_parts.insert(0, folder_name)
+        else:
+            path_parts = [folder_name]
+    return '/'.join(path_parts)
+
+
+def get_stable_path(full_path: str) -> str:
+    """Remove a macOS network-volume prefix for persistent ID mapping."""
+    path_obj = Path(full_path)
+    if len(path_obj.parts) >= 3 and path_obj.parts[0] == '/' and path_obj.parts[1] == 'Volumes':
+        stable = Path(*path_obj.parts[3:])
+        logger.debug(f"[STABLE PATH] {full_path} -> {stable}")
+        return str(stable)
+    return full_path
+
+
+def prepare_ohm_data_objects(
+    mp3_files: list,
+    working_dir: str,
+    file_to_id_map: dict,
+    dg_prefix: str,
+    page,
+) -> Tuple[list, list, int, int]:
+    """Build standalone OHM transcript records and upload-only sibling records."""
+    transcript_directory = Path(working_dir) / "_data" / "transcripts"
+    transcript_directory.mkdir(parents=True, exist_ok=True)
+    objects = []
+    auxiliary_uploads = []
+    new_mappings = 0
+    reused_mappings = 0
+
+    for mp3_path in mp3_files:
+        transcript_source = find_ohm_transcript_csv(mp3_path)
+        if transcript_source is None:
+            raise ValueError(f"Expected one transcript CSV beside {mp3_path.name}")
+
+        mp3_key = get_stable_path(str(mp3_path))
+        mp3_id = get_ohm_filename_id(mp3_path, dg_prefix)
+        if file_to_id_map.get(mp3_key) == mp3_id:
+            reused_mappings += 1
+        else:
+            file_to_id_map[mp3_key] = mp3_id
+            new_mappings += 1
+
+        transcript_key = get_stable_path(str(transcript_source))
+        transcript_id = transcript_source.stem
+        file_to_id_map[transcript_key] = transcript_id
+        reused_mappings += 1
+        transcript_destination = transcript_directory / get_ohm_filename(transcript_source, dg_prefix)
+        shutil.copy2(transcript_source, transcript_destination)
+
+        auxiliary_uploads.append({
+            "source": transcript_destination,
+            "azure_object_id": get_ohm_sibling_azure_stem(transcript_source, mp3_path, dg_prefix),
+            "azure_path_type": "transcripts",
+        })
+
+        objects.append({
+            "objectid": mp3_id,
+            "filepath": str(mp3_path),
+            "filename": mp3_path.name,
+            "display_template": "transcript",
+            "format": "mp3",
+            "parentid": None,
+            "type": "transcript",
+            "object_transcript": transcript_destination.name,
+            "originating_system_id": mp3_path.parent.name,
+        })
+
+        for sibling_path in sorted(mp3_path.parent.iterdir()):
+            if not sibling_path.is_file() or sibling_path in {mp3_path, transcript_source}:
+                continue
+            auxiliary_uploads.append({
+                "source": sibling_path,
+                "azure_object_id": get_ohm_sibling_azure_stem(sibling_path, mp3_path, dg_prefix),
+                "azure_path_type": "objs",
+            })
+
+    return objects, auxiliary_uploads, new_mappings, reused_mappings
+
+
+def upload_ohm_auxiliary_files(
+    blob_service_client,
+    auxiliary_uploads: list,
+    azure_path: str,
+) -> None:
+    """Upload OHM transcript and sibling files outside the CSV export."""
+    prepared_paths = {}
+    for upload in auxiliary_uploads:
+        path_type = upload["azure_path_type"]
+        destination = get_parallel_azure_path(azure_path, path_type) if path_type != "objs" else azure_path
+        prepared_paths[path_type] = destination
+
+    for destination in prepared_paths.values():
+        container_name = destination.strip().strip('/').split('/', 1)[0]
+        logger.info(f"Preparing OHM auxiliary container: {container_name} ({destination})")
+        container_client = blob_service_client.get_container_client(container_name)
+        if not container_client.exists():
+            container_client.create_container()
+            logger.info(f"Created OHM auxiliary container: {container_name}")
+        else:
+            logger.info(f"OHM auxiliary container ready: {container_name}")
+
+    total_uploads = len(auxiliary_uploads)
+    logger.info(f"Starting {total_uploads} OHM auxiliary uploads at Hot tier")
+    for index, upload in enumerate(auxiliary_uploads, start=1):
+        source = upload["source"]
+        destination = prepared_paths[upload["azure_path_type"]]
+        size = source.stat().st_size
+        logger.info(
+            f"OHM auxiliary upload {index}/{total_uploads} starting: "
+            f"{source.name} ({size} bytes) -> {destination}/{upload['azure_object_id']}{source.suffix}"
+        )
+        uploaded, message = upload_to_azure(
+            blob_service_client,
+            str(source),
+            destination,
+            upload["azure_object_id"],
+            source.suffix,
+            progress_label=f"{index}/{total_uploads} {source.name}",
+        )
+        if not uploaded:
+            raise RuntimeError(message)
+        logger.info(f"OHM auxiliary upload {index}/{total_uploads} finished: {source.name}")
+        logger.info(f"Uploaded OHM auxiliary file: {source.name}")
 
 
 def ensure_app_settings_file(working_dir: str) -> Path:
@@ -715,7 +916,9 @@ def upload_to_azure(
     local_file_path: str,
     azure_path: str,
     object_id: str,
-    file_extension: str
+    file_extension: str,
+    access_tier: Optional[str] = None,
+    progress_label: Optional[str] = None,
 ) -> Tuple[bool, str]:
     """
     Upload a file to Azure Blob Storage with renamed filename.
@@ -775,15 +978,29 @@ def upload_to_azure(
         
         content_type = content_type_map.get(file_extension.lower(), 'application/octet-stream')
         content_settings = ContentSettings(content_type=content_type)
+        upload_size = local_path.stat().st_size
+        last_progress = [-1]
+
+        def report_progress(current: int, total: int) -> None:
+            if not progress_label or not total:
+                return
+            percent = int(current * 100 / total)
+            milestone = min(100, (percent // 10) * 10)
+            if milestone > last_progress[0]:
+                last_progress[0] = milestone
+                logger.info(f"Azure upload progress: {progress_label}: {milestone}% ({current}/{total} bytes)")
         
         # Upload file
         with open(local_path, 'rb') as data:
             blob_client.upload_blob(
                 data,
                 overwrite=True,
-                content_settings=content_settings
+                content_settings=content_settings,
+                standard_blob_tier=access_tier,
+                progress_hook=report_progress if progress_label else None,
             )
-        
+
+        logger.info(f"Azure upload complete: {progress_label or local_path.name} ({upload_size} bytes)")
         logger.info(f"Successfully uploaded: {local_path.name} → Azure blob: {blob_name}")
         return True, f"✓ Uploaded {local_path.name} → {blob_name}"
         
@@ -1019,6 +1236,70 @@ def generate_pdf_derivative(
         return False, f"Error generating PDF derivative: {str(e)}"
 
 
+def prepare_ohm_parent_derivatives(
+    parent_objects: list,
+    working_dir: str,
+    azure_enabled: bool,
+    blob_service_client,
+    azure_path: str,
+    azure_connection_string: str,
+) -> None:
+    """Generate, store, and optionally upload OHM compound parent derivatives."""
+    dart_working_dir = get_dart_working_dir(working_dir)
+    derivative_dir = dart_working_dir / "ohm_derivatives"
+    derivative_dir.mkdir(parents=True, exist_ok=True)
+    small_dir = Path(working_dir) / "_data" / "smalls"
+    thumb_dir = Path(working_dir) / "_data" / "thumbs"
+    small_dir.mkdir(parents=True, exist_ok=True)
+    thumb_dir.mkdir(parents=True, exist_ok=True)
+
+    smalls_azure_path = get_parallel_azure_path(azure_path, "smalls")
+    thumbs_azure_path = get_parallel_azure_path(azure_path, "thumbs")
+    if azure_enabled and blob_service_client:
+        for derivative_path in (smalls_azure_path, thumbs_azure_path):
+            container_name = derivative_path.split('/', 1)[0]
+            container_client = blob_service_client.get_container_client(container_name)
+            if not container_client.exists():
+                container_client.create_container()
+
+    for parent in parent_objects:
+        parent_id = parent["objectid"]
+        source_path = Path(parent["derivative_source"]) if parent["derivative_source"] else None
+        if source_path is None:
+            source_path = derivative_dir / f"{parent_id}_default.png"
+            Image.new("RGB", (800, 600), (224, 224, 224)).save(source_path, "PNG")
+
+        small_path = derivative_dir / f"{parent_id}_SMALL.jpg"
+        thumb_path = derivative_dir / f"{parent_id}_TN.jpg"
+        small_ok, small_message = generate_derivative(str(source_path), str(small_path), 800, 800)
+        thumb_ok, thumb_message = generate_derivative(str(source_path), str(thumb_path), 400, 400)
+        if not small_ok or not thumb_ok:
+            raise RuntimeError(f"OHM derivative generation failed: {small_message}; {thumb_message}")
+
+        shutil.copy2(small_path, small_dir / small_path.name)
+        shutil.copy2(thumb_path, thumb_dir / thumb_path.name)
+        parent["image_small"] = f"_data/smalls/{small_path.name}"
+        parent["image_thumb"] = f"_data/thumbs/{thumb_path.name}"
+
+        if azure_enabled and blob_service_client:
+            for derivative_file, destination, suffix in (
+                (small_path, smalls_azure_path, "_SMALL"),
+                (thumb_path, thumbs_azure_path, "_TN"),
+            ):
+                uploaded, message = upload_to_azure(
+                    blob_service_client, str(derivative_file), destination,
+                    parent_id + suffix, ".jpg"
+                )
+                if not uploaded:
+                    raise RuntimeError(message)
+                url_ok, url, url_message = build_object_location(
+                    destination, parent_id + suffix, ".jpg", azure_connection_string
+                )
+                if not url_ok:
+                    raise RuntimeError(url_message)
+                parent["image_small" if suffix == "_SMALL" else "image_thumb"] = url
+
+
 def main(page: ft.Page):
     page.title = f"DART v{APP_VERSION} - Digital Asset Routing and Transformation"
     page.padding = 20
@@ -1160,28 +1441,6 @@ def main(page: ft.Page):
             logger.error(f"Could not open log file: {ex}")
             update_status(f"Error opening log: {ex}", is_error=True)
 
-    def get_stable_path(full_path: str) -> str:
-        """Extract stable path by removing /Volumes/<mount>/ prefix for network-agnostic ID mapping.
-        
-        This allows file-to-ID mappings to persist across network mount changes.
-        
-        Examples:
-            /Volumes/OldMount/photos/image.jpg -> photos/image.jpg
-            /Volumes/NewMount/photos/image.jpg -> photos/image.jpg (same stable path!)
-            /Users/local/photos/image.jpg -> /Users/local/photos/image.jpg (unchanged)
-        """
-        path_obj = Path(full_path)
-        
-        # Check if path starts with /Volumes/ (network mount on macOS)
-        if len(path_obj.parts) >= 3 and path_obj.parts[0] == '/' and path_obj.parts[1] == 'Volumes':
-            # Remove /Volumes/<mount_name>/ and return the rest
-            stable = Path(*path_obj.parts[3:])  # Skip /, Volumes, and mount name
-            logger.debug(f"[STABLE PATH] {full_path} → {stable}")
-            return str(stable)
-        
-        # For local paths, return as-is
-        return full_path
-    
     def on_kill_switch_click(e):
         """Handle Kill Switch button click - emergency stop for batch operations."""
         nonlocal kill_switch
@@ -1351,6 +1610,12 @@ def main(page: ft.Page):
             hint_text="true or false - group similar assets as compound objects",
             width=320,
         )
+        process_ohm_data_field = ft.TextField(
+            label="process_OHM_data",
+            value=str(settings.get("process_OHM_data", False)).lower(),
+            hint_text="true or false - process OHM-data objects",
+            width=320,
+        )
         use_working_folder_field = ft.TextField(
             label="use_working_folder_for_file_selection",
             value=str(settings.get("use_working_folder_for_file_selection", False)).lower(),
@@ -1495,6 +1760,17 @@ def main(page: ft.Page):
                     is_error=True,
                 )
                 return
+
+            parsed_process_ohm_data = parse_bool_text(process_ohm_data_field.value)
+            if parsed_process_ohm_data is None:
+                update_status(
+                    "Error: process_OHM_data must be true/false (or yes/no, 1/0)",
+                    is_error=True,
+                )
+                return
+
+            if parsed_process_ohm_data:
+                parsed_group_compound = False
             
             parsed_use_working_folder = parse_bool_text(use_working_folder_field.value)
             if parsed_use_working_folder is None:
@@ -1556,6 +1832,7 @@ def main(page: ft.Page):
             new_settings = dict(settings)
             new_settings.update({
                 "group_compound_objects": parsed_group_compound,
+                "process_OHM_data": parsed_process_ohm_data,
                 "use_working_folder_for_file_selection": parsed_use_working_folder,
                 "automatic_four": parsed_automatic_four,
                 "overwrite_existing_azure_files": parsed_overwrite_existing_azure_files,
@@ -1594,6 +1871,7 @@ def main(page: ft.Page):
                         settings_path_text,
                         ft.Container(height=8),
                         group_compound_field,
+                        process_ohm_data_field,
                         use_working_folder_field,
                         automatic_four_field,
                         overwrite_existing_azure_files_field,
@@ -2001,15 +2279,20 @@ def main(page: ft.Page):
         # Load settings to check compound object grouping
         working_dir = output_dir_field.value
         group_compound = False
+        process_ohm_data = False
         dg_prefix = ""
         if working_dir:
             settings, _ = load_app_settings(working_dir)
             group_compound = settings.get("group_compound_objects", False)
+            process_ohm_data = settings.get("process_OHM_data", False)
+            if process_ohm_data:
+                group_compound = False
             dg_prefix = settings.get("dg_prefix", "")
         
         # DEBUG: Log settings
         add_log_message(f"[DEBUG] Working/Outputs Folder: {working_dir or 'Not set'}")
         add_log_message(f"[DEBUG] Compound grouping: {group_compound}")
+        add_log_message(f"[DEBUG] OHM-data processing: {process_ohm_data}")
         logger.info(f"[DEBUG] Working folder: {working_dir}, Compound grouping: {group_compound}")
 
         # Digital asset file extensions
@@ -2021,12 +2304,22 @@ def main(page: ft.Page):
             '.zip', '.tar', '.gz', '.7z', '.rar', '.bz2',  # Archives
         }
 
-        # Get files to process - either selected files or scan inputs folder
-        selected_files = get_selected_files()
         files = []
         source_description = ""
-        
-        if selected_files:
+        if process_ohm_data:
+            if not current_directory or not current_directory.exists():
+                update_status("Error: Please select an inputs folder containing OHM-data first", is_error=True)
+                return
+
+            ohm_files, ohm_data_directory = find_ohm_data_mp3_files(current_directory)
+            files = [str(file_path) for file_path in ohm_files]
+            source_description = f"in {ohm_data_directory}"
+            add_log_message(f"[DEBUG] OHM-data mode: scanning {ohm_data_directory}")
+            logger.info(f"[DEBUG] OHM-data files: {files}")
+        else:
+            selected_files = get_selected_files()
+
+        if not process_ohm_data and selected_files:
             # Use selected files
             add_log_message(f"[DEBUG] Using {len(selected_files)} selected file(s)")
             logger.info(f"[DEBUG] Selected files: {selected_files}")
@@ -2034,7 +2327,7 @@ def main(page: ft.Page):
                 if file_path.is_file() and file_path.suffix.lower() in asset_extensions:
                     files.append(str(file_path))  # Store full path
             source_description = "from selected files"
-        else:
+        elif not process_ohm_data:
             # Fall back to scanning inputs folder
             if not current_directory or not current_directory.exists():
                 update_status("Error: Please select files or an inputs folder first", is_error=True)
@@ -2077,15 +2370,27 @@ def main(page: ft.Page):
             logger.info("[DEBUG] Using standard DG identifier format: dg_<epoch_time>")
         
         objects = []
+        ohm_parent_objects = []
+        ohm_transcript_objects = []
         new_mappings = 0
         reused_mappings = 0
         
         for file_path_str in files:
             # Use stable path (without /Volumes/<mount>/) as lookup key for network-agnostic mapping
             stable_path = get_stable_path(file_path_str)
+            file_path = Path(file_path_str)
             
+            if process_ohm_data:
+                # OHM source filenames already contain the durable dg_<epoch> ID.
+                unique_id = get_ohm_filename_id(file_path, dg_prefix)
+                if file_to_id_map.get(stable_path) == unique_id:
+                    reused_mappings += 1
+                else:
+                    file_to_id_map[stable_path] = unique_id
+                    new_mappings += 1
+                logger.info(f"[DEBUG] Preserving OHM filename ID: {unique_id} <- {file_path.name}")
             # Check if this file already has an assigned ID (using stable path as key)
-            if stable_path in file_to_id_map:
+            elif stable_path in file_to_id_map:
                 # Reuse existing ID - never change once assigned!
                 unique_id = file_to_id_map[stable_path]
                 reused_mappings += 1
@@ -2107,10 +2412,14 @@ def main(page: ft.Page):
         add_log_message(f"[DEBUG] IDs assigned: {new_mappings} new, {reused_mappings} reused")
         logger.info(f"[DEBUG] Total mappings in cache: {len(file_to_id_map)}")
         
-        # Process compound object grouping if enabled (using shared function)
-        compound_objects, file_to_id_map, compound_new, compound_reused = analyze_compound_objects(
-            objects, group_compound, file_to_id_map, page, dg_prefix
-        )
+        if process_ohm_data:
+            compound_objects = []
+            compound_new = 0
+            compound_reused = 0
+        else:
+            compound_objects, file_to_id_map, compound_new, compound_reused = analyze_compound_objects(
+                objects, group_compound, file_to_id_map, page, dg_prefix
+            )
         
         # Update mapping counts
         new_mappings += compound_new
@@ -2164,9 +2473,11 @@ def main(page: ft.Page):
         logger.info(f"[DEBUG] Final objects list: {objects}")
         logger.info(f"[DEBUG] Compound objects: {compound_objects}")
         
-        result_lines = [f"Found {len(files)} digital asset file(s) {source_description}"]
+        file_kind = "OHM-data MP3" if process_ohm_data else "digital asset"
+        result_lines = [f"Found {len(files)} {file_kind} file(s) {source_description}"]
         result_lines.append(f"Identifiers: {new_mappings} new, {reused_mappings} reused (IDs never change once assigned)")
         result_lines.append(f"Compound object grouping: {'ENABLED' if group_compound else 'DISABLED'}")
+        result_lines.append(f"OHM-data processing: {'ENABLED' if process_ohm_data else 'DISABLED'}")
         result_lines.append("Action note: Close saves this Function 1 run and advances workflow; Cancel discards this run and keeps workflow position unchanged.")
         
         if group_compound:
@@ -2458,6 +2769,9 @@ def main(page: ft.Page):
 
         # Get files to process (similar to Function 1)
         group_compound = settings.get("group_compound_objects", False)
+        process_ohm_data = settings.get("process_OHM_data", False)
+        if process_ohm_data:
+            group_compound = False
         dg_prefix = settings.get("dg_prefix", "")
         
         asset_extensions = {
@@ -2468,14 +2782,23 @@ def main(page: ft.Page):
             '.zip', '.tar', '.gz', '.7z', '.rar', '.bz2',
         }
 
-        selected_files = get_selected_files()
         files = []
-        
-        if selected_files:
+        if process_ohm_data:
+            if not current_directory or not current_directory.exists():
+                update_status("Error: Please select an inputs folder containing OHM-data first", is_error=True)
+                return
+
+            ohm_files, ohm_data_directory = find_ohm_data_mp3_files(current_directory)
+            files = [str(file_path) for file_path in ohm_files]
+            add_log_message(f"[DEBUG] OHM-data mode: exporting MP3 files from {ohm_data_directory}")
+        else:
+            selected_files = get_selected_files()
+
+        if not process_ohm_data and selected_files:
             for file_path in selected_files:
                 if file_path.is_file() and file_path.suffix.lower() in asset_extensions:
                     files.append(str(file_path))
-        else:
+        elif not process_ohm_data:
             if not current_directory or not current_directory.exists():
                 update_status("Error: Please select files or an inputs folder first", is_error=True)
                 return
@@ -2485,7 +2808,8 @@ def main(page: ft.Page):
                     files.append(str(file_path))
 
         if not files:
-            update_status("Error: No digital asset files found to export", is_error=True)
+            message = "Error: No OHM-data MP3 files found to export" if process_ohm_data else "Error: No digital asset files found to export"
+            update_status(message, is_error=True)
             return
 
         files.sort()
@@ -2495,37 +2819,62 @@ def main(page: ft.Page):
         file_to_id_map = settings.get("file_to_id_map", {})
         
         objects = []
+        ohm_auxiliary_uploads = []
         new_mappings = 0
         reused_mappings = 0
-        
-        for file_path_str in files:
-            # Use stable path (without /Volumes/<mount>/) as lookup key for network-agnostic mapping
-            stable_path = get_stable_path(file_path_str)
-            
-            if stable_path in file_to_id_map:
-                unique_id = file_to_id_map[stable_path]
-                reused_mappings += 1
-            else:
-                unique_id = generate_unique_id(page, dg_prefix)
-                file_to_id_map[stable_path] = unique_id
-                new_mappings += 1
-            
-            file_path = Path(file_path_str)
-            objects.append({
-                "objectid": unique_id,
-                "filepath": file_path_str,  # Keep full current path for file access
-                "filename": file_path.name,
-                "display_template": get_display_template(file_path.suffix),
-                "format": file_path.suffix.lower().lstrip('.'),
-                "parentid": None,  # Will be set if compound grouping enabled
-            })
+
+        if process_ohm_data:
+            try:
+                (
+                    objects,
+                    ohm_auxiliary_uploads,
+                    new_mappings,
+                    reused_mappings,
+                ) = prepare_ohm_data_objects(
+                    [Path(file_path) for file_path in files],
+                    working_dir,
+                    file_to_id_map,
+                    dg_prefix,
+                    page,
+                )
+            except (OSError, ValueError) as ex:
+                update_status(f"Error preparing OHM-data objects: {ex}", is_error=True)
+                add_log_message(f"[ERROR] OHM-data preparation failed: {ex}")
+                return
+            add_log_message(
+                f"[INFO] OHM-data mode: created {len(objects)} standalone transcript records and "
+                f"{len(ohm_auxiliary_uploads)} cold auxiliary uploads"
+            )
+        else:
+            for file_path_str in files:
+                stable_path = get_stable_path(file_path_str)
+                file_path = Path(file_path_str)
+                if stable_path in file_to_id_map:
+                    unique_id = file_to_id_map[stable_path]
+                    reused_mappings += 1
+                else:
+                    unique_id = generate_unique_id(page, dg_prefix)
+                    file_to_id_map[stable_path] = unique_id
+                    new_mappings += 1
+                objects.append({
+                    "objectid": unique_id,
+                    "filepath": file_path_str,
+                    "filename": file_path.name,
+                    "display_template": get_display_template(file_path.suffix),
+                    "format": file_path.suffix.lower().lstrip('.'),
+                    "parentid": None,
+                })
         
         add_log_message(f"[DEBUG] IDs: {new_mappings} new, {reused_mappings} reused")
         
-        # Process compound object grouping if enabled (using shared function)
-        compound_objects, file_to_id_map, compound_new, compound_reused = analyze_compound_objects(
-            objects, group_compound, file_to_id_map, page, dg_prefix
-        )
+        if process_ohm_data:
+            compound_objects = []
+            compound_new = 0
+            compound_reused = 0
+        else:
+            compound_objects, file_to_id_map, compound_new, compound_reused = analyze_compound_objects(
+                objects, group_compound, file_to_id_map, page, dg_prefix
+            )
         
         # Update mapping counts
         new_mappings += compound_new
@@ -2574,13 +2923,14 @@ def main(page: ft.Page):
                         break
                     
                     object_id = obj['objectid']
+                    azure_object_id = obj.get('azure_object_id', object_id)
                     file_path = obj['filepath']
                     file_extension = Path(file_path).suffix
                     
                     # Build object_location URL
                     success, url, msg = build_object_location(
                         azure_path,
-                        object_id,
+                        azure_object_id,
                         file_extension,
                         azure_connection_string
                     )
@@ -2596,9 +2946,9 @@ def main(page: ft.Page):
                         blob_path = path_parts[1] if len(path_parts) > 1 else ""
                         
                         if blob_path:
-                            blob_name = f"{blob_path}/{object_id}{file_extension}"
+                            blob_name = f"{blob_path}/{azure_object_id}{file_extension}"
                         else:
-                            blob_name = f"{object_id}{file_extension}"
+                            blob_name = f"{azure_object_id}{file_extension}"
                         
                         try:
                             blob_client = blob_service_client.get_blob_client(container=container_name, blob=blob_name)
@@ -2609,7 +2959,7 @@ def main(page: ft.Page):
                             file_exists = False
                         
                         if file_exists:
-                            azure_filename = f"{object_id}{file_extension}"
+                            azure_filename = f"{azure_object_id}{file_extension}"
                             if not overwrite_existing_azure_files:
                                 # File already exists - skip upload
                                 add_log_message(f"  ⏩ {obj['filename']} ({azure_filename}) already exists in Azure - skipping upload")
@@ -2626,7 +2976,7 @@ def main(page: ft.Page):
                             blob_service_client,
                             file_path,
                             azure_path,
-                            object_id,
+                            azure_object_id,
                             file_extension
                         )
                         
@@ -2673,6 +3023,18 @@ def main(page: ft.Page):
                 export_columns.insert(0, 'filepath')
             add_log_message(f"[DEBUG] Added 'filepath' column to export (required for Function 3)")
 
+        if process_ohm_data:
+            if 'parentid' not in export_columns:
+                export_columns.append('parentid')
+            if 'object_transcript' not in export_columns:
+                export_columns.append('object_transcript')
+            if 'type' not in export_columns:
+                export_columns.append('type')
+            if 'image_small' not in export_columns:
+                export_columns.append('image_small')
+            if 'image_thumb' not in export_columns:
+                export_columns.append('image_thumb')
+
         # Write CSV file
         try:
             with open(csv_output_path, 'w', newline='', encoding='utf-8') as f:
@@ -2680,8 +3042,9 @@ def main(page: ft.Page):
                 writer.writeheader()
                 
                 # Write compound parent objects first (if compound grouping enabled)
-                if group_compound and compound_objects:
-                    for compound in compound_objects:
+                parent_rows = compound_objects
+                if parent_rows:
+                    for compound in parent_rows:
                         row = {}
                         for col in export_columns:
                             if col == 'objectid':
@@ -2701,12 +3064,19 @@ def main(page: ft.Page):
                             elif col == 'display_template':
                                 # Set compound_object layout for parent
                                 row[col] = 'compound_object'
+                            elif col == 'type':
+                                row[col] = compound.get('type', 'compound')
+                            elif col == 'image_small':
+                                row[col] = compound.get('image_small', '')
+                            elif col == 'image_thumb':
+                                row[col] = compound.get('image_thumb', '')
                             elif col == 'title':
                                 # Use display_text_base for title (preserves original case from filename)
-                                row[col] = compound.get('display_text_base', '').replace('_', ' ').replace('-', ' ')
+                                title = compound.get('title', compound.get('display_text_base', ''))
+                                row[col] = title.replace('_', ' ').replace('-', ' ')
                             elif col == 'originating_system_id':
                                 # Use display_text_base (common portion of compound family filenames)
-                                row[col] = compound.get('display_text_base', '')
+                                row[col] = compound.get('originating_system_id', compound.get('display_text_base', ''))
                             else:
                                 row[col] = ''
                         
@@ -2737,36 +3107,51 @@ def main(page: ft.Page):
                                 row[col] = obj.get('format', '')
                         elif col == 'object_location':
                             row[col] = obj.get('object_location', '')
+                        elif col == 'type':
+                            row[col] = obj.get('type', '')
+                        elif col == 'object_transcript':
+                            row[col] = obj.get('object_transcript', '')
+                        elif col == 'transcript':
+                            row[col] = obj.get('object_transcript', '')
                         elif col == 'originating_system_id':
-                            # Extract common portion of filename (prefix before numbers)
-                            filename = obj.get('filename', '')
-                            stem = Path(filename).stem
-                            # Match pattern: text before last number
-                            match = re.match(r'^(.+?)[\s_\-]*\d+$', stem)
-                            if match:
-                                # Preserve original case for originating_system_id
-                                prefix = match.group(1).strip()
-                                row[col] = prefix
+                            if process_ohm_data:
+                                row[col] = obj.get('originating_system_id', '')
                             else:
-                                # No number found, use whole stem
-                                row[col] = stem
+                                # Extract common portion of filename (prefix before numbers)
+                                filename = obj.get('filename', '')
+                                stem = Path(filename).stem
+                                match = re.match(r'^(.+?)[\s_\-]*\d+$', stem)
+                                if match:
+                                    row[col] = match.group(1).strip()
+                                else:
+                                    row[col] = stem
                         else:
                             # Leave other columns empty for manual population
                             row[col] = ''
                     
                     writer.writerow(row)
+
+            if process_ohm_data and azure_enabled and blob_service_client:
+                try:
+                    upload_ohm_auxiliary_files(blob_service_client, ohm_auxiliary_uploads, azure_path)
+                except (OSError, RuntimeError) as ex:
+                    add_log_message(f"[ERROR] OHM auxiliary upload failed after CSV export: {ex}")
+                    update_status("CSV exported, but an OHM auxiliary upload failed", is_error=True)
             
-            add_log_message(f"[SUCCESS] Exported {len(objects)} objects to {csv_filename}")
+            parent_count = len(compound_objects)
+            add_log_message(f"[SUCCESS] Exported {len(objects) + parent_count} objects to {csv_filename}")
             logger.info(f"CSV export successful: {csv_output_path}")
             
             # Update settings with new mappings
             settings["file_to_id_map"] = file_to_id_map
             save_app_settings(working_dir, settings)
             
-            total_rows = len(objects) + len(compound_objects)
+            total_rows = len(objects) + parent_count
             result_text = f"✅ CSV Export Successful\n\n"
             result_text += f"Exported: {total_rows} total rows\n"
-            if group_compound and compound_objects:
+            if process_ohm_data:
+                result_text += f"  • {len(objects)} standalone transcript objects\n"
+            elif group_compound and compound_objects:
                 result_text += f"  • {len(compound_objects)} compound objects (parents)\n"
                 result_text += f"  • {len(objects)} file objects (children/standalone)\n"
             else:
@@ -2776,6 +3161,7 @@ def main(page: ft.Page):
             result_text += f"Output: {csv_filename}\n"
             result_text += f"Location: {working_dir}\n"
             result_text += f"Compound grouping: {'ENABLED' if group_compound else 'DISABLED'}\n"
+            result_text += f"OHM-data processing: {'ENABLED' if process_ohm_data else 'DISABLED'}\n"
             
             # Add Azure upload information if enabled
             if azure_enabled:
@@ -2873,6 +3259,7 @@ def main(page: ft.Page):
 
         # Load settings
         settings, _ = load_app_settings(working_dir)
+        process_ohm_data = settings.get("process_OHM_data", False)
         overwrite_existing_azure_files = bool(settings.get("overwrite_existing_azure_files", False))
         
         # Check Azure configuration
@@ -2992,6 +3379,9 @@ def main(page: ft.Page):
         temp_dir.mkdir(exist_ok=True)
         
         # Pre-scan to show what will be processed/skipped
+        derivative_extensions = {'.jpg', '.jpeg', '.png'} if process_ohm_data else {
+            '.jpg', '.jpeg', '.png', '.gif', '.tif', '.tiff', '.bmp', '.webp', '.pdf'
+        }
         processable = 0
         no_filename = 0
         non_image = 0
@@ -3004,13 +3394,14 @@ def main(page: ft.Page):
                 no_filename += 1
             else:
                 ext = Path(filename).suffix.lower()
-                if ext not in {'.jpg', '.jpeg', '.png', '.gif', '.tif', '.tiff', '.bmp', '.webp', '.pdf'}:
+                if ext not in derivative_extensions:
                     non_image += 1
                 else:
                     processable += 1
         
         add_log_message(f"[INFO] CSV Analysis: {total_rows} total rows")
-        add_log_message(f"  • {processable} image/PDF files to process")
+        description = "sibling images" if process_ohm_data else "image/PDF files"
+        add_log_message(f"  • {processable} {description} to process")
         if no_filename > 0:
             add_log_message(f"  • {no_filename} rows with no file (compound parents or metadata-only)")
         if non_image > 0:
@@ -3040,8 +3431,9 @@ def main(page: ft.Page):
             
             # Skip non-image/PDF files
             ext = Path(filename).suffix.lower()
-            if ext not in {'.jpg', '.jpeg', '.png', '.gif', '.tif', '.tiff', '.bmp', '.webp', '.pdf'}:
-                add_log_message(f"[SKIP #{idx+1}] Non-image/PDF file: {filename}")
+            if ext not in derivative_extensions:
+                skip_description = "non-sibling image" if process_ohm_data else "non-image/PDF file"
+                add_log_message(f"[SKIP #{idx+1}] {skip_description}: {filename}")
                 skipped_count += 1
                 continue
             

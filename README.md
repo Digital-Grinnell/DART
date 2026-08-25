@@ -45,6 +45,17 @@ DART is focused on providing a valid import/ingest-compatible CSV metadata file 
 
 **Recommended prefix convention:** When using `dg_prefix`, choose a stable 2-4 character project code such as `tdps`, `csm`, or `ohm`. Keep it consistent for the life of the project so new IDs remain recognizable and sort together.
 
+## OHM-data Mode
+
+Set `process_OHM_data` to `true` in Function 0 for packaged Oral History Manager data. Select the project root containing `OHM-data`, or select the `OHM-data` directory itself.
+
+- Function 1 recursively finds only `.mp3` files.
+- Existing `dg_...` values in MP3 filenames are preserved; `dg_prefix` is prepended when configured.
+- Function 2 creates one standalone `type=transcript` record per MP3. The record uses `display_template=transcript`, has a blank `parentid`, stores the normalized transcript filename in `object_transcript`, and uses the MP3 Azure URL in `object_location`.
+- The transcript CSV is copied to the target project's `_data/transcripts` directory and uploaded to the parallel Azure `transcripts` path.
+- Other sibling files are excluded from the metadata CSV but uploaded to Azure's `objs` path with normal Hot-tier storage. A `dg_` sibling uses `<prefix>_<dg_basename>.<extension>`; other siblings use `<prefix>_<basename>_<dg_basename>.<extension>`.
+- Function 3 does not generate OHM derivatives because sibling files are not metadata records.
+
 ## Purpose
 
 DART provides a comprehensive platform for digital asset management workflows:

@@ -14,6 +14,7 @@ Use this function when you want to:
 - **Working/Outputs folder** must be set
 - **CSV structure template** must be configured in Function 0 settings
 - Digital asset files to export (either selected files or in inputs folder)
+- **OHM-data mode**: When `process_OHM_data` is enabled, select the project folder containing `OHM-data` (or select `OHM-data` itself). Function 2 ignores file selections and exports only recursively discovered `.mp3` files, uploading them to Azure when configured.
 
 ## Workflow
 
@@ -58,6 +59,16 @@ The function automatically populates these CollectionBuilder fields from your as
   - Files are uploaded to Azure with renamed filenames matching their objectid
   - Example: `https://collectionbuilder.blob.core.windows.net/objs/tdps/dg_1715614222.jpg`
   - Empty if Azure is not configured in Function 0 settings
+- **OHM-data fields**: In `process_OHM_data` mode, the export has one standalone row per MP3. Each row has `type=transcript`, `object_location` set to the MP3's Azure URL, and `object_transcript` set to the transcript CSV filename. The transcript CSV is copied to `_data/transcripts` and uploaded to Azure under the parallel `transcripts` path.
+- **OHM-data identifiers**: OHM file IDs are taken from the existing filename stem. For example, `dg_1782850662.pdf` uploads as `re26/re26_dg_1782850662.pdf` when `dg_prefix` is `re26`; Function 2 does not replace it with a newly generated timestamp ID.
+- **OHM-data IDs**: Each standalone MP3 object uses the corresponding prefixed `dg_` basename as its `objectid`; `parentid` is blank because OHM mode does not create compound objects.
+- OHM-mode exports retain a blank `parentid` column when it is present in the configured template, but do not create parent-child relationships in the CSV.
+- **OHM-data MP3 records**: The MP3 record uses `display_template=transcript` because its associated transcript CSV defines the CollectionBuilder presentation.
+- **OHM-data originating system**: Each MP3 record uses its OHM package directory as `originating_system_id`.
+- **OHM-data sibling filenames**: Let `<dg_basename>` be the MP3's `dg_...` basename. A sibling beginning with `dg_` uploads as `<prefix>_<dg_basename>.<extension>`. Any other sibling uploads as `<prefix>_<basename>_<dg_basename>.<extension>`. For example, beside `dg_1782852672.mp3`, `dg_1782852672.csv` uploads as `re26/re26_dg_1782852672.csv`, while `review_notes.md` uploads as `re26/re26_review_notes_dg_1782852672.md`.
+- **OHM-data transcript uploads**: Transcript CSVs use the parallel Azure `transcripts` path, derived from the configured `objs` path, and the container is created before upload when necessary.
+- **OHM-data sibling files**: Direct sibling files beside each MP3 are excluded from the metadata CSV because CollectionBuilder cannot display them as transcript children. They are still uploaded to the Azure `objs` path using OHM sibling naming. Transcript CSVs are uploaded to the parallel `transcripts` path. These uploads use Azure's normal Hot tier; cold storage can be applied later.
+- **OHM-data processing order**: Function 2 writes the metadata CSV before starting upload-only sibling and transcript transfers. Detailed auxiliary upload progress is written to the logfile, so large files may continue uploading after the CSV is available.
 - **title**: Suggested title for compound objects (if column exists and compound grouping enabled)
   - Generated from filename prefix pattern
   - Only populated for compound parent objects

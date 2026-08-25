@@ -12,6 +12,8 @@ Use this function after Function 2 (Export Assets to CSV and Azure) when you wan
 - Automatically populate `image_small` and `image_thumb` URL columns in your CSV
 
 ## Requirements
+
+When `process_OHM_data` is enabled, Function 3 generates no OHM sibling derivatives because sibling files are intentionally excluded from the metadata CSV. PDF, audio, transcript, and other auxiliary files are skipped; their Azure objects are handled by Function 2.
 - **Working/Outputs folder** must be set
 - **Azure Blob Storage** must be configured in Function 0 settings
   - Valid `azure_blob_storage_path` (contains `/objs/` folder)

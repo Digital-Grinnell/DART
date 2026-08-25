@@ -32,6 +32,7 @@ Use this function to:
 - **Either**: Files selected using the Files Selection picker (recommended)
 - **Or**: Inputs folder must be selected (will scan entire folder)
 - **Optional**: Working/Outputs folder (to load compound grouping setting)
+- **OHM-data mode**: When `process_OHM_data` is enabled in Function 0, select the project folder containing `OHM-data` (or select `OHM-data` itself). Function 1 ignores file selections and ordinary assets, recursively finds only `.mp3` files, and assigns each one a standard persistent DG identifier.
 
 ## How It Works
 1. **First checks** if files are selected in the Files Selection area
@@ -48,6 +49,12 @@ Use this function to:
    - One untitled compound per folder; numeric sequences nest under it as `multiple` children
    - Each compound/multiple gets its own permanent identifier using the same legacy or prefixed format
    - Child files track their parent via `parentid` field
+
+### OHM-data Processing
+
+When `process_OHM_data` is `true`, Function 1 uses the selected Inputs Folder as the project root and looks for an `OHM-data` directory. It recursively processes only `.mp3` files beneath that directory, including files in interviewee subdirectories. Selected files and all non-MP3 assets are ignored, and compound grouping is disabled automatically. The resulting MP3 objects can then be exported by Function 2 and uploaded to Azure using their assigned identifiers.
+
+Function 2 creates one standalone metadata record for each OHM MP3. OHM mode does not create compound objects or `parentid` relationships.
 
 ## Compound Object Grouping
 

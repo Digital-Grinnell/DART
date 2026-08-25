@@ -10,6 +10,7 @@ The encryption key is stored separately in `~/.DART-data/encryption_key` with re
 
 ## Current Settings
 - **group_compound_objects**: When `true`, groups similar filenames as compound objects in asset analysis. **[BOOLEAN]**
+- **process_OHM_data**: When `true`, enables OHM-data processing in Functions 1 and 2. Saving this as `true` automatically sets `group_compound_objects` to `false` because OHM-data processing uses a different object-handling model. **[BOOLEAN]**
 - **use_working_folder_for_file_selection**: When `true`, the File Selector opens in the working/outputs folder. When `false`, it opens in the inputs folder. **[BOOLEAN]**
 - **automatic_four**: When `true`, automatically executes Functions 2, 3, and 4 sequentially after Function 1 completes successfully. This creates a seamless workflow from asset analysis through CSV export, derivative generation, and metadata merge. Automatically resets to `false` at the start of each new session. **[BOOLEAN]**
 - **overwrite_existing_azure_files**: When `true`, Functions 2 and 3 replace existing Azure blobs with newly generated uploads. When `false` (default), DART skips existing blobs when possible. **[BOOLEAN]**
@@ -44,7 +45,7 @@ The encryption key is stored separately in `~/.DART-data/encryption_key` with re
 - Location: Inside `.DART-working-directory` under the selected working/outputs folder
 
 ## Accepted Boolean Values
-For boolean settings (`group_compound_objects`, `use_working_folder_for_file_selection`, `automatic_four`, `overwrite_existing_azure_files`), you can enter:
+For boolean settings (`group_compound_objects`, `process_OHM_data`, `use_working_folder_for_file_selection`, `automatic_four`, `overwrite_existing_azure_files`), you can enter:
 - true/false
 - yes/no
 - 1/0
@@ -56,6 +57,8 @@ For boolean settings (`group_compound_objects`, `use_working_folder_for_file_sel
 - If a legacy root-level `dart_settings.json` is found, DART automatically migrates it into `.DART-working-directory`
 - Sensitive fields (marked **[ENCRYPTED]**) are stored encrypted in the JSON file
 - `group_compound_objects` controls whether Function 1 groups similar filenames as compound objects
+- `process_OHM_data` enables OHM-data processing in Functions 1 and 2. OHM file identifiers come from existing filename stems, with `dg_prefix` optionally prepended. When it is saved as `true`, `group_compound_objects` is automatically saved as `false`
+- In OHM mode, select the project folder containing `OHM-data` (or select `OHM-data` itself). The package layout is expected to contain one `.mp3` and one transcript `.csv` in each recording directory.
 - `use_working_folder_for_file_selection` controls where the File Selector dialog opens (working/outputs folder when true, inputs folder when false)
 - `dg_prefix` is highly recommended when DART is used across multiple projects at the same time, but it is not required
 - Recommended convention: use a short 2-4 character project code such as `tdps`, `csm`, or `ohm`
