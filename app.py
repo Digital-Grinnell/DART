@@ -17,7 +17,7 @@ import shutil
 import tempfile
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Callable, Optional, Tuple
 from cryptography.fernet import Fernet, InvalidToken
 from azure.storage.blob import BlobServiceClient, ContentSettings
 from PIL import Image, ImageOps, ImageCms
@@ -395,6 +395,49 @@ def find_ohm_transcript_csv(mp3_path: Path) -> Optional[Path]:
     return transcript_files[0] if len(transcript_files) == 1 else None
 
 
+def find_ohm_transcript_json(mp3_path: Path) -> Optional[Path]:
+    """Return the sole '*_transcript.json' file beside an OHM-data MP3, if present."""
+    transcript_files = sorted(mp3_path.parent.glob("*_transcript.json"))
+    return transcript_files[0] if len(transcript_files) == 1 else None
+
+
+def get_ohm_first_speaker(transcript_json_path: Optional[Path]) -> str:
+    """Return the first segment 'speaker' value from an OHM transcript JSON file."""
+    if transcript_json_path is None:
+        return ""
+    try:
+        with open(transcript_json_path, 'r', encoding='utf-8') as f:
+            transcript_data = json.load(f)
+        for segment in transcript_data.get("segments", []):
+            speaker = segment.get("speaker", "")
+            if speaker:
+                return speaker
+    except (OSError, ValueError) as ex:
+        logger.warning(f"Could not read speaker from {transcript_json_path}: {ex}")
+    return ""
+
+
+def get_ohm_interviewee(originating_system_id: str) -> str:
+    """Derive a display-ready interviewee name from an OHM originating_system_id."""
+    without_dg_basename = re.sub(r"[\s_\-]*dg_\d+$", "", originating_system_id)
+    return re.sub(r"[_\-]+", " ", without_dg_basename).strip()
+
+
+def get_ohm_subject(interviewee: str) -> str:
+    """Build the standard OHM subject heading list for an interviewee."""
+    headings = [
+        f"{interviewee}\u2014Interviews",
+        "Grinnell College\u2014Students",
+        "Grinnell College\u2014History",
+        "Alumni and alumnae",
+        "College students\u2014Iowa",
+        "College environment\u2014Iowa",
+        "Higher education\u2014Iowa\u2014History",
+        "Oral history",
+    ]
+    return "; ".join(headings)
+
+
 def get_ohm_filename_id(file_path: Path, dg_prefix: str = "") -> str:
     """Build an OHM object ID from the existing filename stem."""
     stem = file_path.stem
@@ -506,6 +549,11 @@ def prepare_ohm_data_objects(
             "azure_path_type": "transcripts",
         })
 
+        originating_system_id = mp3_path.parent.name
+        interviewee = get_ohm_interviewee(originating_system_id)
+        transcript_json_source = find_ohm_transcript_json(mp3_path)
+        interviewer = get_ohm_first_speaker(transcript_json_source)
+
         objects.append({
             "objectid": mp3_id,
             "filepath": str(mp3_path),
@@ -515,7 +563,11 @@ def prepare_ohm_data_objects(
             "parentid": None,
             "type": "transcript",
             "object_transcript": transcript_destination.name,
-            "originating_system_id": mp3_path.parent.name,
+            "originating_system_id": originating_system_id,
+            "title": f"Oral history interview with {interviewee}" if interviewee else "",
+            "interviewee": interviewee,
+            "interviewer": interviewer,
+            "subject": get_ohm_subject(interviewee) if interviewee else "",
         })
 
         for sibling_path in sorted(mp3_path.parent.iterdir()):
@@ -534,8 +586,14 @@ def upload_ohm_auxiliary_files(
     blob_service_client,
     auxiliary_uploads: list,
     azure_path: str,
+    log_callback: Optional[Callable[[str], None]] = None,
 ) -> None:
     """Upload OHM transcript and sibling files outside the CSV export."""
+    def emit(message: str) -> None:
+        logger.info(message)
+        if log_callback:
+            log_callback(message)
+
     prepared_paths = {}
     for upload in auxiliary_uploads:
         path_type = upload["azure_path_type"]
@@ -544,23 +602,24 @@ def upload_ohm_auxiliary_files(
 
     for destination in prepared_paths.values():
         container_name = destination.strip().strip('/').split('/', 1)[0]
-        logger.info(f"Preparing OHM auxiliary container: {container_name} ({destination})")
+        emit(f"[INFO] Preparing OHM auxiliary container: {container_name} ({destination})")
         container_client = blob_service_client.get_container_client(container_name)
         if not container_client.exists():
             container_client.create_container()
-            logger.info(f"Created OHM auxiliary container: {container_name}")
+            emit(f"[INFO] Created OHM auxiliary container: {container_name}")
         else:
-            logger.info(f"OHM auxiliary container ready: {container_name}")
+            emit(f"[INFO] OHM auxiliary container ready: {container_name}")
 
     total_uploads = len(auxiliary_uploads)
-    logger.info(f"Starting {total_uploads} OHM auxiliary uploads at Hot tier")
+    emit(f"[INFO] Starting {total_uploads} OHM auxiliary uploads (transcripts and sibling files) at Hot tier...")
     for index, upload in enumerate(auxiliary_uploads, start=1):
         source = upload["source"]
         destination = prepared_paths[upload["azure_path_type"]]
         size = source.stat().st_size
-        logger.info(
-            f"OHM auxiliary upload {index}/{total_uploads} starting: "
-            f"{source.name} ({size} bytes) -> {destination}/{upload['azure_object_id']}{source.suffix}"
+        size_mb = size / (1024 * 1024)
+        emit(
+            f"[INFO] OHM auxiliary upload {index}/{total_uploads} starting: "
+            f"{source.name} ({size_mb:.1f} MB) -> {destination}/{upload['azure_object_id']}{source.suffix}"
         )
         uploaded, message = upload_to_azure(
             blob_service_client,
@@ -569,11 +628,12 @@ def upload_ohm_auxiliary_files(
             upload["azure_object_id"],
             source.suffix,
             progress_label=f"{index}/{total_uploads} {source.name}",
+            log_callback=log_callback,
         )
         if not uploaded:
             raise RuntimeError(message)
-        logger.info(f"OHM auxiliary upload {index}/{total_uploads} finished: {source.name}")
-        logger.info(f"Uploaded OHM auxiliary file: {source.name}")
+        emit(f"[SUCCESS] OHM auxiliary upload {index}/{total_uploads} finished: {source.name}")
+    emit(f"[SUCCESS] All {total_uploads} OHM auxiliary uploads complete")
 
 
 def ensure_app_settings_file(working_dir: str) -> Path:
@@ -919,6 +979,7 @@ def upload_to_azure(
     file_extension: str,
     access_tier: Optional[str] = None,
     progress_label: Optional[str] = None,
+    log_callback: Optional[Callable[[str], None]] = None,
 ) -> Tuple[bool, str]:
     """
     Upload a file to Azure Blob Storage with renamed filename.
@@ -981,6 +1042,10 @@ def upload_to_azure(
         upload_size = local_path.stat().st_size
         last_progress = [-1]
 
+        size_mb = upload_size / (1024 * 1024)
+        if log_callback and progress_label:
+            log_callback(f"[INFO] Uploading {progress_label} ({size_mb:.1f} MB)...")
+
         def report_progress(current: int, total: int) -> None:
             if not progress_label or not total:
                 return
@@ -989,6 +1054,8 @@ def upload_to_azure(
             if milestone > last_progress[0]:
                 last_progress[0] = milestone
                 logger.info(f"Azure upload progress: {progress_label}: {milestone}% ({current}/{total} bytes)")
+                if log_callback and milestone in (25, 50, 75, 100) and size_mb >= 5:
+                    log_callback(f"[INFO] Upload progress: {progress_label}: {milestone}%")
         
         # Upload file
         with open(local_path, 'rb') as data:
@@ -2977,7 +3044,9 @@ def main(page: ft.Page):
                             file_path,
                             azure_path,
                             azure_object_id,
-                            file_extension
+                            file_extension,
+                            progress_label=obj['filename'],
+                            log_callback=add_log_message,
                         )
                         
                         if upload_success:
@@ -3034,8 +3103,19 @@ def main(page: ft.Page):
                 export_columns.append('image_small')
             if 'image_thumb' not in export_columns:
                 export_columns.append('image_thumb')
+            if 'title' not in export_columns:
+                export_columns.append('title')
+            if 'interviewee' not in export_columns:
+                export_columns.append('interviewee')
+            if 'interviewer' not in export_columns:
+                export_columns.append('interviewer')
+            if 'subject' not in export_columns:
+                export_columns.append('subject')
 
         # Write CSV file
+        total_rows_to_write = len(compound_objects) + len(objects)
+        update_status(f"Writing {total_rows_to_write} rows to metadata CSV...")
+        add_log_message(f"[INFO] Writing {total_rows_to_write} rows ({len(export_columns)} columns) to {csv_filename}...")
         try:
             with open(csv_output_path, 'w', newline='', encoding='utf-8') as f:
                 writer = csv.DictWriter(f, fieldnames=export_columns)
@@ -3113,6 +3193,14 @@ def main(page: ft.Page):
                             row[col] = obj.get('object_transcript', '')
                         elif col == 'transcript':
                             row[col] = obj.get('object_transcript', '')
+                        elif col == 'title' and process_ohm_data:
+                            row[col] = obj.get('title', '')
+                        elif col == 'interviewee' and process_ohm_data:
+                            row[col] = obj.get('interviewee', '')
+                        elif col == 'interviewer' and process_ohm_data:
+                            row[col] = obj.get('interviewer', '')
+                        elif col == 'subject' and process_ohm_data:
+                            row[col] = obj.get('subject', '')
                         elif col == 'originating_system_id':
                             if process_ohm_data:
                                 row[col] = obj.get('originating_system_id', '')
@@ -3131,9 +3219,17 @@ def main(page: ft.Page):
                     
                     writer.writerow(row)
 
+            add_log_message(f"[SUCCESS] CSV written: {csv_filename}")
+
             if process_ohm_data and azure_enabled and blob_service_client:
+                if ohm_auxiliary_uploads:
+                    update_status(f"CSV written. Uploading {len(ohm_auxiliary_uploads)} auxiliary files (transcripts and siblings)...")
+                    add_log_message(
+                        f"[INFO] CSV export complete. Starting {len(ohm_auxiliary_uploads)} OHM auxiliary "
+                        "file uploads (transcripts and sibling files)..."
+                    )
                 try:
-                    upload_ohm_auxiliary_files(blob_service_client, ohm_auxiliary_uploads, azure_path)
+                    upload_ohm_auxiliary_files(blob_service_client, ohm_auxiliary_uploads, azure_path, log_callback=add_log_message)
                 except (OSError, RuntimeError) as ex:
                     add_log_message(f"[ERROR] OHM auxiliary upload failed after CSV export: {ex}")
                     update_status("CSV exported, but an OHM auxiliary upload failed", is_error=True)
