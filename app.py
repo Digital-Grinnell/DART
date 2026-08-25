@@ -401,6 +401,16 @@ def find_ohm_transcript_json(mp3_path: Path) -> Optional[Path]:
     return transcript_files[0] if len(transcript_files) == 1 else None
 
 
+def find_ohm_sibling_image(mp3_path: Path) -> Optional[Path]:
+    """Return the sole non-PDF image (.jpg/.jpeg/.png) beside an OHM-data MP3, if present."""
+    image_extensions = {'.jpg', '.jpeg', '.png'}
+    image_files = sorted(
+        path for path in mp3_path.parent.iterdir()
+        if path.is_file() and path.suffix.lower() in image_extensions
+    )
+    return image_files[0] if len(image_files) == 1 else None
+
+
 def get_ohm_first_speaker(transcript_json_path: Optional[Path]) -> str:
     """Return the first segment 'speaker' value from an OHM transcript JSON file."""
     if transcript_json_path is None:
@@ -3475,7 +3485,7 @@ def main(page: ft.Page):
         temp_dir.mkdir(exist_ok=True)
         
         # Pre-scan to show what will be processed/skipped
-        derivative_extensions = {'.jpg', '.jpeg', '.png'} if process_ohm_data else {
+        derivative_extensions = {
             '.jpg', '.jpeg', '.png', '.gif', '.tif', '.tiff', '.bmp', '.webp', '.pdf'
         }
         processable = 0
@@ -3488,6 +3498,13 @@ def main(page: ft.Page):
             elif filename.startswith('_'):
                 # Compound parent (underscore-prefixed first child filename)
                 no_filename += 1
+            elif process_ohm_data:
+                # OHM rows are the MP3 itself; look for a sibling image instead
+                mp3_path = Path(row.get('filepath', ''))
+                if mp3_path.is_file() and find_ohm_sibling_image(mp3_path):
+                    processable += 1
+                else:
+                    non_image += 1
             else:
                 ext = Path(filename).suffix.lower()
                 if ext not in derivative_extensions:
@@ -3501,7 +3518,8 @@ def main(page: ft.Page):
         if no_filename > 0:
             add_log_message(f"  • {no_filename} rows with no file (compound parents or metadata-only)")
         if non_image > 0:
-            add_log_message(f"  • {non_image} non-image/PDF files (will be skipped)")
+            skip_reason = "rows with no sibling image found" if process_ohm_data else "non-image/PDF files (will be skipped)"
+            add_log_message(f"  • {non_image} {skip_reason}")
         
         add_log_message(f"[INFO] Processing {total_rows} rows...")
         
@@ -3525,21 +3543,13 @@ def main(page: ft.Page):
                 skipped_count += 1
                 continue
             
-            # Skip non-image/PDF files
-            ext = Path(filename).suffix.lower()
-            if ext not in derivative_extensions:
-                skip_description = "non-sibling image" if process_ohm_data else "non-image/PDF file"
-                add_log_message(f"[SKIP #{idx+1}] {skip_description}: {filename}")
-                skipped_count += 1
-                continue
-            
             objectid = row.get('objectid', '')
             if not objectid:
                 add_log_message(f"[ERROR #{idx+1}] No object ID for {filename}")
                 skipped_count += 1
                 continue
             
-            # Find source file
+            # Find source file (the MP3 itself for OHM rows; the asset file otherwise)
             source_path = Path(row.get('filepath', ''))
             if not source_path.exists() or not source_path.is_file():
                 # Try to find it in input directory
@@ -3550,7 +3560,23 @@ def main(page: ft.Page):
                     skipped_count += 1
                     continue
             
-            add_log_message(f"[{idx+1}/{total_rows}] Processing {filename} ({objectid})")
+            if process_ohm_data:
+                # Generate derivatives from a sibling image beside the MP3, not the MP3 itself
+                sibling_image_path = find_ohm_sibling_image(source_path)
+                if not sibling_image_path:
+                    add_log_message(f"[SKIP #{idx+1}] No sibling image (.jpg/.png) found beside {filename}")
+                    skipped_count += 1
+                    continue
+                source_path = sibling_image_path
+                ext = source_path.suffix.lower()
+                add_log_message(f"[{idx+1}/{total_rows}] Processing sibling image {source_path.name} for {objectid}")
+            else:
+                ext = Path(filename).suffix.lower()
+                if ext not in derivative_extensions:
+                    add_log_message(f"[SKIP #{idx+1}] non-image/PDF file: {filename}")
+                    skipped_count += 1
+                    continue
+                add_log_message(f"[{idx+1}/{total_rows}] Processing {filename} ({objectid})")
             
             # Check if derivatives already exist in Azure
             small_filename = f"{objectid}_SMALL.jpg"

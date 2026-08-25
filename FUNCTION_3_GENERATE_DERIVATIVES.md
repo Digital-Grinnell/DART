@@ -13,7 +13,7 @@ Use this function after Function 2 (Export Assets to CSV and Azure) when you wan
 
 ## Requirements
 
-When `process_OHM_data` is enabled, Function 3 generates no OHM sibling derivatives because sibling files are intentionally excluded from the metadata CSV. PDF, audio, transcript, and other auxiliary files are skipped; their Azure objects are handled by Function 2.
+When `process_OHM_data` is enabled, Function 3 looks for a sibling image (`.jpg`/`.jpeg`/`.png`, not a PDF) beside each interview's MP3. If exactly one such image is found, Function 3 generates small and thumbnail derivatives from that image, uploads them to Azure, and populates `image_small`/`image_thumb` on the MP3's own CSV row (using the row's existing `objectid`). If no sibling image (or more than one) is found, that row is skipped and no derivatives are generated. The MP3, transcript, and other non-image sibling files are never used as derivative sources.
 - **Working/Outputs folder** must be set
 - **Azure Blob Storage** must be configured in Function 0 settings
   - Valid `azure_blob_storage_path` (contains `/objs/` folder)
