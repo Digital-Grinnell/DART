@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [Unreleased]
+## [6.0] - 2026-09-23
 
 ### Added
 - Restored a root-level `run.sh` compatibility launcher that forwards to `scripts/run.sh`, so existing macOS/Linux workflows can keep using `./run.sh`.
@@ -16,9 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - OHM mode preserves source MP3 `dg_...` identifiers, exports standalone transcript records, copies transcript CSVs to `_data/transcripts`, and uploads auxiliary files with detailed progress logging.
 
 ### Changed
+- Expanded `dg_prefix` into an unrestricted CollectionBuilder collection identifier. New identifiers may use collection slugs longer than four characters and may include hyphens or underscores.
+- Documented how to align the DART collection identifier with the unified Digital.Grinnell CollectionBuilder collection slug and Azure asset directories.
 - Function 3 derivative generation now performs ICC-aware TIFF normalization, converting embedded grayscale/scanner profiles to sRGB before JPEG derivatives are created.
 - Function 2 continues to preserve original source files in `/objs/`, while Function 3 applies TIFF normalization only to generated derivatives.
-- Bumped the application version to 5.0.
+- Bumped the application version to 6.0.
 - OHM sibling files are upload-only and are excluded from metadata CSV exports; Function 3 skips OHM derivative generation.
 
 ### Documentation

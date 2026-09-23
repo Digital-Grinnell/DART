@@ -714,22 +714,19 @@ def parse_bool_text(value: str) -> Optional[bool]:
 
 
 def validate_dg_prefix(value: str) -> Tuple[bool, str, str]:
-    """Validate and normalize optional DG prefix setting.
+    """Validate and normalize an optional collection identifier setting.
 
     Returns (is_valid, normalized_value, message).
-    Blank is allowed. Non-blank values are lowercased, limited to 4 chars,
-    and may contain letters and numbers only.
+    Blank is allowed. Non-blank values are lowercased and may contain letters,
+    numbers, hyphens, and underscores.
     """
     normalized = (value or "").strip().lower()
 
     if not normalized:
         return True, "", ""
 
-    if len(normalized) > 4:
-        return False, normalized, "dg_prefix must be 4 characters or fewer"
-
-    if not re.fullmatch(r"[a-z0-9]+", normalized):
-        return False, normalized, "dg_prefix may contain only letters and numbers"
+    if not re.fullmatch(r"[a-z0-9][a-z0-9_-]*", normalized):
+        return False, normalized, "dg_prefix must start with a letter or number and may contain letters, numbers, hyphens, and underscores"
 
     return True, normalized, ""
 
@@ -1714,9 +1711,8 @@ def main(page: ft.Page):
         dg_prefix_field = ft.TextField(
             label="dg_prefix",
             value=str(settings.get("dg_prefix", "")),
-            hint_text="Optional 1-4 character prefix added as <prefix>_dg_<epoch>",
+            hint_text="Optional collection identifier added as <collection>_dg_<epoch>",
             width=320,
-            max_length=4,
         )
         
         # Core Metadata CSV field with picker

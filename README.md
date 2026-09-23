@@ -43,7 +43,7 @@ DART is focused on providing a valid import/ingest-compatible CSV metadata file 
 
 **Identifier format note:** Epoch cutoff `1782237851` marks the introduction of the optional `dg_prefix` setting. IDs with earlier epoch values are legacy `dg_<epoch>` IDs. IDs generated after that cutoff may appear either as `dg_<epoch>` when the prefix is blank or as `<prefix>_dg_<epoch>` when a prefix is configured.
 
-**Recommended prefix convention:** When using `dg_prefix`, choose a stable 2-4 character project code such as `tdps`, `csm`, or `ohm`. Keep it consistent for the life of the project so new IDs remain recognizable and sort together.
+**Recommended collection identifier convention:** When using `dg_prefix`, choose the stable CollectionBuilder collection identifier, such as `tdps`, `student-life`, or `oral_history`. It may be any length and can use letters, numbers, hyphens, and underscores. For the unified Digital.Grinnell CollectionBuilder site, use the same identifier for the collection slug and Azure asset-path directory, such as `objs/student-life`, so IDs and published assets remain aligned.
 
 ## OHM-data Mode
 
@@ -104,7 +104,7 @@ DART provides a comprehensive platform for digital asset management workflows:
   - Creates a seamless workflow from asset analysis through metadata merge
   - Stops immediately if any errors occur
   - Automatically resets to `false` at start of each new session (opt-in per session)
-  - **Optional DG Prefix**: Set `dg_prefix` (up to 4 letters/numbers) to generate new IDs as `<prefix>_dg_<epoch>` for multi-project uniqueness
+  - **Optional Collection Identifier**: Set `dg_prefix` to generate new IDs as `<collection>_dg_<epoch>` for multi-collection uniqueness. Collection identifiers may be any length and can contain letters, numbers, hyphens, and underscores
 - **Function 1** 🎯: Analyze digital assets and generate standard DG identifiers (dg_<epoch>)
   - Creates compound objects for related file groups (optional)
   - Permanent ID assignment with folder-based compound tracking

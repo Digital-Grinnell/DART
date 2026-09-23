@@ -14,7 +14,7 @@ The encryption key is stored separately in `~/.DART-data/encryption_key` with re
 - **use_working_folder_for_file_selection**: When `true`, the File Selector opens in the working/outputs folder. When `false`, it opens in the inputs folder. **[BOOLEAN]**
 - **automatic_four**: When `true`, automatically executes Functions 2, 3, and 4 sequentially after Function 1 completes successfully. This creates a seamless workflow from asset analysis through CSV export, derivative generation, and metadata merge. Automatically resets to `false` at the start of each new session. **[BOOLEAN]**
 - **overwrite_existing_azure_files**: When `true`, Functions 2 and 3 replace existing Azure blobs with newly generated uploads. When `false` (default), DART skips existing blobs when possible. **[BOOLEAN]**
-- **dg_prefix**: Optional project prefix for newly generated DG identifiers. Leave blank to keep the legacy `dg_<epoch>` format. When set, DART generates IDs as `<prefix>_dg_<epoch>`. Limited to 4 letters/numbers; the trailing underscore is added automatically. **[OPTIONAL, MAX 4]**
+- **dg_prefix**: Optional CollectionBuilder collection identifier for newly generated DG identifiers. Leave blank to keep the legacy `dg_<epoch>` format. When set, DART generates IDs as `<collection>_dg_<epoch>`. It may be any length and can contain letters, numbers, hyphens, and underscores; the trailing underscore is added automatically. For the unified Digital.Grinnell site, use the same value as the collection slug and Azure asset-path directory, such as `student-life` with `objs/student-life`, `smalls/student-life`, and `thumbs/student-life`. **[OPTIONAL]**
 - **core_metadata_csv**: Path to your core metadata CSV file. This file serves two purposes: (1) defines the column structure/template for metadata exports, and (2) acts as the master metadata file that future functions will update and merge into. **[VALIDATED]**
 - **azure_blob_storage_path**: Azure Blob Storage path for cloud storage operations. **[VALIDATED]**
   - **REQUIRED**: Path must contain `/objs/` folder (this holds original source files)
@@ -60,8 +60,8 @@ For boolean settings (`group_compound_objects`, `process_OHM_data`, `use_working
 - `process_OHM_data` enables OHM-data processing in Functions 1 and 2. OHM file identifiers come from existing filename stems, with `dg_prefix` optionally prepended. When it is saved as `true`, `group_compound_objects` is automatically saved as `false`
 - In OHM mode, select the project folder containing `OHM-data` (or select `OHM-data` itself). The package layout is expected to contain one `.mp3` and one transcript `.csv` in each recording directory.
 - `use_working_folder_for_file_selection` controls where the File Selector dialog opens (working/outputs folder when true, inputs folder when false)
-- `dg_prefix` is highly recommended when DART is used across multiple projects at the same time, but it is not required
-- Recommended convention: use a short 2-4 character project code such as `tdps`, `csm`, or `ohm`
+- `dg_prefix` is highly recommended when DART is used across multiple collections at the same time. For the unified Digital.Grinnell CollectionBuilder site, keep it aligned with the collection slug and Azure asset-path directory; it is not required for legacy projects
+- Recommended convention: use the stable collection identifier, such as `tdps`, `student-life`, or `oral_history`
 - Keep the prefix stable for the life of a project so newly assigned IDs sort consistently and remain easy to recognize
 - IDs created before epoch `1782237851` will always be in legacy `dg_<epoch>` form
 - IDs created at or after epoch `1782237851` may appear either as legacy `dg_<epoch>` (blank prefix) or new `<prefix>_dg_<epoch>` values

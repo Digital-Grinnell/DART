@@ -27,7 +27,7 @@ If a behavior is driven by documentation, mappings, or a focused helper script, 
 ### Durable Identifiers
 - `dg_<epoch>` object identifiers are intended to be permanent once assigned
 - New projects may optionally generate IDs as `<prefix>_dg_<epoch>` using the Function 0 `dg_prefix` setting; preserve that prefix when present
-- `dg_prefix` values are optional, limited to 4 alphanumeric characters, and should be treated as project-scoped uniqueness aids rather than editable metadata
+- `dg_prefix` values are optional CollectionBuilder collection identifiers. They may contain lowercase letters, numbers, hyphens, and underscores, and should be treated as collection-scoped uniqueness aids rather than editable metadata
 - Do not rewrite existing identifier mappings casually
 - Be careful with logic touching `file_to_id_map`, compound object IDs, or merge matching behavior
 
