@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - OHM mode preserves source MP3 `dg_...` identifiers, exports standalone transcript records, copies transcript CSVs to `_data/transcripts`, and uploads auxiliary files with detailed progress logging.
 
 ### Changed
+- Function 0 settings dialog now shows an on-screen reminder, above the `collection-id` field, to consult `docs/DG-documents/Creating a New Collection (Overlay Model).md` in the `DG-with-CB-and-Pagefind` repository before creating a new collection.
 - Functions 4 and 6 now refuse to merge into a core CSV whose filename is literally `collection-template.csv`, protecting the reserved template file from being overwritten. Point `core_metadata_csv` at your project's own copy instead.
 - Renamed the `dg_prefix` setting to `collection-id` to make clear it becomes part of every object's unique ID (`<collection-id>_dg_<epoch>`) and is used for Azure sub-directory names and CollectionBuilder slugs. Legacy `dart_settings.json` files with a `dg_prefix` key are automatically migrated to `collection-id` on load.
 - `collection-id` is now a **required** Function 0 setting; the settings dialog rejects blank values instead of falling back to legacy blank-prefix behavior. Moved the `collection-id` field to the top of the Function 0 settings dialog to emphasize its importance.
@@ -28,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Documentation
 - Updated README, QUICKSTART, INSTALLATION, and function help docs to reflect the restored root launcher, Azure overwrite option, and ICC-aware TIFF derivative behavior.
+- Cross-referenced the `DG-with-CB-and-Pagefind` site repository's `docs/DG-documents/Creating a New Collection (Overlay Model).md` from README.md, FUNCTION_0_APP_SETTINGS.md, and AGENTS.md, documenting how `collection-id` and the reserved `collection-template` name carry through to that repository's overlay slugs, `_config.yml`, and CSV naming.
 
 ---
 

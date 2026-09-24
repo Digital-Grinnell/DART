@@ -1955,6 +1955,20 @@ def main(page: ft.Page):
                         ),
                         settings_path_text,
                         ft.Container(height=8),
+                        ft.Container(
+                            content=ft.Text(
+                                "⚠️ Before creating a NEW collection, consult "
+                                "'Creating a New Collection (Overlay Model).md' in the "
+                                "DG-with-CB-and-Pagefind repo's docs/DG-documents folder.",
+                                size=11,
+                                color=ft.Colors.ORANGE_900,
+                                weight=ft.FontWeight.BOLD,
+                            ),
+                            bgcolor=ft.Colors.ORANGE_50,
+                            padding=8,
+                            border_radius=4,
+                        ),
+                        ft.Container(height=4),
                         collection_id_field,
                         ft.Container(height=8),
                         group_compound_field,

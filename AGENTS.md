@@ -32,6 +32,10 @@ If a behavior is driven by documentation, mappings, or a focused helper script, 
 - Do not rewrite existing identifier mappings casually
 - Be careful with logic touching `file_to_id_map`, compound object IDs, or merge matching behavior
 
+### Related External Documentation
+- DART's `collection-id` setting and its reserved `collection-template` core CSV name are intentionally consistent with the downstream `DG-with-CB-and-Pagefind` site repository's overlay model, where the same identifier becomes the collection's folder slug, `_config.yml` `baseurl`/`metadata`, and CSV base name, and `collection-template` is likewise reserved and never deployed as a real collection
+- See that repository's `docs/DG-documents/Creating a New Collection (Overlay Model).md` for the full downstream workflow when a change here affects how collections are published
+
 ### Generated and Working Files
 - `.DART-working-directory/` content is generated workflow output, not source code
 - Keep generated artifacts in `.DART-working-directory/`, including `DART_*`, `csvdiff_*`, `dart_settings.json`, merge backups (`*.backup_*`), and temporary derivative files

@@ -45,6 +45,8 @@ DART is focused on providing a valid import/ingest-compatible CSV metadata file 
 
 **Recommended collection identifier convention:** When setting `collection-id`, choose the stable CollectionBuilder collection identifier, such as `tdps`, `student-life`, or `oral_history`. It may be any length and can use letters, numbers, hyphens, and underscores. For the unified Digital.Grinnell CollectionBuilder site, use the same identifier for the collection slug and Azure asset-path directory, such as `objs/student-life`, so IDs and published assets remain aligned.
 
+**Downstream publishing note:** In the `DG-with-CB-and-Pagefind` site repository, this same identifier becomes the collection's overlay folder slug (`collections/<slug>/`), `_config.yml` `baseurl`/`metadata` values, and core metadata CSV base name (e.g. `_data/<slug>.csv`). See that repository's `docs/DG-documents/Creating a New Collection (Overlay Model).md` for the full downstream workflow, including why the reserved `collection-template` slug/filename must never be used for a real collection.
+
 ## OHM-data Mode
 
 Set `process_OHM_data` to `true` in Function 0 for packaged Oral History Manager data. Select the project root containing `OHM-data`, or select the `OHM-data` directory itself.
