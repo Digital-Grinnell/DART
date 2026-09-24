@@ -81,6 +81,7 @@ All field changes are shown in this format:
    - Core CSV is NOT modified
    - Backup is preserved
    - Error dialog shows detailed information
+7. **Template protection (v6.0+)**: If `core_metadata_csv` points to a file literally named `collection-template.csv`, Function 6 refuses to merge and never overwrites it. Point `core_metadata_csv` at your project's own copy instead.
 
 ## Matching Logic
 

@@ -17,7 +17,7 @@ import shutil
 import tempfile
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, Optional, Tuple
+from typing import Callable, Optional, Tuple, Union
 from cryptography.fernet import Fernet, InvalidToken
 from azure.storage.blob import BlobServiceClient, ContentSettings
 from PIL import Image, ImageOps, ImageCms
@@ -131,7 +131,7 @@ DEFAULT_APP_SETTINGS = {
     "use_working_folder_for_file_selection": False,
     "automatic_four": False,
     "overwrite_existing_azure_files": False,
-    "dg_prefix": "",
+    "collection-id": "",
     "core_metadata_csv": "",
     "azure_blob_storage_path": "",
     "azure_connection_string": "",
@@ -448,25 +448,25 @@ def get_ohm_subject(interviewee: str) -> str:
     return "; ".join(headings)
 
 
-def get_ohm_filename_id(file_path: Path, dg_prefix: str = "") -> str:
+def get_ohm_filename_id(file_path: Path, collection_id: str = "") -> str:
     """Build an OHM object ID from the existing filename stem."""
     stem = file_path.stem
     match = re.search(r"(?:[A-Za-z0-9]{1,4}_)?(dg_\d+)$", stem)
     base_id = match.group(1) if match else stem
-    return f"{dg_prefix}_{base_id}" if dg_prefix else base_id
+    return f"{collection_id}_{base_id}" if collection_id else base_id
 
 
-def get_ohm_filename(file_path: Path, dg_prefix: str = "") -> str:
-    """Return the source filename with the optional project prefix prepended."""
-    object_id = get_ohm_filename_id(file_path, dg_prefix)
+def get_ohm_filename(file_path: Path, collection_id: str = "") -> str:
+    """Return the source filename with the collection-id prefix prepended."""
+    object_id = get_ohm_filename_id(file_path, collection_id)
     return f"{object_id}{file_path.suffix}"
 
 
-def get_ohm_sibling_azure_stem(sibling_path: Path, mp3_path: Path, dg_prefix: str = "") -> str:
+def get_ohm_sibling_azure_stem(sibling_path: Path, mp3_path: Path, collection_id: str = "") -> str:
     """Build an OHM sibling Azure basename from its MP3's dg basename."""
     dg_match = re.search(r"dg_\d+$", mp3_path.stem)
     dg_basename = dg_match.group(0) if dg_match else mp3_path.stem
-    prefix = f"{dg_prefix}_" if dg_prefix else ""
+    prefix = f"{collection_id}_" if collection_id else ""
     if sibling_path.stem.startswith("dg_"):
         return f"{prefix}{dg_basename}"
     return f"{prefix}{sibling_path.stem}_{dg_basename}"
@@ -522,7 +522,7 @@ def prepare_ohm_data_objects(
     mp3_files: list,
     working_dir: str,
     file_to_id_map: dict,
-    dg_prefix: str,
+    collection_id: str,
     page,
 ) -> Tuple[list, list, int, int]:
     """Build standalone OHM transcript records and upload-only sibling records."""
@@ -539,7 +539,7 @@ def prepare_ohm_data_objects(
             raise ValueError(f"Expected one transcript CSV beside {mp3_path.name}")
 
         mp3_key = get_stable_path(str(mp3_path))
-        mp3_id = get_ohm_filename_id(mp3_path, dg_prefix)
+        mp3_id = get_ohm_filename_id(mp3_path, collection_id)
         if file_to_id_map.get(mp3_key) == mp3_id:
             reused_mappings += 1
         else:
@@ -550,12 +550,12 @@ def prepare_ohm_data_objects(
         transcript_id = transcript_source.stem
         file_to_id_map[transcript_key] = transcript_id
         reused_mappings += 1
-        transcript_destination = transcript_directory / get_ohm_filename(transcript_source, dg_prefix)
+        transcript_destination = transcript_directory / get_ohm_filename(transcript_source, collection_id)
         shutil.copy2(transcript_source, transcript_destination)
 
         auxiliary_uploads.append({
             "source": transcript_destination,
-            "azure_object_id": get_ohm_sibling_azure_stem(transcript_source, mp3_path, dg_prefix),
+            "azure_object_id": get_ohm_sibling_azure_stem(transcript_source, mp3_path, collection_id),
             "azure_path_type": "transcripts",
         })
 
@@ -585,7 +585,7 @@ def prepare_ohm_data_objects(
                 continue
             auxiliary_uploads.append({
                 "source": sibling_path,
-                "azure_object_id": get_ohm_sibling_azure_stem(sibling_path, mp3_path, dg_prefix),
+                "azure_object_id": get_ohm_sibling_azure_stem(sibling_path, mp3_path, collection_id),
                 "azure_path_type": "objs",
             })
 
@@ -681,6 +681,10 @@ def load_app_settings(working_dir: str) -> Tuple[dict, str]:
         loaded = decrypt_sensitive_settings(loaded)
         settings = dict(DEFAULT_APP_SETTINGS)
         settings.update(loaded)
+        # Migrate legacy pre-v6.0 "dg_prefix" key to "collection-id"
+        if not settings.get("collection-id") and loaded.get("dg_prefix"):
+            settings["collection-id"] = loaded["dg_prefix"]
+        settings.pop("dg_prefix", None)
         return settings, ""
     except Exception as e:
         logger.error(f"Could not load app settings: {str(e)}")
@@ -713,20 +717,20 @@ def parse_bool_text(value: str) -> Optional[bool]:
     return None
 
 
-def validate_dg_prefix(value: str) -> Tuple[bool, str, str]:
-    """Validate and normalize an optional collection identifier setting.
+def validate_collection_id(value: str) -> Tuple[bool, str, str]:
+    """Validate and normalize the required collection-id setting.
 
     Returns (is_valid, normalized_value, message).
-    Blank is allowed. Non-blank values are lowercased and may contain letters,
-    numbers, hyphens, and underscores.
+    Blank is not allowed as of v6.0. Values are lowercased and may contain
+    letters, numbers, hyphens, and underscores.
     """
     normalized = (value or "").strip().lower()
 
     if not normalized:
-        return True, "", ""
+        return False, normalized, "collection-id is required and cannot be blank"
 
     if not re.fullmatch(r"[a-z0-9][a-z0-9_-]*", normalized):
-        return False, normalized, "dg_prefix must start with a letter or number and may contain letters, numbers, hyphens, and underscores"
+        return False, normalized, "collection-id must start with a letter or number and may contain letters, numbers, hyphens, and underscores"
 
     return True, normalized, ""
 
@@ -789,6 +793,14 @@ def validate_csv_structure(csv_path: str) -> Tuple[bool, str, list]:
             
     except Exception as e:
         return False, f"Error reading CSV file: {str(e)}", []
+
+
+PROTECTED_CORE_CSV_NAME = "collection-template.csv"
+
+
+def is_protected_core_csv_name(csv_path: Union[str, Path]) -> bool:
+    """Return True if the core CSV filename is the reserved template name that must never be merge-overwritten."""
+    return Path(csv_path).name.strip().lower() == PROTECTED_CORE_CSV_NAME
 
 
 def validate_core_metadata_csv(csv_path: str) -> Tuple[bool, str]:
@@ -1678,6 +1690,12 @@ def main(page: ft.Page):
         settings_path = get_app_settings_path(working_dir)
         
         # Create form fields
+        collection_id_field = ft.TextField(
+            label="collection-id (required)",
+            value=str(settings.get("collection-id", "")),
+            hint_text="Required: becomes part of every object's unique ID (<collection-id>_dg_<epoch>) and is used for Azure sub-directory names and CollectionBuilder slugs",
+            width=320,
+        )
         group_compound_field = ft.TextField(
             label="group_compound_objects",
             value=str(settings.get("group_compound_objects", False)).lower(),
@@ -1706,12 +1724,6 @@ def main(page: ft.Page):
             label="overwrite_existing_azure_files",
             value=str(settings.get("overwrite_existing_azure_files", False)).lower(),
             hint_text="true or false - replace existing Azure blobs during Function 2/3 uploads",
-            width=320,
-        )
-        dg_prefix_field = ft.TextField(
-            label="dg_prefix",
-            value=str(settings.get("dg_prefix", "")),
-            hint_text="Optional collection identifier added as <collection>_dg_<epoch>",
             width=320,
         )
         
@@ -1826,6 +1838,11 @@ def main(page: ft.Page):
             page.update()
 
         def save_settings_click(evt):
+            collection_id_valid, parsed_collection_id, collection_id_error = validate_collection_id(collection_id_field.value)
+            if not collection_id_valid:
+                update_status(f"Error: {collection_id_error}", is_error=True)
+                return
+
             parsed_group_compound = parse_bool_text(group_compound_field.value)
             if parsed_group_compound is None:
                 update_status(
@@ -1869,11 +1886,6 @@ def main(page: ft.Page):
                 )
                 return
 
-            dg_prefix_valid, parsed_dg_prefix, dg_prefix_error = validate_dg_prefix(dg_prefix_field.value)
-            if not dg_prefix_valid:
-                update_status(f"Error: {dg_prefix_error}", is_error=True)
-                return
-            
             # Validate core metadata CSV if provided
             core_csv_path = (core_csv_field.value or "").strip()
             if core_csv_path:
@@ -1909,7 +1921,7 @@ def main(page: ft.Page):
                 "use_working_folder_for_file_selection": parsed_use_working_folder,
                 "automatic_four": parsed_automatic_four,
                 "overwrite_existing_azure_files": parsed_overwrite_existing_azure_files,
-                "dg_prefix": parsed_dg_prefix,
+                "collection-id": parsed_collection_id,
                 "core_metadata_csv": core_csv_path,
                 "azure_blob_storage_path": azure_path_value,
                 "azure_connection_string": (azure_connection_field.value or "").strip(),
@@ -1943,12 +1955,13 @@ def main(page: ft.Page):
                         ),
                         settings_path_text,
                         ft.Container(height=8),
+                        collection_id_field,
+                        ft.Container(height=8),
                         group_compound_field,
                         process_ohm_data_field,
                         use_working_folder_field,
                         automatic_four_field,
                         overwrite_existing_azure_files_field,
-                        dg_prefix_field,
                         ft.Container(height=8),
                         ft.Text(
                             "Core Metadata CSV:",
@@ -1995,7 +2008,7 @@ def main(page: ft.Page):
         settings_dialog.open = True
         page.update()
 
-    def analyze_compound_objects(objects, group_compound, file_to_id_map, page, dg_prefix=""):
+    def analyze_compound_objects(objects, group_compound, file_to_id_map, page, collection_id=""):
         """
         Analyze objects for compound grouping patterns and assign parent/child relationships.
         
@@ -2009,7 +2022,7 @@ def main(page: ft.Page):
             group_compound: Boolean, whether to perform compound grouping
             file_to_id_map: Dict of existing file/compound ID mappings
             page: Flet page object for ID generation
-            dg_prefix: Optional project prefix for newly generated IDs
+            collection_id: Required collection identifier prefix for newly generated IDs
             
         Returns:
             tuple: (compound_objects, file_to_id_map, new_mappings, reused_mappings)
@@ -2256,7 +2269,7 @@ def main(page: ft.Page):
                 add_log_message(f"[DEBUG] Reusing existing compound ID {compound_id} for folder {folder_path}")
                 logger.info(f"[DEBUG] Reused compound: {compound_id} | Folder: {folder_path}")
             else:
-                compound_id = generate_unique_id(page, dg_prefix)
+                compound_id = generate_unique_id(page, collection_id)
                 file_to_id_map[compound_key] = compound_id
                 compound_new_mappings += 1
                 add_log_message(f"[DEBUG] Created new compound {compound_id} for folder {folder_path}")
@@ -2303,7 +2316,7 @@ def main(page: ft.Page):
                         compound_reused_mappings += 1
                         logger.info(f"[DEBUG] Reused multiple: {multiple_id} | Folder: {folder_path} | Base: '{text_base}'")
                     else:
-                        multiple_id = generate_unique_id(page, dg_prefix)
+                        multiple_id = generate_unique_id(page, collection_id)
                         file_to_id_map[multiple_key] = multiple_id
                         compound_new_mappings += 1
                         logger.info(f"[DEBUG] New multiple: {multiple_id} | Folder: {folder_path} | Base: '{text_base}'")
@@ -2353,14 +2366,14 @@ def main(page: ft.Page):
         working_dir = output_dir_field.value
         group_compound = False
         process_ohm_data = False
-        dg_prefix = ""
+        collection_id = ""
         if working_dir:
             settings, _ = load_app_settings(working_dir)
             group_compound = settings.get("group_compound_objects", False)
             process_ohm_data = settings.get("process_OHM_data", False)
             if process_ohm_data:
                 group_compound = False
-            dg_prefix = settings.get("dg_prefix", "")
+            collection_id = settings.get("collection-id", "")
         
         # DEBUG: Log settings
         add_log_message(f"[DEBUG] Working/Outputs Folder: {working_dir or 'Not set'}")
@@ -2435,9 +2448,9 @@ def main(page: ft.Page):
             logger.info(f"[DEBUG] Existing mappings: {file_to_id_map}")
 
         # Generate or retrieve standard DG identifiers for each file
-        if dg_prefix:
-            add_log_message(f"[DEBUG] Assigning prefixed DG identifiers using '{dg_prefix}_dg_<epoch>' format")
-            logger.info(f"[DEBUG] Using prefixed DG identifier format: {dg_prefix}_dg_<epoch_time>")
+        if collection_id:
+            add_log_message(f"[DEBUG] Assigning prefixed DG identifiers using '{collection_id}_dg_<epoch>' format")
+            logger.info(f"[DEBUG] Using prefixed DG identifier format: {collection_id}_dg_<epoch_time>")
         else:
             add_log_message(f"[DEBUG] Assigning standard dg_<epoch> identifiers")
             logger.info("[DEBUG] Using standard DG identifier format: dg_<epoch_time>")
@@ -2455,7 +2468,7 @@ def main(page: ft.Page):
             
             if process_ohm_data:
                 # OHM source filenames already contain the durable dg_<epoch> ID.
-                unique_id = get_ohm_filename_id(file_path, dg_prefix)
+                unique_id = get_ohm_filename_id(file_path, collection_id)
                 if file_to_id_map.get(stable_path) == unique_id:
                     reused_mappings += 1
                 else:
@@ -2470,7 +2483,7 @@ def main(page: ft.Page):
                 logger.info(f"[DEBUG] Reusing existing: {unique_id} → {stable_path} (full: {file_path_str})")
             else:
                 # Generate new unique DG identifier
-                unique_id = generate_unique_id(page, dg_prefix)
+                unique_id = generate_unique_id(page, collection_id)
                 file_to_id_map[stable_path] = unique_id
                 new_mappings += 1
                 logger.info(f"[DEBUG] Generated new: {unique_id} → {stable_path} (full: {file_path_str})")
@@ -2491,7 +2504,7 @@ def main(page: ft.Page):
             compound_reused = 0
         else:
             compound_objects, file_to_id_map, compound_new, compound_reused = analyze_compound_objects(
-                objects, group_compound, file_to_id_map, page, dg_prefix
+                objects, group_compound, file_to_id_map, page, collection_id
             )
         
         # Update mapping counts
@@ -2845,7 +2858,7 @@ def main(page: ft.Page):
         process_ohm_data = settings.get("process_OHM_data", False)
         if process_ohm_data:
             group_compound = False
-        dg_prefix = settings.get("dg_prefix", "")
+        collection_id = settings.get("collection-id", "")
         
         asset_extensions = {
             '.jpg', '.jpeg', '.png', '.gif', '.tif', '.tiff', '.bmp', '.webp',
@@ -2907,7 +2920,7 @@ def main(page: ft.Page):
                     [Path(file_path) for file_path in files],
                     working_dir,
                     file_to_id_map,
-                    dg_prefix,
+                    collection_id,
                     page,
                 )
             except (OSError, ValueError) as ex:
@@ -2926,7 +2939,7 @@ def main(page: ft.Page):
                     unique_id = file_to_id_map[stable_path]
                     reused_mappings += 1
                 else:
-                    unique_id = generate_unique_id(page, dg_prefix)
+                    unique_id = generate_unique_id(page, collection_id)
                     file_to_id_map[stable_path] = unique_id
                     new_mappings += 1
                 objects.append({
@@ -2946,7 +2959,7 @@ def main(page: ft.Page):
             compound_reused = 0
         else:
             compound_objects, file_to_id_map, compound_new, compound_reused = analyze_compound_objects(
-                objects, group_compound, file_to_id_map, page, dg_prefix
+                objects, group_compound, file_to_id_map, page, collection_id
             )
         
         # Update mapping counts
@@ -3903,6 +3916,14 @@ def main(page: ft.Page):
             update_status(f"Error: Core CSV file not found: {old_csv.name}", is_error=True)
             add_log_message(f"[ERROR] Core metadata CSV not found: {core_csv_path}")
             add_log_message("[INFO] Update core_metadata_csv path in Function 0 settings")
+            return
+
+        if is_protected_core_csv_name(old_csv):
+            update_status(
+                f"Error: '{PROTECTED_CORE_CSV_NAME}' cannot be overwritten by a merge. Point core_metadata_csv at your project's own copy.",
+                is_error=True,
+            )
+            add_log_message(f"[ERROR] Refusing to merge into reserved template file: {old_csv.name}")
             return
         
         # Find all DART_export CSV files in DART working subdirectory, sorted by modification time (newest first)
@@ -4875,6 +4896,14 @@ Detailed results: {output_diff.name}
                                     if not selected_added and not selected_field_changes:
                                         update_status("No changes selected to merge", is_error=True)
                                         return
+
+                                    if is_protected_core_csv_name(old_csv):
+                                        update_status(
+                                            f"Error: '{PROTECTED_CORE_CSV_NAME}' cannot be overwritten by a merge.",
+                                            is_error=True,
+                                        )
+                                        add_log_message(f"[ERROR] Refusing to merge into reserved template file: {old_csv.name}")
+                                        return
                                     
                                     # Confirm merge
                                     def confirm_merge(ev):
@@ -5520,6 +5549,14 @@ Detailed results: {output_diff.name}
             update_status(f"Error: Core CSV file not found: {old_csv.name}", is_error=True)
             add_log_message(f"[ERROR] Core metadata CSV not found: {core_csv_path}")
             return
+
+        if is_protected_core_csv_name(old_csv):
+            update_status(
+                f"Error: '{PROTECTED_CORE_CSV_NAME}' cannot be overwritten by a merge. Point core_metadata_csv at your project's own copy.",
+                is_error=True,
+            )
+            add_log_message(f"[ERROR] Refusing to merge into reserved template file: {old_csv.name}")
+            return
         
         # Find all DART_seeklight_transformed CSV files
         dart_working_dir = get_dart_working_dir(working_dir)
@@ -5736,6 +5773,14 @@ Detailed results: {output_diff.name}
                             
                             if not selected_new and not selected_changes:
                                 update_status("No changes selected", is_error=True)
+                                return
+
+                            if is_protected_core_csv_name(old_csv):
+                                update_status(
+                                    f"Error: '{PROTECTED_CORE_CSV_NAME}' cannot be overwritten by a merge.",
+                                    is_error=True,
+                                )
+                                add_log_message(f"[ERROR] Refusing to merge into reserved template file: {old_csv.name}")
                                 return
                             
                             # Create backup in DART working subdirectory

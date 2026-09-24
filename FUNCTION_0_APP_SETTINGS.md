@@ -9,13 +9,13 @@ Open the application settings file in the selected working/outputs folder's `.DA
 The encryption key is stored separately in `~/.DART-data/encryption_key` with restricted permissions.
 
 ## Current Settings
+- **collection-id**: **Required** CollectionBuilder collection identifier. This value becomes part of every new object's permanent unique ID (`<collection-id>_dg_<epoch>`) and is also used to name Azure sub-directories and CollectionBuilder slugs; blank values are rejected on save. It may be any length and can contain letters, numbers, hyphens, and underscores; the trailing underscore is added automatically. For the unified Digital.Grinnell site, use the same value as the collection slug and Azure asset-path directory, such as `student-life` with `objs/student-life`, `smalls/student-life`, and `thumbs/student-life`. **[REQUIRED]**
 - **group_compound_objects**: When `true`, groups similar filenames as compound objects in asset analysis. **[BOOLEAN]**
 - **process_OHM_data**: When `true`, enables OHM-data processing in Functions 1 and 2. Saving this as `true` automatically sets `group_compound_objects` to `false` because OHM-data processing uses a different object-handling model. **[BOOLEAN]**
 - **use_working_folder_for_file_selection**: When `true`, the File Selector opens in the working/outputs folder. When `false`, it opens in the inputs folder. **[BOOLEAN]**
 - **automatic_four**: When `true`, automatically executes Functions 2, 3, and 4 sequentially after Function 1 completes successfully. This creates a seamless workflow from asset analysis through CSV export, derivative generation, and metadata merge. Automatically resets to `false` at the start of each new session. **[BOOLEAN]**
 - **overwrite_existing_azure_files**: When `true`, Functions 2 and 3 replace existing Azure blobs with newly generated uploads. When `false` (default), DART skips existing blobs when possible. **[BOOLEAN]**
-- **dg_prefix**: Optional CollectionBuilder collection identifier for newly generated DG identifiers. Leave blank to keep the legacy `dg_<epoch>` format. When set, DART generates IDs as `<collection>_dg_<epoch>`. It may be any length and can contain letters, numbers, hyphens, and underscores; the trailing underscore is added automatically. For the unified Digital.Grinnell site, use the same value as the collection slug and Azure asset-path directory, such as `student-life` with `objs/student-life`, `smalls/student-life`, and `thumbs/student-life`. **[OPTIONAL]**
-- **core_metadata_csv**: Path to your core metadata CSV file. This file serves two purposes: (1) defines the column structure/template for metadata exports, and (2) acts as the master metadata file that future functions will update and merge into. **[VALIDATED]**
+- **core_metadata_csv**: Path to your core metadata CSV file. This file serves two purposes: (1) defines the column structure/template for metadata exports, and (2) acts as the master metadata file that future functions will update and merge into. **[VALIDATED]** As of v6.0, if this path's filename is literally `collection-template.csv`, Functions 4 and 6 refuse to merge into it — point this setting at your project's own copy instead.
 - **azure_blob_storage_path**: Azure Blob Storage path for cloud storage operations. **[VALIDATED]**
   - **REQUIRED**: Path must contain `/objs/` folder (this holds original source files)
   - Format: `container/objs/subfolder` or `objs/collection_name`
@@ -57,14 +57,14 @@ For boolean settings (`group_compound_objects`, `process_OHM_data`, `use_working
 - If a legacy root-level `dart_settings.json` is found, DART automatically migrates it into `.DART-working-directory`
 - Sensitive fields (marked **[ENCRYPTED]**) are stored encrypted in the JSON file
 - `group_compound_objects` controls whether Function 1 groups similar filenames as compound objects
-- `process_OHM_data` enables OHM-data processing in Functions 1 and 2. OHM file identifiers come from existing filename stems, with `dg_prefix` optionally prepended. When it is saved as `true`, `group_compound_objects` is automatically saved as `false`
+- `process_OHM_data` enables OHM-data processing in Functions 1 and 2. OHM file identifiers come from existing filename stems, with `collection-id` prepended. When it is saved as `true`, `group_compound_objects` is automatically saved as `false`
 - In OHM mode, select the project folder containing `OHM-data` (or select `OHM-data` itself). The package layout is expected to contain one `.mp3` and one transcript `.csv` in each recording directory.
 - `use_working_folder_for_file_selection` controls where the File Selector dialog opens (working/outputs folder when true, inputs folder when false)
-- `dg_prefix` is highly recommended when DART is used across multiple collections at the same time. For the unified Digital.Grinnell CollectionBuilder site, keep it aligned with the collection slug and Azure asset-path directory; it is not required for legacy projects
+- `collection-id` is required as of v6.0 so DART can be used across multiple collections without ID collisions. It becomes part of every new object's unique ID and is also used for Azure sub-directory names and CollectionBuilder slugs. For the unified Digital.Grinnell CollectionBuilder site, keep it aligned with the collection slug and Azure asset-path directory
 - Recommended convention: use the stable collection identifier, such as `tdps`, `student-life`, or `oral_history`
-- Keep the prefix stable for the life of a project so newly assigned IDs sort consistently and remain easy to recognize
+- Keep the identifier stable for the life of a project so newly assigned IDs sort consistently and remain easy to recognize
 - IDs created before epoch `1782237851` will always be in legacy `dg_<epoch>` form
-- IDs created at or after epoch `1782237851` may appear either as legacy `dg_<epoch>` (blank prefix) or new `<prefix>_dg_<epoch>` values
+- IDs created at or after epoch `1782237851` and before v6.0 may appear as legacy `dg_<epoch>` (blank prefix); v6.0+ requires `<prefix>_dg_<epoch>` for all new IDs
 - `azure_blob_storage_path` should use forward slashes and follow Azure Blob Storage path conventions (e.g., `container/folder/subfolder`)
 - `azure_connection_string` is your Azure Storage account connection string from the Azure portal (stored encrypted)
 - You can customize the sensitive fields list and default settings in `app.py`

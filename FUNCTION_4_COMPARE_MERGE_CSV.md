@@ -53,6 +53,7 @@ Function 4 uses the csvdiff Python library for comparison:
   - **Automatic backup**: Creates timestamped backup before merging
   - **Granular control**: Accept some field changes in a record while rejecting others
   - **Data Loss Detection**: Automatically warns when fields are being cleared
+- **Template protection (v6.0+)**: If `core_metadata_csv` points to a file literally named `collection-template.csv`, Function 4 refuses to merge and never overwrites it. Point `core_metadata_csv` at your project's own copy instead.
 - Faster comparison for large files
 - Follows csvdiff's native output format
 - JSON and text output files for archival

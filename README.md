@@ -41,16 +41,16 @@ DART is focused on providing a valid import/ingest-compatible CSV metadata file 
   - Working files stay in isolated subfolder
 - Maintain consistency and avoid duplicate identifiers across workflow phases
 
-**Identifier format note:** Epoch cutoff `1782237851` marks the introduction of the optional `dg_prefix` setting. IDs with earlier epoch values are legacy `dg_<epoch>` IDs. IDs generated after that cutoff may appear either as `dg_<epoch>` when the prefix is blank or as `<prefix>_dg_<epoch>` when a prefix is configured.
+**Identifier format note:** Epoch cutoff `1782237851` marks the introduction of the `collection-id` setting (formerly `dg_prefix`), which was optional before v6.0 and is required as of v6.0. IDs with earlier epoch values are legacy `dg_<epoch>` IDs. IDs generated between the cutoff and v6.0 may appear as `dg_<epoch>` when the identifier was left blank; v6.0+ requires `<collection-id>_dg_<epoch>` for all new IDs. The `collection-id` value becomes part of every new object's permanent unique ID and is also used for Azure sub-directory names and CollectionBuilder slugs.
 
-**Recommended collection identifier convention:** When using `dg_prefix`, choose the stable CollectionBuilder collection identifier, such as `tdps`, `student-life`, or `oral_history`. It may be any length and can use letters, numbers, hyphens, and underscores. For the unified Digital.Grinnell CollectionBuilder site, use the same identifier for the collection slug and Azure asset-path directory, such as `objs/student-life`, so IDs and published assets remain aligned.
+**Recommended collection identifier convention:** When setting `collection-id`, choose the stable CollectionBuilder collection identifier, such as `tdps`, `student-life`, or `oral_history`. It may be any length and can use letters, numbers, hyphens, and underscores. For the unified Digital.Grinnell CollectionBuilder site, use the same identifier for the collection slug and Azure asset-path directory, such as `objs/student-life`, so IDs and published assets remain aligned.
 
 ## OHM-data Mode
 
 Set `process_OHM_data` to `true` in Function 0 for packaged Oral History Manager data. Select the project root containing `OHM-data`, or select the `OHM-data` directory itself.
 
 - Function 1 recursively finds only `.mp3` files.
-- Existing `dg_...` values in MP3 filenames are preserved; `dg_prefix` is prepended when configured.
+- Existing `dg_...` values in MP3 filenames are preserved; `collection-id` is prepended.
 - Function 2 creates one standalone `type=transcript` record per MP3. The record uses `display_template=transcript`, has a blank `parentid`, stores the normalized transcript filename in `object_transcript`, and uses the MP3 Azure URL in `object_location`.
 - The transcript CSV is copied to the target project's `_data/transcripts` directory and uploaded to the parallel Azure `transcripts` path.
 - Other sibling files are excluded from the metadata CSV but uploaded to Azure's `objs` path with normal Hot-tier storage. A `dg_` sibling uses `<prefix>_<dg_basename>.<extension>`; other siblings use `<prefix>_<basename>_<dg_basename>.<extension>`.
@@ -71,7 +71,7 @@ DART provides a comprehensive platform for digital asset management workflows:
 ### Core Platform Features
 - **Persistent Settings**: Automatic saving/loading of window position, directories, and user preferences
 - **Persistent File Selection**: Selected files are remembered across app restarts - no need to re-select
-- **Permanent ID Assignment**: Files receive unique permanent identifiers that never change once assigned: legacy `dg_<epoch>` by default, or optional `<prefix>_dg_<epoch>` when `dg_prefix` is configured in Function 0
+- **Permanent ID Assignment**: Files receive unique permanent identifiers that never change once assigned: legacy `dg_<epoch>` for IDs created before v6.0, or `<collection-id>_dg_<epoch>` using the required `collection-id` configured in Function 0
 - **CSV Metadata Management**: Template-based CSV generation with intelligent merging into master metadata file
 - **Isolated Working Directory**: Automatic `.DART-working-directory` subfolder for temporary files
   - DART_export CSV files written to hidden subfolder
@@ -104,7 +104,7 @@ DART provides a comprehensive platform for digital asset management workflows:
   - Creates a seamless workflow from asset analysis through metadata merge
   - Stops immediately if any errors occur
   - Automatically resets to `false` at start of each new session (opt-in per session)
-  - **Optional Collection Identifier**: Set `dg_prefix` to generate new IDs as `<collection>_dg_<epoch>` for multi-collection uniqueness. Collection identifiers may be any length and can contain letters, numbers, hyphens, and underscores
+  - **Required Collection Identifier**: Set `collection-id` to generate new IDs as `<collection-id>_dg_<epoch>` for multi-collection uniqueness. This value becomes part of every new object's unique ID and is also used for Azure sub-directory names and CollectionBuilder slugs. Blank values are rejected on save. Collection identifiers may be any length and can contain letters, numbers, hyphens, and underscores
 - **Function 1** 🎯: Analyze digital assets and generate standard DG identifiers (dg_<epoch>)
   - Creates compound objects for related file groups (optional)
   - Permanent ID assignment with folder-based compound tracking

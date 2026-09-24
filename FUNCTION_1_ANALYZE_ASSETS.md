@@ -1,7 +1,7 @@
 # Function 1: Analyze Digital Assets & Generate Standard DG Identifiers
 
 ## Purpose
-Analyze selected digital asset files or scan a folder to generate unique standard DG identifiers for each file. Legacy identifiers follow the format `dg_<epoch_time>`. If `dg_prefix` is configured in Function 0, new identifiers follow `<prefix>_dg_<epoch_time>`.
+Analyze selected digital asset files or scan a folder to generate unique standard DG identifiers for each file. Legacy identifiers follow the format `dg_<epoch_time>`. If `collection-id` is configured in Function 0, new identifiers follow `<collection-id>_dg_<epoch_time>`.
 
 ## Automated Workflow
 **NEW**: Enable `automatic_four` in Function 0 (App Settings) to automatically execute Functions 2, 3, and 4 after this function completes successfully. This creates a seamless workflow:
@@ -41,7 +41,7 @@ Use this function to:
    - Scans all files in the folder matching supported types
 3. **Generates unique identifiers** using the standard DG format: `dg_<epoch_time>`
    - Each file receives a permanent identifier
-   - If `dg_prefix` is set in Function 0, the generated format becomes `<prefix>_dg_<epoch_time>`
+   - If `collection-id` is set in Function 0, the generated format becomes `<collection-id>_dg_<epoch_time>`
    - IDs are reused if the file was previously processed
 4. **Creates compound objects** (if grouping enabled)
    - Groups files by text similarity in filenames
@@ -204,8 +204,8 @@ When you run Function 1:
 
 - Epoch cutoff for this feature: `1782237851`
 - IDs with epoch values earlier than `1782237851` are legacy-era IDs and will appear as `dg_<epoch>`
-- IDs created at or after `1782237851` may still appear as `dg_<epoch>` if `dg_prefix` is blank
-- When `dg_prefix` is configured, new IDs created at or after `1782237851` appear as `<prefix>_dg_<epoch>`
+- IDs created at or after `1782237851` may still appear as `dg_<epoch>` if `collection-id` is blank (pre-v6.0 only; `collection-id` is required as of v6.0)
+- When `collection-id` is configured, new IDs created at or after `1782237851` appear as `<collection-id>_dg_<epoch>`
 
 This ensures that once a file receives an identifier, running the function again will always return the same ID for that file. Using full paths prevents collisions between files with the same name in different directories.
 

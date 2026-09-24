@@ -15,7 +15,7 @@ Before editing `app.py`, check whether the request belongs in one of these highe
 
 - Treat the configured core metadata CSV as the source of truth.
 - Preserve `objectid`, `original_file_name`, and `file_to_id_map` semantics unless the user explicitly asks to change them.
-- Preserve optional `dg_prefix` behavior for new IDs: legacy IDs may remain `dg_<epoch>`, while new IDs may be generated as `<prefix>_dg_<epoch>`.
+- Preserve `collection-id` behavior for new IDs: as of v6.0 it is a required Function 0 setting (formerly named `dg_prefix`); legacy IDs may remain `dg_<epoch>`, while new IDs are generated as `<collection-id>_dg_<epoch>`. It is also used for Azure sub-directory names and CollectionBuilder slugs.
 - Canonical CollectionBuilder CSV field names are unprefixed: `title`, `description`, `date`, and similar.
 - Treat `dc_` field names as legacy cleanup targets only.
 - Keep generated artifacts in `.DART-working-directory`, including `DART_*`, `csvdiff_*`, `dart_settings.json`, merge backups (`*.backup_*`), and temporary derivative files.

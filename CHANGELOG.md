@@ -16,7 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - OHM mode preserves source MP3 `dg_...` identifiers, exports standalone transcript records, copies transcript CSVs to `_data/transcripts`, and uploads auxiliary files with detailed progress logging.
 
 ### Changed
-- Expanded `dg_prefix` into an unrestricted CollectionBuilder collection identifier. New identifiers may use collection slugs longer than four characters and may include hyphens or underscores.
+- Functions 4 and 6 now refuse to merge into a core CSV whose filename is literally `collection-template.csv`, protecting the reserved template file from being overwritten. Point `core_metadata_csv` at your project's own copy instead.
+- Renamed the `dg_prefix` setting to `collection-id` to make clear it becomes part of every object's unique ID (`<collection-id>_dg_<epoch>`) and is used for Azure sub-directory names and CollectionBuilder slugs. Legacy `dart_settings.json` files with a `dg_prefix` key are automatically migrated to `collection-id` on load.
+- `collection-id` is now a **required** Function 0 setting; the settings dialog rejects blank values instead of falling back to legacy blank-prefix behavior. Moved the `collection-id` field to the top of the Function 0 settings dialog to emphasize its importance.
+- Expanded the collection identifier into an unrestricted CollectionBuilder collection identifier. New identifiers may use collection slugs longer than four characters and may include hyphens or underscores.
 - Documented how to align the DART collection identifier with the unified Digital.Grinnell CollectionBuilder collection slug and Azure asset directories.
 - Function 3 derivative generation now performs ICC-aware TIFF normalization, converting embedded grayscale/scanner profiles to sRGB before JPEG derivatives are created.
 - Function 2 continues to preserve original source files in `/objs/`, while Function 3 applies TIFF normalization only to generated derivatives.

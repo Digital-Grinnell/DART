@@ -21,13 +21,14 @@ If a behavior is driven by documentation, mappings, or a focused helper script, 
 ### Core Metadata CSV
 - Treat the core metadata CSV as the project's source of truth
 - Preserve `objectid` and `original_file_name` semantics unless the user explicitly asks to change them
+- As of v6.0, Functions 4 and 6 refuse to merge into a core CSV literally named `collection-template.csv`; this reserved template filename must never be overwritten by a merge
 - Canonical CollectionBuilder CSV field names are unprefixed: `title`, `description`, `date`, and similar
 - Treat `dc_`-prefixed field names as legacy cleanup targets, not new canonical names
 
 ### Durable Identifiers
 - `dg_<epoch>` object identifiers are intended to be permanent once assigned
-- New projects may optionally generate IDs as `<prefix>_dg_<epoch>` using the Function 0 `dg_prefix` setting; preserve that prefix when present
-- `dg_prefix` values are optional CollectionBuilder collection identifiers. They may contain lowercase letters, numbers, hyphens, and underscores, and should be treated as collection-scoped uniqueness aids rather than editable metadata
+- As of v6.0, `collection-id` (formerly `dg_prefix`) is a **required** Function 0 setting; the settings dialog rejects blank values. It becomes part of every new object's unique ID (`<collection-id>_dg_<epoch>`) and is also used for Azure sub-directory names and CollectionBuilder slugs; preserve that value when present
+- `collection-id` values are CollectionBuilder collection identifiers. They may contain lowercase letters, numbers, hyphens, and underscores, and should be treated as collection-scoped uniqueness aids rather than editable metadata
 - Do not rewrite existing identifier mappings casually
 - Be careful with logic touching `file_to_id_map`, compound object IDs, or merge matching behavior
 
