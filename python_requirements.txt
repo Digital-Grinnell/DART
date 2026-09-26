@@ -5,4 +5,5 @@ azure-storage-blob>=12.19.0
 Pillow>=10.0.0
 csvdiff>=0.3.0
 PyMuPDF>=1.24.0
+seeklight @ git+https://github.com/DigitalGrinnell/Seeklight-Resources.git@ca9a33ee229d33d9a75d499fac85f2417c7402f5
 -e ../common-DG-utilities

@@ -23,9 +23,36 @@ from azure.storage.blob import BlobServiceClient, ContentSettings
 from PIL import Image, ImageOps, ImageCms
 import io
 import fitz  # PyMuPDF for PDF processing
+from seeklight import SeeklightClient, describe_files
 
 # Import common DG utilities
 from common_dg_utilities.dg_utils import generate_unique_id, get_mime_type
+
+
+def create_seeklight_client() -> SeeklightClient:
+    """Load Seeklight credentials from the environment or the sibling resources repo."""
+    base_url = os.environ.get("SEEKLIGHT_API_BASE_URL", "").strip()
+    api_key = os.environ.get("SEEKLIGHT_API_KEY", "").strip()
+    if base_url or api_key:
+        if not base_url or not api_key:
+            raise ValueError("Both SEEKLIGHT_API_BASE_URL and SEEKLIGHT_API_KEY must be set")
+        return SeeklightClient(base_url, api_key)
+
+    api_info = Path(__file__).resolve().parent.parent / "Seeklight-Resources" / "api-info"
+    url_file = api_info / "url.md"
+    key_file = api_info / "key.md"
+    if (
+        url_file.is_file()
+        and key_file.is_file()
+        and url_file.read_text(encoding="utf-8").strip()
+        and key_file.read_text(encoding="utf-8").strip()
+    ):
+        return SeeklightClient.from_files(url_file, key_file)
+
+    raise ValueError(
+        "Set SEEKLIGHT_API_BASE_URL and SEEKLIGHT_API_KEY, or configure "
+        "../Seeklight-Resources/api-info/url.md and key.md"
+    )
 
 # Get application version from VERSION file
 def get_app_version():
@@ -5207,47 +5234,32 @@ Detailed results: {output_diff.name}
         update_status(f"Function 4: Select new CSV to compare with core ({old_csv.name})")
 
     def on_function_5_engage_seeklight(e):
-        """Function 5: Engage Seeklight Metadata Generation and Transform."""
+        """Generate and transform metadata through the Seeklight Public API."""
         storage.record_function_usage("Function 5")
 
-        # Check for working directory
         working_dir = output_dir_field.value
         if not working_dir or not Path(working_dir).exists():
             update_status("Error: Please set a working/outputs folder first", is_error=True)
             return
 
-        # Load settings to get core metadata CSV
         settings, _ = load_app_settings(working_dir)
         core_csv_path = settings.get("core_metadata_csv", "")
-        
-        if not core_csv_path or not core_csv_path.strip():
-            update_status("Error: Core metadata CSV not configured in settings", is_error=True)
-            add_log_message("[ERROR] No core metadata CSV configured in Function 0 settings")
+        if not core_csv_path or not Path(core_csv_path).is_file():
+            update_status("Error: Configure an existing core metadata CSV in Function 0", is_error=True)
             return
 
-        # Load mapping template
         mapping_file = Path(__file__).parent / "seeklight_mapping_template.json"
-        if not mapping_file.exists():
+        if not mapping_file.is_file():
             update_status("Error: Seeklight mapping template not found", is_error=True)
-            add_log_message(f"[ERROR] Missing {mapping_file.name}")
             return
-
         try:
-            with open(mapping_file, 'r', encoding='utf-8') as f:
-                mapping_config = json.load(f)
-                field_mapping = mapping_config.get("field_mapping", {})
-                default_values = mapping_config.get("default_values", {})
-                filename_column = mapping_config.get("filename_column", "Filename")
-        except Exception as ex:
-            update_status(f"Error loading mapping template: {ex}", is_error=True)
-            add_log_message(f"[ERROR] Failed to load mapping: {ex}")
+            json.loads(mapping_file.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as ex:
+            update_status(f"Error loading Seeklight mapping template: {ex}", is_error=True)
             return
 
-        # State for selected file
-        selected_seeklight_file = ft.Ref[ft.Text]()
-        seeklight_file_path = None
-        
-        # State for target override
+        selected_sources: list[Path] = []
+        selected_sources_ref = ft.Ref[ft.Text]()
         override_checkbox = ft.Checkbox(value=False, label="")
         override_textfield = ft.TextField(
             label="Target Record Override",
@@ -5255,272 +5267,181 @@ Detailed results: {output_diff.name}
             width=400,
             disabled=True,
         )
-        
+        transcript_checkbox = ft.Checkbox(value=False, label="Generate transcript")
+        alt_text_checkbox = ft.Checkbox(value=False, label="Generate image alt text")
+        user_context_field = ft.TextField(
+            label="Context for Seeklight (optional)",
+            multiline=True,
+            min_lines=2,
+            max_lines=4,
+            max_length=2000,
+        )
+
+        def refresh_source_summary():
+            names = [source.name for source in selected_sources]
+            if not names:
+                summary = "No source files or page folders selected"
+            else:
+                shown = ", ".join(names[:4])
+                summary = f"{len(names)} source(s): {shown}"
+                if len(names) > 4:
+                    summary += ", ..."
+            selected_sources_ref.current.value = summary
+            dialog.update()
+
+        def on_source_files_picked(picker_event: ft.FilePickerResultEvent):
+            if picker_event.files:
+                selected_sources.extend(Path(file.path) for file in picker_event.files if file.path)
+                storage.set_ui_state("last_seeklight_dir", str(Path(picker_event.files[0].path).parent))
+                selected_sources[:] = list(dict.fromkeys(selected_sources))
+                refresh_source_summary()
+
+        def on_page_folder_picked(picker_event: ft.FilePickerResultEvent):
+            if picker_event.path:
+                selected_sources.append(Path(picker_event.path))
+                selected_sources[:] = list(dict.fromkeys(selected_sources))
+                storage.set_ui_state("last_seeklight_dir", picker_event.path)
+                refresh_source_summary()
+
+        def pick_source_files(e):
+            initial_dir = storage.get_ui_state("last_seeklight_dir") or working_dir
+            source_file_picker.pick_files(
+                dialog_title="Select Media for Seeklight",
+                allow_multiple=True,
+                initial_directory=initial_dir,
+                allowed_extensions=["jpg", "jpeg", "tif", "tiff", "png", "gif", "bmp", "webp", "heic", "pdf"],
+            )
+
+        def pick_page_folder(e):
+            initial_dir = storage.get_ui_state("last_seeklight_dir") or working_dir
+            source_folder_picker.get_directory_path(
+                dialog_title="Select a Folder of Pages",
+                initial_directory=initial_dir,
+            )
+
+        def clear_sources(e):
+            selected_sources.clear()
+            refresh_source_summary()
+
         def on_override_checkbox_changed(e):
             override_textfield.disabled = not override_checkbox.value
             dialog.update()
-        
+
         override_checkbox.on_change = on_override_checkbox_changed
 
-        def on_seeklight_file_picked(picker_event: ft.FilePickerResultEvent):
-            nonlocal seeklight_file_path
-            if picker_event.files and len(picker_event.files) > 0:
-                seeklight_file_path = Path(picker_event.files[0].path)
-                selected_seeklight_file.current.value = f"Selected: {seeklight_file_path.name}"
-                # Remember directory for next time
-                storage.set_ui_state("last_seeklight_dir", str(seeklight_file_path.parent))
-                dialog.update()
-                add_log_message(f"[INFO] Selected Seeklight file: {seeklight_file_path.name}")
-                update_status(f"Selected: {seeklight_file_path.name}")
-
-        def pick_seeklight_file(e):
-            # Use last directory if available
-            last_dir = storage.get_ui_state("last_seeklight_dir")
-            initial_dir = last_dir if last_dir else working_dir
-            
-            seeklight_picker.pick_files(
-                dialog_title="Select Seeklight CSV File",
-                allow_multiple=False,
-                initial_directory=initial_dir,
-                allowed_extensions=["csv"],
-            )
+        def run_seeklight(client, sources, actions, user_context, override_filename, dart_working_dir):
+            try:
+                completed, output_path = describe_files(
+                    client,
+                    sources,
+                    dart_working_dir=dart_working_dir,
+                    core_csv=core_csv_path,
+                    mapping=mapping_file,
+                    actions=actions,
+                    user_context=user_context,
+                    original_file_name=override_filename,
+                    log=add_log_message,
+                )
+                failed = sum(result.status.upper() == "FAILED" for result in completed)
+                if output_path:
+                    update_status(
+                        f"Seeklight complete: {len(completed) - failed} record(s) ready for Function 6"
+                    )
+                    add_log_message(f"[SUCCESS] Transformed CSV saved: {output_path.name}")
+                else:
+                    update_status("Error: Seeklight returned no usable metadata; see the log", is_error=True)
+            except Exception as ex:
+                logger.error("Seeklight API processing failed", exc_info=True)
+                update_status(f"Error: Seeklight API processing failed: {ex}", is_error=True)
+            finally:
+                run_button.disabled = False
+                run_button.text = "Generate Metadata"
+                page.update()
 
         def transform_metadata(e):
-            nonlocal seeklight_file_path
-            
-            if not seeklight_file_path or not seeklight_file_path.exists():
-                add_log_message("[ERROR] Please select a Seeklight CSV file first")
-                update_status("Error: No file selected", is_error=True)
+            if not selected_sources:
+                update_status("Error: Select at least one source file or page folder", is_error=True)
+                return
+
+            supported_extensions = {
+                ".jpg", ".jpeg", ".tif", ".tiff", ".png", ".gif", ".bmp", ".webp", ".heic", ".pdf",
+            }
+            sources = [
+                source for source in selected_sources
+                if source.exists() and (source.is_dir() or source.suffix.lower() in supported_extensions)
+            ]
+            skipped = len(selected_sources) - len(sources)
+            if skipped:
+                add_log_message(f"[WARNING] Skipping {skipped} missing or unsupported source(s)")
+            if not sources:
+                update_status("Error: No supported image, PDF, or page-folder sources selected", is_error=True)
                 return
 
             try:
-                # Read Seeklight CSV
-                add_log_message(f"[INFO] Reading Seeklight CSV: {seeklight_file_path.name}")
-                with open(seeklight_file_path, 'r', encoding='utf-8') as f:
-                    seeklight_reader = csv.DictReader(f)
-                    seeklight_data = list(seeklight_reader)
-                    seeklight_columns = seeklight_reader.fieldnames
-
-                if not seeklight_data:
-                    add_log_message("[ERROR] Seeklight CSV is empty")
-                    update_status("Error: Empty CSV file", is_error=True)
-                    return
-
-                add_log_message(f"[INFO] Loaded {len(seeklight_data)} rows from Seeklight CSV")
-                add_log_message(f"[DEBUG] Seeklight columns: {', '.join(seeklight_columns)}")
-
-                # Read core CSV template to get structure
-                with open(core_csv_path, 'r', encoding='utf-8') as f:
-                    core_reader = csv.DictReader(f)
-                    core_columns = [CSV_FILENAME_FIELD if c == LEGACY_CSV_FILENAME_FIELD else c for c in core_reader.fieldnames]
-
-                # Identify unmapped Seeklight columns that contain data
-                # These will be added as new columns with underscore prefix
-                unmapped_columns = {}  # {seeklight_col_base: new_core_col_name}
-                mapped_bases = set()
-                
-                # Get base names of all mapped columns (only those with non-empty mappings)
-                for sk_col, core_col in field_mapping.items():
-                    if core_col and core_col.strip():  # Only count as mapped if target is not empty
-                        mapped_bases.add(sk_col)
-                
-                # Check all Seeklight columns for unmapped ones with data
-                for seeklight_col in seeklight_columns:
-                    # Extract base name (remove bracketed numbers)
-                    base_name = seeklight_col.split('[')[0] if '[' in seeklight_col else seeklight_col
-                    
-                    # Skip if it's the filename column or already mapped to a non-empty target
-                    if base_name == filename_column or base_name in mapped_bases:
-                        continue
-                    
-                    # Check if any row has data in this column
-                    has_data = any(row.get(seeklight_col, '').strip() for row in seeklight_data)
-                    
-                    if has_data and base_name not in unmapped_columns:
-                        # Create new column name: underscore prefix, spaces to underscores, lowercase
-                        new_col_name = '_' + base_name.lower().replace(' ', '_')
-                        unmapped_columns[base_name] = new_col_name
-                        core_columns.append(new_col_name)
-                        add_log_message(f"[INFO] Adding new column '{new_col_name}' for unmapped Seeklight field '{base_name}'")
-
-                # Transform data
-                transformed_rows = []
-                
-                # Check if user wants to override the target filename
-                use_override = override_checkbox.value and override_textfield.value and override_textfield.value.strip()
-                override_filename = override_textfield.value.strip() if use_override else None
-                
-                if use_override:
-                    add_log_message(f"[INFO] Using target override: '{override_filename}' (all rows will use this filename)")
-
-                for seeklight_row in seeklight_data:
-                    # Get filename from Seeklight data or use override
-                    if use_override:
-                        filename = override_filename
-                    else:
-                        filename = seeklight_row.get(filename_column, "").strip()
-                        if not filename:
-                            add_log_message(f"[WARNING] Row missing filename column '{filename_column}'")
-                            continue
-
-                    # Seeklight generates NEW metadata - objectid is always empty
-                    # Matching with existing records happens later in Function 6
-                    objectid = ''
-
-                    # Build transformed row
-                    new_row = {}
-                    for col in core_columns:
-                        if col == 'objectid':
-                            new_row[col] = objectid  # Empty if no match
-                        elif col == CSV_FILENAME_FIELD:
-                            new_row[col] = filename
-                        elif col in field_mapping.values():
-                            # Find Seeklight column that maps to this core column
-                            seeklight_col = None
-                            for sk_col, core_col in field_mapping.items():
-                                if core_col == col:
-                                    seeklight_col = sk_col
-                                    break
-                            
-                            # Try to find matching column in Seeklight data
-                            # Support both exact match and match with bracketed numbers
-                            value = None
-                            if seeklight_col:
-                                if seeklight_col in seeklight_row:
-                                    value = seeklight_row[seeklight_col]
-                                else:
-                                    # Try finding column with bracket notation
-                                    for actual_col in seeklight_row.keys():
-                                        if actual_col.startswith(f"{seeklight_col}["):
-                                            value = seeklight_row[actual_col]
-                                            break
-                            
-                            if value is not None:
-                                # Convert Seeklight's pipe separators to DART's semicolon separators
-                                value = str(value).replace(' | ', '; ')
-                                new_row[col] = value
-                            elif col in default_values:
-                                new_row[col] = default_values[col]
-                            else:
-                                new_row[col] = ''
-                        elif col in default_values:
-                            new_row[col] = default_values[col]
-                        elif col in unmapped_columns.values():
-                            # Handle unmapped Seeklight columns (added dynamically)
-                            # Find the base name for this new column
-                            base_name = None
-                            for sk_base, core_col in unmapped_columns.items():
-                                if core_col == col:
-                                    base_name = sk_base
-                                    break
-                            
-                            if base_name:
-                                # Try to find the value in Seeklight data
-                                value = None
-                                if base_name in seeklight_row:
-                                    value = seeklight_row[base_name]
-                                else:
-                                    # Try with bracket notation
-                                    for actual_col in seeklight_row.keys():
-                                        if actual_col.startswith(f"{base_name}["):
-                                            value = seeklight_row[actual_col]
-                                            break
-                                
-                                if value:
-                                    # Convert Seeklight's pipe separators to DART's semicolon separators
-                                    value = str(value).replace(' | ', '; ')
-                                    new_row[col] = value
-                                else:
-                                    new_row[col] = ''
-                            else:
-                                new_row[col] = ''
-                        else:
-                            new_row[col] = ''
-
-                    transformed_rows.append(new_row)
-
-                # Write output CSV
-                dart_working_dir = get_dart_working_dir(working_dir)
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                output_filename = f"DART_seeklight_transformed_{timestamp}.csv"
-                output_path = dart_working_dir / output_filename
-
-                with open(output_path, 'w', newline='', encoding='utf-8') as f:
-                    writer = csv.DictWriter(f, fieldnames=core_columns)
-                    writer.writeheader()
-                    writer.writerows(transformed_rows)
-
-                add_log_message(f"[SUCCESS] Transformed {len(transformed_rows)} rows")
-                add_log_message(f"[INFO] All objectid fields left empty (Seeklight generates new metadata)")
-                add_log_message(f"[INFO] Multi-value separators converted: pipe (|) to semicolon (;)")
-                if unmapped_columns:
-                    add_log_message(f"[INFO] Added {len(unmapped_columns)} new columns for unmapped Seeklight fields")
-                add_log_message(f"[SUCCESS] Output saved: {output_filename}")
-                update_status(f"Transformation complete: {output_filename}")
-
-                new_cols_text = f"\nNew columns added: {len(unmapped_columns)}" if unmapped_columns else ""
-                
-                result_text = (
-                    f"✅ Transformation Complete\n\n"
-                    f"Processed: {len(transformed_rows)} rows\n"
-                    f"All objectid fields: empty (as expected from Seeklight){new_cols_text}\n\n"
-                    f"Output: {output_filename}\n"
-                    f"Location: {dart_working_dir}\n\n"
-                    f"Next: Use Function 6 to compare and merge with core metadata"
-                )
-
-                result_dialog = ft.AlertDialog(
-                    modal=True,
-                    title=ft.Text("Transformation Complete", weight=ft.FontWeight.BOLD),
-                    content=ft.Text(result_text, selectable=True),
-                    actions=[ft.TextButton("OK", on_click=lambda e: close_result_dialog())],
-                )
-
-                def close_result_dialog():
-                    result_dialog.open = False
-                    dialog.open = False
-                    page.update()
-
-                page.overlay.append(result_dialog)
-                result_dialog.open = True
-                page.update()
-
-            except Exception as ex:
-                logger.error(f"Error transforming Seeklight metadata: {ex}", exc_info=True)
-                add_log_message(f"[ERROR] Transformation failed: {ex}")
+                client = create_seeklight_client()
+            except (OSError, ValueError) as ex:
                 update_status(f"Error: {ex}", is_error=True)
+                return
+
+            actions = ["metadata"]
+            if transcript_checkbox.value:
+                actions.append("transcript")
+            if alt_text_checkbox.value:
+                actions.append("alt_text")
+            user_context = user_context_field.value.strip() or None
+            override_filename = (
+                override_textfield.value.strip()
+                if override_checkbox.value and override_textfield.value.strip()
+                else None
+            )
+            dart_working_dir = get_dart_working_dir(working_dir)
+
+            run_button.disabled = True
+            run_button.text = "Processing..."
+            update_status(f"Sending {len(sources)} source(s) to Seeklight")
+            page.run_thread(
+                run_seeklight,
+                client,
+                sources,
+                actions,
+                user_context,
+                override_filename,
+                dart_working_dir,
+            )
 
         def close_dialog(e):
             dialog.open = False
             page.update()
 
-        seeklight_picker = ft.FilePicker(on_result=on_seeklight_file_picked)
-        page.overlay.append(seeklight_picker)
+        source_file_picker = ft.FilePicker(on_result=on_source_files_picked)
+        source_folder_picker = ft.FilePicker(on_result=on_page_folder_picked)
+        page.overlay.extend([source_file_picker, source_folder_picker])
 
+        run_button = ft.ElevatedButton(
+            "Generate Metadata",
+            icon=ft.Icons.AUTO_AWESOME,
+            on_click=transform_metadata,
+            bgcolor=ft.Colors.BLUE_700,
+            color=ft.Colors.WHITE,
+        )
         dialog = ft.AlertDialog(
             modal=True,
-            title=ft.Text("Function 5: Engage Seeklight Metadata Generation"),
+            title=ft.Text("Function 5: Generate Seeklight Metadata"),
             content=ft.Container(
                 content=ft.Column([
-                    ft.Text(
-                        "Please refer to the Help documentation (? button) for detailed instructions "
-                        "on using the Seeklight web interface to generate metadata.",
-                        size=12,
-                    ),
+                    ft.Text("Send images, PDFs, or page folders directly to Seeklight."),
+                    ft.Row([
+                        ft.ElevatedButton("Add files", icon=ft.Icons.FILE_OPEN, on_click=pick_source_files),
+                        ft.ElevatedButton("Add page folder", icon=ft.Icons.FOLDER_OPEN, on_click=pick_page_folder),
+                        ft.IconButton(icon=ft.Icons.CLEAR, tooltip="Clear selected sources", on_click=clear_sources),
+                    ], wrap=True),
+                    ft.Text(ref=selected_sources_ref, value="No source files or page folders selected", size=11),
                     ft.Divider(),
-                    ft.Text("Transform Seeklight Metadata", weight=ft.FontWeight.BOLD, size=14),
-                    ft.Text(
-                        "Export your Seeklight-generated .xlsx file to CSV, then select it below:",
-                        size=12,
-                    ),
-                    ft.Container(height=10),
-                    ft.ElevatedButton(
-                        "Select Seeklight CSV File...",
-                        icon=ft.Icons.FILE_OPEN,
-                        on_click=pick_seeklight_file,
-                    ),
-                    ft.Text(ref=selected_seeklight_file, value="No file selected", size=11, italic=True),
-                    ft.Container(height=10),
+                    ft.Text("Actions", weight=ft.FontWeight.BOLD),
+                    ft.Text("Metadata is always generated. Additional actions use API allowance."),
+                    transcript_checkbox,
+                    alt_text_checkbox,
+                    user_context_field,
                     ft.Divider(),
                     ft.Row([
                         override_checkbox,
@@ -5528,23 +5449,15 @@ Detailed results: {output_diff.name}
                     ], spacing=5),
                     override_textfield,
                     ft.Text(
-                        "Check and enter a filename to merge all Seeklight records with a specific target record, "
-                        "ignoring Seeklight's filename values.",
+                        "When enabled, every result uses this filename for Function 6 matching.",
                         size=10,
                         italic=True,
                         color=ft.Colors.GREY_700,
                     ),
-                    ft.Container(height=10),
-                    ft.ElevatedButton(
-                        "Transform Metadata",
-                        icon=ft.Icons.TRANSFORM,
-                        on_click=transform_metadata,
-                        bgcolor=ft.Colors.BLUE_700,
-                        color=ft.Colors.WHITE,
-                    ),
-                ], spacing=8, tight=True),
-                width=600,
-                height=500,
+                    run_button,
+                ], spacing=8, tight=True, scroll=ft.ScrollMode.AUTO),
+                width=650,
+                height=600,
             ),
             actions=[ft.TextButton("Close", on_click=close_dialog)],
         )
@@ -5553,8 +5466,8 @@ Detailed results: {output_diff.name}
         dialog.open = True
         page.update()
 
-        update_status("Function 5: Seeklight metadata transformation")
-        logger.info("Function 5: Opened Seeklight transformation dialog")
+        update_status("Function 5: Seeklight API metadata generation")
+        logger.info("Function 5: Opened Seeklight API dialog")
 
     def on_function_6_compare_merge_seeklight(e):
         """Function 6: Compare and merge Seeklight transformed CSV with core metadata."""

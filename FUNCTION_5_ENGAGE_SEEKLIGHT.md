@@ -1,61 +1,23 @@
-# Seeklight Workflow Sans API - Clickity, Click, Click
+# Function 5: Generate Seeklight Metadata
 
-Since Seeklight does not yet have an API for integration with apps like DART, you, the user, will need to engage Seeklight "manually" and click through the user interface.  
+Function 5 sends selected source media directly to the Seeklight Public API, waits for processing, maps the returned metadata into DART's CollectionBuilder CSV format, and saves a transformed CSV for Function 6.
 
-The process is essentially designed for you to select one digital object file, upload that file to Seeklight, engage Seeklight to generate metadata, download the new metadata record as a .xlsx file, save that file as a CSV, and return to DART where you will select the new CSV file for transformation.  Once complete you may engage Function 6 -- Compare and Merge Seeklight CSV -- to compare and merge elements of the new Seeklight metadata with your project's corresponding core metadata CSV record.  
+## Setup
 
-The manual portion of the workflow looks like this:  
+The Seeklight Python library is installed from the pinned revision in `python_requirements.txt` the next time DART installs its dependencies. Configure both `SEEKLIGHT_API_BASE_URL` and `SEEKLIGHT_API_KEY` in the environment, or provide non-empty `url.md` and `key.md` files in the sibling `Seeklight-Resources/api-info/` directory. The API key file is local configuration and must not be committed.
 
-1) Launch the web browser and navigate to https://stewardship.jstor.org or https://stewardship.jstor.org/#/dashboard.   
-2) Enter authorization credentials if needed to land at https://stewardship.jstor.org/#/generate-metadata or go there directly.  
-3) Select `Upload Media...` panel.  
-4) Click `Browse Files` link.  
-5) Select one or more files to upload.  
-6) Optionally enter context to assist the processor.  
-7) Click the `Upload` button.  
-8) You are given two choices, select `Create new project...` and give it a descriptive name.  
-9) Click the `Generate Metadata` button.  
-10) ...the generation should be running until complete.  
-11) Click back into the `Metadata Records` tab.  
-12) Select items with newest at the top.  
-13) Find the `...` menu and pick it.  
-14) Click `Download Metadata` and the generated data should open in an Excel file.
-15) Do with the metadata as you wish.  If downloaded it will save as a .xlsx file.  
-16) In Excel, be sure to select `Save As` to save a copy of the .xlsx data as a UTF-8 CSV file (one of several options).  Remember the path to the new CSV file OR make sure you save it in your DART working directory to make it easy to find for the compare and merge operation in Function 6.  
+Each source that is submitted for processing uses one item from the Seeklight allowance. Raw API results and any transcript are retained in `.DART-working-directory` because Seeklight only keeps results for a limited time.
 
-## Transform Seeklight Metadata to DART Format
+## Workflow
 
-Once you have downloaded the Seeklight-generated metadata:
+1. Set the working folder and core metadata CSV in Function 0.
+2. Open Function 5 and add one or more image/PDF files, or add a folder whose files form one multipage document. Supported images include JPEG, TIFF, PNG, GIF, BMP, WebP, and HEIC.
+3. Metadata is always requested. Optionally request a transcript or image alt text, and provide context (up to 2,000 characters).
+4. Optionally enable **Override merge target filename** to write the same `original_file_name` for every result. Otherwise, each source filename is used for Function 6 matching.
+5. Select **Generate Metadata**. Progress and per-source errors appear in the DART log while processing continues in the background.
+6. When complete, use Function 6 to compare and merge the generated `DART_seeklight_transformed_*.csv` with the core metadata CSV.
 
-1) **Export to CSV**: Open the .xlsx file in Excel and export/save it as a CSV file.
-
-2) **Run Function 5**: In DART, click Function 5 button.
-
-3) **Select CSV**: Click "Select Seeklight CSV File..." and navigate to your exported CSV.
-
-3a) **Optional - Override Merge Target**: 
-   - Check the "Override merge target filename" checkbox if you want ALL Seeklight records to merge with a specific target record
-   - Enter the target filename in the text field
-   - This overrides the Seeklight filename values and makes all metadata merge with the specified target
-   - Leave unchecked for normal filename-based matching (default behavior)
-
-4) **Transform**: The transformation will:
-   - Read the Seeklight metadata
-   - Map Seeklight fields to DART core columns using `seeklight_mapping_template.json`
-   - Handle Seeklight column names with or without bracketed numbers (e.g., `Title[3101377]` or `Title`)
-   - **Convert multi-value separators**: Seeklight's pipe separators (` | `) → DART's semicolon separators (`;`)
-   - **Automatically add new columns**: For any Seeklight field with data that isn't mapped in the template, a new column is created with an underscore prefix and spaces converted to underscores (e.g., "Named Entities" becomes "_named_entities")
-   - **Leave objectid empty** (Seeklight generates new metadata without objectids)
-  - Set original_file_name from Seeklight data
-   - Create a timestamped CSV: `DART_seeklight_transformed_YYYYMMDD_HHMMSS.csv`
-   - Save to your `.DART-working-directory` folder
-
-5) **Output**: Results show:
-   - Number of rows processed
-   - Number of new columns added for unmapped fields (if any)
-   - Confirmation that objectid fields are empty
-   - Output filename and location
-   - Reminder to use Function 6 for comparing/merging with core metadata
+The transformed rows leave `objectid` blank for Function 6 matching. The mapping template controls field names and default values; unmapped API fields are added with underscore-prefixed names. Multi-value separators are converted from ` | ` to `; `. Each run also saves the raw results JSON and any transcript under `.DART-working-directory`.
 
 ### Customizing Field Mapping
 
@@ -70,8 +32,7 @@ Edit `seeklight_mapping_template.json` in the DART folder to customize how Seekl
   },
   "default_values": {
     "language": "eng"
-  },
-  "filename_column": "Filename"
+  }
 }
 ```
 
@@ -80,7 +41,7 @@ Edit `seeklight_mapping_template.json` in the DART folder to customize how Seekl
   - **Note**: Seeklight columns may have bracketed numbers like `Title[3101377]`. The mapping handles both `Title` and `Title[3101377]` automatically - you only need to specify the base name without brackets.
   - **Empty string values** (e.g., `"Keywords": ""`) are treated as unmapped - those fields will be auto-created as new columns if Seeklight provides data for them.
 - **default_values**: Sets default values for columns not provided by Seeklight
-- **filename_column**: Identifies which Seeklight column contains filenames
+- **Source filename**: Function 5 uses the selected source's filename as `original_file_name`.
 - **Multi-value fields**: Seeklight uses pipe separators (` | `) for multi-value fields. The transformation automatically converts these to DART's semicolon separators (`;`) for compatibility.
 - **Unmapped fields**: If Seeklight provides data in fields not listed in your mapping template, new columns are automatically created in the output CSV. These column names start with an underscore and use lowercase with spaces converted to underscores (e.g., "Named Entities" → "_named_entities"). You can later add these to your mapping template if desired.
 - **Target Record Override**: Use this when you want to merge Seeklight metadata with a different record than what the Seeklight original_file_name would normally match. Common use cases:
