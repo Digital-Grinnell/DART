@@ -4028,7 +4028,7 @@ def main(page: ft.Page):
             )
             add_log_message(f"[ERROR] Refusing to merge into reserved template file: {old_csv.name}")
             return
-        
+
         # Find all DART_export CSV files in DART working subdirectory, sorted by modification time (newest first)
         csv_files = sorted(
             [f for f in dart_working_dir.glob("DART_export_*.csv") if f.is_file()],
@@ -5572,6 +5572,27 @@ Detailed results: {output_diff.name}
             )
             add_log_message(f"[ERROR] Refusing to merge into reserved template file: {old_csv.name}")
             return
+
+        def read_seeklight_merge_csv(csv_path):
+            with open(csv_path, 'r', encoding='utf-8', newline='') as stream:
+                reader = csv.DictReader(stream)
+                if not reader.fieldnames:
+                    raise ValueError(f"{csv_path.name}: CSV header is missing")
+                fieldnames = list(reader.fieldnames)
+                rows = []
+                for row in reader:
+                    if None in row:
+                        raise ValueError(
+                            f"{csv_path.name}: CSV line {reader.line_num} has more values than header columns; "
+                            "correct the CSV before merging"
+                        )
+                    if any(value is None for value in row.values()):
+                        raise ValueError(
+                            f"{csv_path.name}: CSV line {reader.line_num} has fewer values than header columns; "
+                            "correct the CSV before merging"
+                        )
+                    rows.append(row)
+            return fieldnames, rows
         
         # Find all DART_seeklight_transformed CSV files
         dart_working_dir = get_dart_working_dir(working_dir)
@@ -5600,16 +5621,10 @@ Detailed results: {output_diff.name}
                 update_status("Comparing CSV files...")
                 
                 # Read both CSVs
-                with open(old_csv, 'r', encoding='utf-8') as f:
-                    reader = csv.DictReader(f)
-                    core_fieldnames = list(reader.fieldnames)
-                    core_rows = list(reader)
+                core_fieldnames, core_rows = read_seeklight_merge_csv(old_csv)
                 core_fieldnames, core_rows = normalize_csv_filename_columns(core_fieldnames, core_rows)
                 
-                with open(selected_new_csv, 'r', encoding='utf-8') as f:
-                    reader = csv.DictReader(f)
-                    seeklight_fieldnames = list(reader.fieldnames)
-                    seeklight_rows = list(reader)
+                seeklight_fieldnames, seeklight_rows = read_seeklight_merge_csv(selected_new_csv)
                 seeklight_fieldnames = [CSV_FILENAME_FIELD if c == LEGACY_CSV_FILENAME_FIELD else c for c in seeklight_fieldnames]
                 _, seeklight_rows = normalize_csv_filename_columns(seeklight_fieldnames, seeklight_rows)
                 
@@ -5779,6 +5794,8 @@ Detailed results: {output_diff.name}
                     
                     def execute_merge(ev):
                         """Execute the merge with selected changes."""
+                        backup_path = None
+                        core_replaced = False
                         try:
                             # Count selections
                             selected_new = [idx for idx, cb in selections['new'].items() if cb.value]
@@ -5806,10 +5823,7 @@ Detailed results: {output_diff.name}
                             add_log_message(f"[INFO] Created backup: {backup_path.name}")
                             
                             # Load core CSV
-                            with open(old_csv, 'r', encoding='utf-8') as f:
-                                reader = csv.DictReader(f)
-                                fieldnames = list(reader.fieldnames)
-                                core_rows_list = list(reader)
+                            fieldnames, core_rows_list = read_seeklight_merge_csv(old_csv)
                             fieldnames, core_rows_list = normalize_csv_filename_columns(fieldnames, core_rows_list)
 
                             core_by_filename = {}
@@ -5904,11 +5918,23 @@ Detailed results: {output_diff.name}
                                         {field_name} if not new_val else (),
                                     )
                             
-                            # Write updated CSV
-                            with open(old_csv, 'w', newline='', encoding='utf-8') as f:
-                                writer = csv.DictWriter(f, fieldnames=fieldnames)
-                                writer.writeheader()
-                                writer.writerows(core_rows_list)
+                            # Stage alongside the core CSV so a failed write cannot truncate it.
+                            staged_path = None
+                            try:
+                                with tempfile.NamedTemporaryFile(
+                                    'w', newline='', encoding='utf-8', dir=old_csv.parent,
+                                    prefix=f'.{old_csv.name}.', suffix='.tmp', delete=False,
+                                ) as staged:
+                                    staged_path = Path(staged.name)
+                                    writer = csv.DictWriter(staged, fieldnames=fieldnames)
+                                    writer.writeheader()
+                                    writer.writerows(core_rows_list)
+                                shutil.copymode(old_csv, staged_path)
+                                os.replace(staged_path, old_csv)
+                                core_replaced = True
+                            finally:
+                                if staged_path and staged_path.exists():
+                                    staged_path.unlink()
                             
                             add_log_message(f"[SUCCESS] Merged {len(selected_new)} new records and {len(selected_changes)} field changes")
                             if new_fields:
@@ -5924,15 +5950,16 @@ Detailed results: {output_diff.name}
                             logger.error(f"Merge error: {merge_ex}", exc_info=True)
                             update_status(f"Merge error: {merge_ex}", is_error=True)
                             add_log_message(f"[ERROR] Merge failed: {merge_ex}")
-                            add_log_message(f"[INFO] Core CSV NOT modified - backup preserved at {backup_path.name}")
+                            core_notice = "Core CSV may have been updated" if core_replaced else "Core CSV was NOT modified"
+                            backup_notice = f"Backup preserved at: {backup_path.name}" if backup_path and backup_path.is_file() else "No backup was created"
+                            add_log_message(f"[INFO] {core_notice} - {backup_notice}")
                             # Show error to user
                             error_dialog = ft.AlertDialog(
                                 modal=True,
                                 title=ft.Text("⚠️ Merge Failed", weight=ft.FontWeight.BOLD, color=ft.Colors.RED),
                                 content=ft.Text(
                                     f"Merge operation failed with error:\n\n{str(merge_ex)}\n\n"
-                                    f"Your core CSV was NOT modified.\n"
-                                    f"Backup preserved at: {backup_path.name}",
+                                    f"{core_notice}.\n{backup_notice}",
                                     selectable=True
                                 ),
                                 actions=[ft.TextButton("OK", on_click=lambda e: close_error_dialog())],

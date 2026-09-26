@@ -84,9 +84,10 @@ All field changes are shown in this format:
    - Repeated merges retain earlier Seeklight field names without duplicates. Accepting an empty Seeklight value removes that field's Seeklight tag; other provenance text in `_metadata_source` is preserved.
    - This records Function 6 merges, not later manual edits or changes made by other workflows; review the tag if a value is edited afterward.
 6. **Error protection**: If merge fails for any reason:
-   - Core CSV is NOT modified
-   - Backup is preserved
-   - Error dialog shows detailed information
+   - Function 6 rejects CSV rows with more or fewer values than the header before comparison or merge, reporting the CSV line number without discarding data
+   - The completed CSV is written to a temporary file beside the core CSV before replacing the core; a write failure leaves the core CSV untouched
+   - A backup is preserved if one was created; the error dialog reports whether the replacement had already happened
+   - If a previous merge left a partial core CSV, review its backup before restoring it; Function 6 does not repair existing CSV damage automatically
 7. **Template protection (v6.0+)**: If `core_metadata_csv` points to a file literally named `collection-template.csv`, Function 6 refuses to merge and never overwrites it. Point `core_metadata_csv` at your project's own copy instead.
 
 ## Matching Logic
