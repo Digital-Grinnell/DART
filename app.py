@@ -456,6 +456,14 @@ def get_ohm_filename_id(file_path: Path, collection_id: str = "") -> str:
     return f"{collection_id}_{base_id}" if collection_id else base_id
 
 
+def get_filename_dg_id(file_path: Path, collection_id: str = "") -> str | None:
+    """Return a DG identifier embedded in a filename, with the configured prefix."""
+    match = re.search(r"dg_\d+", file_path.stem)
+    if not match:
+        return None
+    return f"{collection_id}_{match.group(0)}" if collection_id else match.group(0)
+
+
 def get_ohm_filename(file_path: Path, collection_id: str = "") -> str:
     """Return the source filename with the collection-id prefix prepended."""
     object_id = get_ohm_filename_id(file_path, collection_id)
@@ -2496,11 +2504,16 @@ def main(page: ft.Page):
                 reused_mappings += 1
                 logger.info(f"[DEBUG] Reusing existing: {unique_id} → {stable_path} (full: {file_path_str})")
             else:
-                # Generate new unique DG identifier
-                unique_id = generate_unique_id(page, collection_id)
+                # Preserve an identifier already embedded in the filename when present.
+                unique_id = get_filename_dg_id(file_path, collection_id)
+                if unique_id:
+                    reused_mappings += 1
+                    logger.info(f"[DEBUG] Preserving filename ID: {unique_id} <- {file_path.name}")
+                else:
+                    unique_id = generate_unique_id(page, collection_id)
+                    new_mappings += 1
+                    logger.info(f"[DEBUG] Generated new: {unique_id} → {stable_path} (full: {file_path_str})")
                 file_to_id_map[stable_path] = unique_id
-                new_mappings += 1
-                logger.info(f"[DEBUG] Generated new: {unique_id} → {stable_path} (full: {file_path_str})")
             
             # Store both full path and display name
             objects.append({
@@ -2953,9 +2966,13 @@ def main(page: ft.Page):
                     unique_id = file_to_id_map[stable_path]
                     reused_mappings += 1
                 else:
-                    unique_id = generate_unique_id(page, collection_id)
+                    unique_id = get_filename_dg_id(file_path, collection_id)
+                    if unique_id:
+                        reused_mappings += 1
+                    else:
+                        unique_id = generate_unique_id(page, collection_id)
+                        new_mappings += 1
                     file_to_id_map[stable_path] = unique_id
-                    new_mappings += 1
                 objects.append({
                     "objectid": unique_id,
                     "filepath": file_path_str,

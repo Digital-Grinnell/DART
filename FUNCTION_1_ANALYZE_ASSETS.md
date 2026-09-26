@@ -196,9 +196,10 @@ This ensures:
 When you run Function 1:
 1. The app checks if each file already has an assigned ID (stored in working folder settings using **full file path** as key)
 2. If an ID exists for that file path, it reuses that ID - **IDs never change**
-3. If a file is new, it generates a new identifier in either `dg_<epoch>` form or `<prefix>_dg_<epoch>` form
-4. The mapping (full path → ID) is saved to `dart_settings.json` in the working folder
-5. Results show: "X new, Y reused" to indicate which IDs were newly generated vs. retrieved
+3. If no path mapping exists but the filename contains `dg_<number>`, it preserves that identifier; when `collection-id` is configured, it prepends the collection ID
+4. Otherwise, a new file receives an identifier in either `dg_<epoch>` form or `<prefix>_dg_<epoch>` form
+5. The mapping (full path → ID) is saved to `dart_settings.json` in the working folder
+6. Results show: "X new, Y reused" to indicate which IDs were newly generated vs. retrieved
 
 ### Legacy and Prefixed ID Cutoff
 

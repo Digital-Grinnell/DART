@@ -61,6 +61,7 @@ The function automatically populates these CollectionBuilder fields from your as
   - Empty if Azure is not configured in Function 0 settings
 - **OHM-data fields**: In `process_OHM_data` mode, the export has one standalone row per MP3. Each row has `type=transcript`, `object_location` set to the MP3's Azure URL, and `object_transcript` set to the transcript CSV filename. The transcript CSV is copied to `_data/transcripts` and uploaded to Azure under the parallel `transcripts` path.
 - **OHM-data identifiers**: OHM file IDs are taken from the existing filename stem. For example, `dg_1782850662.pdf` uploads as `re26/re26_dg_1782850662.pdf` when `collection-id` is `re26`; Function 2 does not replace it with a newly generated timestamp ID.
+- **Existing filename identifiers**: For other assets without a saved path mapping, a `dg_<number>` found in the filename is preserved instead of generating a new timestamp identifier. The configured `collection-id` prefix is still applied.
 - **OHM-data IDs**: Each standalone MP3 object uses the corresponding prefixed `dg_` basename as its `objectid`; `parentid` is blank because OHM mode does not create compound objects.
 - OHM-mode exports retain a blank `parentid` column when it is present in the configured template, but do not create parent-child relationships in the CSV.
 - **OHM-data MP3 records**: The MP3 record uses `display_template=transcript` because its associated transcript CSV defines the CollectionBuilder presentation.
