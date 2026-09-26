@@ -10,8 +10,37 @@ This document provides detailed installation instructions for DART (Digital Asse
 - [Windows Installation (ZIP)](#windows-installation-zip)
 - [Linux Installation (Source)](#linux-installation-source)
 - [Prerequisites](#prerequisites)
+- [Seeklight Credentials (Optional)](#seeklight-credentials-optional)
 - [Troubleshooting](#troubleshooting)
 - [Uninstallation](#uninstallation)
+
+---
+
+## Seeklight Credentials (Optional)
+
+Seeklight is optional. For each colleague using Function 5, place a file named `seeklight_credentials.json` in their own user profile, **not** in the DART installation directory or distribution archive:
+
+- macOS: `~/Library/Application Support/DART/seeklight_credentials.json`
+- Windows: `%APPDATA%\DART\seeklight_credentials.json`
+- Linux: `~/.config/DART/seeklight_credentials.json` (or `$XDG_CONFIG_HOME/DART/seeklight_credentials.json`)
+
+Create the directory and file locally with these JSON fields, using the base URL and API key issued to that user or institution:
+
+```json
+{
+   "base_url": "https://YOUR-SEEKLIGHT-API-URL",
+   "api_key": "YOUR-API-KEY"
+}
+```
+
+On macOS/Linux, restrict the directory and file to your user after creating them (quote paths containing spaces):
+
+```bash
+chmod 700 "$HOME/Library/Application Support/DART"
+chmod 600 "$HOME/Library/Application Support/DART/seeklight_credentials.json"
+```
+
+On Linux, substitute the Linux configuration path above. On Windows, store the file in your private user profile with access restricted to your account. DART refuses a macOS/Linux credential file readable by other users. The file is **plaintext**, not encrypted: do not email it, commit it, or put it into a DMG/ZIP. Anyone given a shared key can use that key, so request separate keys and rotation guidance from the Seeklight provider where possible. The build scripts exclude this filename, `.env*` files, and legacy `api-info/` folders from packages. Environment variables take precedence; the sibling `Seeklight-Resources/api-info/` files remain a development-only fallback.
 
 ---
 

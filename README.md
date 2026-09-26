@@ -150,7 +150,7 @@ DART provides a comprehensive platform for digital asset management workflows:
   - Display processing progress in the background and retain raw API results
   - Create mapped, timestamped CSV output for Function 6
   - JSON-based field mapping template (`seeklight_mapping_template.json`)
-  - Credentials from `SEEKLIGHT_API_BASE_URL` / `SEEKLIGHT_API_KEY` or the sibling `Seeklight-Resources/api-info/` files
+  - Credentials from environment variables, a per-user file outside the app, or the sibling development resources (see `INSTALLATION.md`)
   - Customizable field mappings and default values
   - Function 5 workflow documentation in the help system
 - **Function 6** 🔗: Compare and Merge Seeklight CSV

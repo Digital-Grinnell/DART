@@ -4,17 +4,19 @@ Function 5 sends selected source media directly to the Seeklight Public API, wai
 
 ## Setup
 
-The Seeklight Python library is installed from the pinned revision in `python_requirements.txt` the next time DART installs its dependencies. Configure both `SEEKLIGHT_API_BASE_URL` and `SEEKLIGHT_API_KEY` in the environment, or provide non-empty `url.md` and `key.md` files in the sibling `Seeklight-Resources/api-info/` directory. The API key file is local configuration and must not be committed.
+The Seeklight Python library is installed from the pinned revision in `python_requirements.txt` the next time DART installs its dependencies. For distributed installs, configure the per-user `seeklight_credentials.json` file described in `INSTALLATION.md`. DART first checks both `SEEKLIGHT_API_BASE_URL` and `SEEKLIGHT_API_KEY` in the environment, then the per-user file, then the sibling `Seeklight-Resources/api-info/url.md` and `key.md` files used for development. An incomplete pair of environment variables is an error. Never include credential files in the distribution.
+
+If credentials are missing or invalid, Function 5 shows the setup error in its dialog before submission and logs the details. You can correct the credential file and retry without sending a request.
 
 Each source that is submitted for processing uses one item from the Seeklight allowance. Raw API results and any transcript are retained in `.DART-working-directory` because Seeklight only keeps results for a limited time.
 
 ## Workflow
 
 1. Set the working folder and core metadata CSV in Function 0.
-2. Open Function 5 and add one or more image/PDF files, or add a folder whose files form one multipage document. Supported images include JPEG, TIFF, PNG, GIF, BMP, WebP, and HEIC.
-3. Metadata is always requested. Optionally request a transcript or image alt text, and provide context (up to 2,000 characters).
+2. In the main Files Selection area, select one or more image/PDF files. Optionally select a Seeklight Page Folder to submit its files as one multipage document; the folder is used only by Function 5. Supported images include JPEG, TIFF, PNG, GIF, BMP, WebP, and HEIC.
+3. Open Function 5 to review the selected sources. Metadata is always requested. Optionally request a transcript or image alt text, and provide context (up to 2,000 characters).
 4. Optionally enable **Override merge target filename** to write the same `original_file_name` for every result. Otherwise, each source filename is used for Function 6 matching.
-5. Select **Generate Metadata**. Progress and per-source errors appear in the DART log while processing continues in the background.
+5. Select **Generate Metadata**. The Function 5 dialog shows the current source, Seeklight's latest reported stage, and the number and percentage of sources processed; it refreshes the elapsed waiting time every 15 seconds while the API is quiet. The percentage counts attempted sources, not time remaining for the current source, and can stay at 0% while the first document is queued. Keep DART open until processing finishes. Detailed progress and per-source errors also appear in the DART log.
 6. When complete, use Function 6 to compare and merge the generated `DART_seeklight_transformed_*.csv` with the core metadata CSV.
 
 The transformed rows leave `objectid` blank for Function 6 matching. The mapping template controls field names and default values; unmapped API fields are added with underscore-prefixed names. Multi-value separators are converted from ` | ` to `; `. Each run also saves the raw results JSON and any transcript under `.DART-working-directory`.

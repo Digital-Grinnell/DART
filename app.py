@@ -15,6 +15,8 @@ import re
 import csv
 import shutil
 import tempfile
+import threading
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional, Tuple, Union
@@ -30,13 +32,32 @@ from common_dg_utilities.dg_utils import generate_unique_id, get_mime_type
 
 
 def create_seeklight_client() -> SeeklightClient:
-    """Load Seeklight credentials from the environment or the sibling resources repo."""
+    """Load Seeklight credentials from the environment, per-user file, or developer repo."""
     base_url = os.environ.get("SEEKLIGHT_API_BASE_URL", "").strip()
     api_key = os.environ.get("SEEKLIGHT_API_KEY", "").strip()
     if base_url or api_key:
         if not base_url or not api_key:
             raise ValueError("Both SEEKLIGHT_API_BASE_URL and SEEKLIGHT_API_KEY must be set")
         return SeeklightClient(base_url, api_key)
+
+    if os.name == "nt":
+        config_dir = Path(os.environ.get("APPDATA") or Path.home() / "AppData" / "Roaming") / "DART"
+    elif platform.system() == "Darwin":
+        config_dir = Path.home() / "Library" / "Application Support" / "DART"
+    else:
+        config_dir = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "DART"
+    credentials_file = config_dir / "seeklight_credentials.json"
+    if credentials_file.is_file():
+        if os.name != "nt" and credentials_file.stat().st_mode & 0o077:
+            raise ValueError(f"Restrict Seeklight credential file permissions to owner only (chmod 600): {credentials_file}")
+        credentials = json.loads(credentials_file.read_text(encoding="utf-8"))
+        if not isinstance(credentials, dict):
+            raise ValueError(f"Seeklight credential file must contain a JSON object: {credentials_file}")
+        base_url = credentials.get("base_url")
+        api_key = credentials.get("api_key")
+        if not isinstance(base_url, str) or not base_url.strip() or not isinstance(api_key, str) or not api_key.strip():
+            raise ValueError(f"Seeklight credential file requires base_url and api_key: {credentials_file}")
+        return SeeklightClient(base_url.strip(), api_key.strip())
 
     api_info = Path(__file__).resolve().parent.parent / "Seeklight-Resources" / "api-info"
     url_file = api_info / "url.md"
@@ -50,8 +71,8 @@ def create_seeklight_client() -> SeeklightClient:
         return SeeklightClient.from_files(url_file, key_file)
 
     raise ValueError(
-        "Set SEEKLIGHT_API_BASE_URL and SEEKLIGHT_API_KEY, or configure "
-        "../Seeklight-Resources/api-info/url.md and key.md"
+        "Set SEEKLIGHT_API_BASE_URL and SEEKLIGHT_API_KEY, configure "
+        f"{credentials_file}, or configure ../Seeklight-Resources/api-info/url.md and key.md"
     )
 
 # Get application version from VERSION file
@@ -1644,6 +1665,7 @@ def main(page: ft.Page):
                 file_path = e.files[0].path
                 file_field.value = file_path
                 storage.set_ui_state("last_file", file_path)
+                storage.set_ui_state("last_files", "")
                 update_status(f"File selected: {Path(file_path).name}")
             else:
                 # Multiple files selected
@@ -1654,12 +1676,22 @@ def main(page: ft.Page):
                 storage.set_ui_state("last_files", ",".join(file_paths))  # Store all files
                 update_status(f"{len(file_paths)} files selected")
             page.update()
+        else:
+            add_log_message("File selection canceled or no files returned by the picker")
+
+    def on_page_folder_result(e: ft.FilePickerResultEvent):
+        if e.path:
+            page_folder_field.value = e.path
+            storage.set_ui_state("last_seeklight_page_folder", e.path)
+            update_status(f"Seeklight page folder set: {Path(e.path).name}")
+            page.update()
 
     input_dir_picker = ft.FilePicker(on_result=on_input_dir_result)
     output_dir_picker = ft.FilePicker(on_result=on_output_dir_result)
     file_picker = ft.FilePicker(on_result=on_file_result)
+    page_folder_picker = ft.FilePicker(on_result=on_page_folder_result)
 
-    page.overlay.extend([input_dir_picker, output_dir_picker, file_picker])
+    page.overlay.extend([input_dir_picker, output_dir_picker, file_picker, page_folder_picker])
 
     # ------------------------------------------------------------------ helper functions
 
@@ -1668,22 +1700,29 @@ def main(page: ft.Page):
         working_dir = output_dir_field.value
         initial_dir = None
         
-        if working_dir:
-            settings, _ = load_app_settings(working_dir)
-            use_working_folder = settings.get("use_working_folder_for_file_selection", False)
-            if use_working_folder:
-                initial_dir = working_dir
-            else:
-                # When false, use inputs folder if available
-                input_dir = input_dir_field.value
-                if input_dir:
-                    initial_dir = input_dir
-        
-        file_picker.pick_files(
-            dialog_title="Select Files",
-            allow_multiple=True,
-            initial_directory=initial_dir,
-        )
+        try:
+            if working_dir:
+                if Path(working_dir).is_dir():
+                    settings, _ = load_app_settings(working_dir)
+                    if settings.get("use_working_folder_for_file_selection", False):
+                        initial_dir = working_dir
+                    else:
+                        initial_dir = input_dir_field.value
+                else:
+                    add_log_message(f"[WARN] Working/outputs folder is unavailable: {working_dir}")
+
+            if initial_dir and not Path(initial_dir).is_dir():
+                add_log_message(f"[WARN] Inputs folder is unavailable: {initial_dir}")
+                initial_dir = None
+
+            add_log_message(f"Requesting file picker in {initial_dir or 'the default folder'}")
+            file_picker.pick_files(
+                dialog_title="Select Files",
+                allow_multiple=True,
+                initial_directory=initial_dir,
+            )
+        except Exception as ex:
+            update_status(f"Error opening file picker: {ex}", is_error=True)
 
     def get_selected_files():
         """Get list of selected files from storage. Returns list of Path objects."""
@@ -1704,6 +1743,12 @@ def main(page: ft.Page):
         storage.set_ui_state("last_files", "")
         file_field.value = ""
         update_status("File selection cleared")
+        page.update()
+
+    def clear_page_folder(e):
+        storage.set_ui_state("last_seeklight_page_folder", "")
+        page_folder_field.value = ""
+        update_status("Seeklight page folder cleared")
         page.update()
 
     # ------------------------------------------------------------------ function implementations
@@ -5258,8 +5303,16 @@ Detailed results: {output_diff.name}
             update_status(f"Error loading Seeklight mapping template: {ex}", is_error=True)
             return
 
-        selected_sources: list[Path] = []
-        selected_sources_ref = ft.Ref[ft.Text]()
+        selected_sources: list[Path] = get_selected_files()
+        page_folder = storage.get_ui_state("last_seeklight_page_folder")
+        if page_folder:
+            selected_sources.append(Path(page_folder))
+        source_names = [source.name for source in selected_sources]
+        source_summary = (
+            f"{len(source_names)} source(s): {', '.join(source_names[:4])}"
+            + (", ..." if len(source_names) > 4 else "")
+            if source_names else "No files or page folder selected in Files Selection"
+        )
         override_checkbox = ft.Checkbox(value=False, label="")
         override_textfield = ft.TextField(
             label="Target Record Override",
@@ -5276,52 +5329,21 @@ Detailed results: {output_diff.name}
             max_lines=4,
             max_length=2000,
         )
+        credential_error_text = ft.Text(
+            "",
+            color=ft.Colors.RED_700,
+            selectable=True,
+            visible=False,
+        )
+        progress_text = ft.Text("", size=12, selectable=True, visible=False)
+        processing_notice = ft.Text("Keep DART open until processing finishes.", size=11, visible=False)
 
-        def refresh_source_summary():
-            names = [source.name for source in selected_sources]
-            if not names:
-                summary = "No source files or page folders selected"
-            else:
-                shown = ", ".join(names[:4])
-                summary = f"{len(names)} source(s): {shown}"
-                if len(names) > 4:
-                    summary += ", ..."
-            selected_sources_ref.current.value = summary
-            dialog.update()
-
-        def on_source_files_picked(picker_event: ft.FilePickerResultEvent):
-            if picker_event.files:
-                selected_sources.extend(Path(file.path) for file in picker_event.files if file.path)
-                storage.set_ui_state("last_seeklight_dir", str(Path(picker_event.files[0].path).parent))
-                selected_sources[:] = list(dict.fromkeys(selected_sources))
-                refresh_source_summary()
-
-        def on_page_folder_picked(picker_event: ft.FilePickerResultEvent):
-            if picker_event.path:
-                selected_sources.append(Path(picker_event.path))
-                selected_sources[:] = list(dict.fromkeys(selected_sources))
-                storage.set_ui_state("last_seeklight_dir", picker_event.path)
-                refresh_source_summary()
-
-        def pick_source_files(e):
-            initial_dir = storage.get_ui_state("last_seeklight_dir") or working_dir
-            source_file_picker.pick_files(
-                dialog_title="Select Media for Seeklight",
-                allow_multiple=True,
-                initial_directory=initial_dir,
-                allowed_extensions=["jpg", "jpeg", "tif", "tiff", "png", "gif", "bmp", "webp", "heic", "pdf"],
+        def show_credential_error(error):
+            credential_error_text.value = (
+                f"Seeklight credentials unavailable: {error}\n"
+                "See Function 5 help for credential setup."
             )
-
-        def pick_page_folder(e):
-            initial_dir = storage.get_ui_state("last_seeklight_dir") or working_dir
-            source_folder_picker.get_directory_path(
-                dialog_title="Select a Folder of Pages",
-                initial_directory=initial_dir,
-            )
-
-        def clear_sources(e):
-            selected_sources.clear()
-            refresh_source_summary()
+            credential_error_text.visible = True
 
         def on_override_checkbox_changed(e):
             override_textfield.disabled = not override_checkbox.value
@@ -5330,37 +5352,78 @@ Detailed results: {output_diff.name}
         override_checkbox.on_change = on_override_checkbox_changed
 
         def run_seeklight(client, sources, actions, user_context, override_filename, dart_working_dir):
+            total = len(sources)
+            processed = 0
+            current_source = None
+            last_stage = "Starting Seeklight"
+            started_at = time.monotonic()
+            stop_heartbeat = threading.Event()
+
+            def show_progress(stage):
+                nonlocal last_stage
+                last_stage = stage
+                progress_text.value = f"{processed}/{total} processed ({processed * 100 // total}%). {stage}"
+
+            def heartbeat():
+                while not stop_heartbeat.wait(15):
+                    progress_text.value = (
+                        f"{processed}/{total} processed ({processed * 100 // total}%). "
+                        f"{last_stage} (waiting {int(time.monotonic() - started_at)}s)"
+                    )
+                    page.update()
+
+            def pending_sources():
+                nonlocal processed, current_source
+                for index, source in enumerate(sources, start=1):
+                    current_source = source
+                    show_progress(f"Processing {index}/{total}: {source.name}")
+                    update_status(f"Seeklight processing {index}/{total}: {source.name}")
+                    yield source
+                    processed = index
+                    show_progress(f"Finished {source.name}")
+                    update_status(f"Seeklight processed {processed}/{total}: {source.name}")
+
+            def on_seeklight_progress(message):
+                show_progress(f"{current_source.name if current_source else 'Seeklight'}: {message}")
+                add_log_message(message)
+
+            threading.Thread(target=heartbeat, daemon=True).start()
             try:
                 completed, output_path = describe_files(
                     client,
-                    sources,
+                    pending_sources(),
                     dart_working_dir=dart_working_dir,
                     core_csv=core_csv_path,
                     mapping=mapping_file,
                     actions=actions,
                     user_context=user_context,
                     original_file_name=override_filename,
-                    log=add_log_message,
+                    log=on_seeklight_progress,
                 )
                 failed = sum(result.status.upper() == "FAILED" for result in completed)
                 if output_path:
+                    show_progress(f"Finished: {len(completed) - failed} record(s) ready for Function 6")
                     update_status(
                         f"Seeklight complete: {len(completed) - failed} record(s) ready for Function 6"
                     )
                     add_log_message(f"[SUCCESS] Transformed CSV saved: {output_path.name}")
                 else:
+                    show_progress("No usable metadata; see the DART log")
                     update_status("Error: Seeklight returned no usable metadata; see the log", is_error=True)
             except Exception as ex:
                 logger.error("Seeklight API processing failed", exc_info=True)
+                show_progress(f"Seeklight processing stopped: {ex}")
                 update_status(f"Error: Seeklight API processing failed: {ex}", is_error=True)
             finally:
+                stop_heartbeat.set()
+                processing_notice.visible = False
                 run_button.disabled = False
                 run_button.text = "Generate Metadata"
                 page.update()
 
         def transform_metadata(e):
             if not selected_sources:
-                update_status("Error: Select at least one source file or page folder", is_error=True)
+                update_status("Error: Select files or a page folder in Files Selection first", is_error=True)
                 return
 
             supported_extensions = {
@@ -5380,8 +5443,13 @@ Detailed results: {output_diff.name}
             try:
                 client = create_seeklight_client()
             except (OSError, ValueError) as ex:
+                show_credential_error(ex)
+                dialog.update()
                 update_status(f"Error: {ex}", is_error=True)
                 return
+
+            credential_error_text.visible = False
+            dialog.update()
 
             actions = ["metadata"]
             if transcript_checkbox.value:
@@ -5398,6 +5466,9 @@ Detailed results: {output_diff.name}
 
             run_button.disabled = True
             run_button.text = "Processing..."
+            progress_text.value = f"0/{len(sources)} processed (0%). Starting Seeklight. Keep DART open."
+            progress_text.visible = True
+            processing_notice.visible = True
             update_status(f"Sending {len(sources)} source(s) to Seeklight")
             page.run_thread(
                 run_seeklight,
@@ -5413,10 +5484,6 @@ Detailed results: {output_diff.name}
             dialog.open = False
             page.update()
 
-        source_file_picker = ft.FilePicker(on_result=on_source_files_picked)
-        source_folder_picker = ft.FilePicker(on_result=on_page_folder_picked)
-        page.overlay.extend([source_file_picker, source_folder_picker])
-
         run_button = ft.ElevatedButton(
             "Generate Metadata",
             icon=ft.Icons.AUTO_AWESOME,
@@ -5429,13 +5496,10 @@ Detailed results: {output_diff.name}
             title=ft.Text("Function 5: Generate Seeklight Metadata"),
             content=ft.Container(
                 content=ft.Column([
-                    ft.Text("Send images, PDFs, or page folders directly to Seeklight."),
-                    ft.Row([
-                        ft.ElevatedButton("Add files", icon=ft.Icons.FILE_OPEN, on_click=pick_source_files),
-                        ft.ElevatedButton("Add page folder", icon=ft.Icons.FOLDER_OPEN, on_click=pick_page_folder),
-                        ft.IconButton(icon=ft.Icons.CLEAR, tooltip="Clear selected sources", on_click=clear_sources),
-                    ], wrap=True),
-                    ft.Text(ref=selected_sources_ref, value="No source files or page folders selected", size=11),
+                    ft.Text("Send selected images, PDFs, or a page folder directly to Seeklight."),
+                    ft.Text(source_summary, size=11),
+                    progress_text,
+                    processing_notice,
                     ft.Divider(),
                     ft.Text("Actions", weight=ft.FontWeight.BOLD),
                     ft.Text("Metadata is always generated. Additional actions use API allowance."),
@@ -5454,6 +5518,7 @@ Detailed results: {output_diff.name}
                         italic=True,
                         color=ft.Colors.GREY_700,
                     ),
+                    credential_error_text,
                     run_button,
                 ], spacing=8, tight=True, scroll=ft.ScrollMode.AUTO),
                 width=650,
@@ -5461,6 +5526,12 @@ Detailed results: {output_diff.name}
             ),
             actions=[ft.TextButton("Close", on_click=close_dialog)],
         )
+
+        try:
+            create_seeklight_client()
+        except (OSError, ValueError) as ex:
+            show_credential_error(ex)
+            add_log_message(f"Error: {ex}")
 
         page.overlay.append(dialog)
         dialog.open = True
@@ -6194,6 +6265,13 @@ Detailed results: {output_diff.name}
         expand=True,
     )
 
+    page_folder_field = ft.TextField(
+        label="Seeklight Page Folder",
+        value=storage.get_ui_state("last_seeklight_page_folder"),
+        read_only=True,
+        expand=True,
+    )
+
     # Container for status - can hold either simple text or row with clickable link
     status_container = ft.Container(
         content=ft.Text(
@@ -6324,6 +6402,23 @@ Detailed results: {output_diff.name}
                                         "Clear",
                                         icon=ft.Icons.CLEAR,
                                         on_click=clear_file_selection,
+                                    ),
+                                ],
+                            ),
+                            ft.Row(
+                                controls=[
+                                    page_folder_field,
+                                    ft.IconButton(
+                                        icon=ft.Icons.FOLDER_OPEN,
+                                        tooltip="Select a multipage folder for Seeklight",
+                                        on_click=lambda _: page_folder_picker.get_directory_path(
+                                            dialog_title="Select a Folder of Pages"
+                                        ),
+                                    ),
+                                    ft.IconButton(
+                                        icon=ft.Icons.CLEAR,
+                                        tooltip="Clear Seeklight page folder",
+                                        on_click=clear_page_folder,
                                     ),
                                 ],
                             ),

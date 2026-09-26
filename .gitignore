@@ -18,6 +18,8 @@ logfiles/
 # Environment variables
 .env
 .env.local
+seeklight_credentials.json
+api-info/
 
 # Build artifacts
 dist/
