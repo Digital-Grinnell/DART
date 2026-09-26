@@ -22,15 +22,15 @@ increment_version() {
     local version=$1
     local major minor patch
     
-    # Parse version into major.minor.patch
-    if [[ $version =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+    # Accept major.minor as patch zero for initial releases in a minor series.
+    if [[ $version =~ ^([0-9]+)\.([0-9]+)(\.([0-9]+))?$ ]]; then
         major="${BASH_REMATCH[1]}"
         minor="${BASH_REMATCH[2]}"
-        patch="${BASH_REMATCH[3]}"
+        patch="${BASH_REMATCH[4]:-0}"
         patch=$((patch + 1))
         echo "${major}.${minor}.${patch}"
     else
-        echo "Error: Invalid version format in VERSION file: $version" >&2
+        echo "Error: Invalid version format in VERSION file: $version (expected major.minor or major.minor.patch)" >&2
         exit 1
     fi
 }
