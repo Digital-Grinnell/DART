@@ -5593,7 +5593,7 @@ Detailed results: {output_diff.name}
         add_log_message(f"[INFO] Using core metadata CSV: {old_csv.name}")
         add_log_message(f"[INFO] Auto-selected newest Seeklight CSV: {new_csv.name}")
         
-        # Perform comparison using objectid matching
+        # Perform comparison using original_file_name matching
         def perform_seeklight_comparison(selected_new_csv):
             try:
                 add_log_message(f"[INFO] Comparing Seeklight CSV with core metadata...")
@@ -5613,38 +5613,40 @@ Detailed results: {output_diff.name}
                 seeklight_fieldnames = [CSV_FILENAME_FIELD if c == LEGACY_CSV_FILENAME_FIELD else c for c in seeklight_fieldnames]
                 _, seeklight_rows = normalize_csv_filename_columns(seeklight_fieldnames, seeklight_rows)
                 
-                # Build mapping: objectid -> core row
-                core_by_objectid = {}
+                # Build mapping: original_file_name -> core rows
+                core_by_filename = {}
                 for row in core_rows:
-                    objectid = row.get('objectid', '').strip()
-                    if objectid:
-                        core_by_objectid[objectid] = row
+                    filename = get_csv_filename_value(row)
+                    if filename:
+                        core_by_filename.setdefault(filename, []).append(row)
                 
-                # Compare rows using basename of Seeklight filename matched to core objectid
+                # Compare rows using Seeklight's original_file_name
                 matched = []
                 new_records = []
                 changed_records = []
+                ambiguous = []
                 
                 for seeklight_row in seeklight_rows:
-                    # Get filename from Seeklight row and extract basename (without extension)
                     filename = get_csv_filename_value(seeklight_row)
                     
                     if not filename:
                         add_log_message(f"[WARNING] Seeklight row missing original_file_name, skipping")
                         continue
                     
-                    # Extract basename without extension
-                    basename = Path(filename).stem
-                    
-                    # Match basename against core objectid
-                    if basename in core_by_objectid:
+                    matches = core_by_filename.get(filename, [])
+                    if len(matches) > 1:
+                        ambiguous.append(filename)
+                        add_log_message(f"[WARNING] Skipping '{filename}': {len(matches)} core rows share original_file_name")
+                        continue
+
+                    if matches:
                         # Compare fields
-                        core_row = core_by_objectid[basename]
+                        core_row = matches[0]
                         changed_fields = {}
                         
                         for field in seeklight_fieldnames:
                             # Skip matching keys and internal fields - these should never be merged
-                            if field in ['filepath', 'objectid', CSV_FILENAME_FIELD, LEGACY_CSV_FILENAME_FIELD]:
+                            if field in ['filepath', 'objectid', CSV_FILENAME_FIELD, LEGACY_CSV_FILENAME_FIELD, '_metadata_source']:
                                 continue
                             
                             seeklight_val = seeklight_row.get(field, '').strip()
@@ -5658,22 +5660,22 @@ Detailed results: {output_diff.name}
                         
                         if changed_fields:
                             changed_records.append({
-                                'objectid': basename,  # Use basename as the identifier
+                                'objectid': core_row.get('objectid', '').strip(),
                                 CSV_FILENAME_FIELD: filename,
                                 'fields': changed_fields
                             })
                         else:
-                            matched.append(basename)
+                            matched.append(filename)
                     else:
-                        # New record not in core (basename not found in core objectids)
                         new_records.append(seeklight_row)
-                        add_log_message(f"[INFO] No match found for basename '{basename}' (from {filename})")
+                        add_log_message(f"[INFO] No core row found with original_file_name '{filename}'")
                 
                 # Show results dialog with merge option
                 add_log_message(f"[INFO] Comparison complete:")
                 add_log_message(f"  • {len(matched)} records matched (no changes)")
                 add_log_message(f"  • {len(new_records)} new records")
                 add_log_message(f"  • {len(changed_records)} records with changes")
+                add_log_message(f"  • {len(ambiguous)} ambiguous filenames skipped")
                 
                 def close_results_dialog(ev):
                     results_dialog.open = False
@@ -5809,6 +5811,26 @@ Detailed results: {output_diff.name}
                                 fieldnames = list(reader.fieldnames)
                                 core_rows_list = list(reader)
                             fieldnames, core_rows_list = normalize_csv_filename_columns(fieldnames, core_rows_list)
+
+                            core_by_filename = {}
+                            for row in core_rows_list:
+                                filename = get_csv_filename_value(row)
+                                if filename:
+                                    core_by_filename.setdefault(filename, []).append(row)
+
+                            new_filenames = set()
+                            for idx in selected_new:
+                                filename = get_csv_filename_value(new_records[idx])
+                                if filename in core_by_filename or filename in new_filenames:
+                                    raise ValueError(f"Cannot add '{filename}': original_file_name already exists")
+                                new_filenames.add(filename)
+
+                            for rec_idx, _ in selected_changes:
+                                change = changed_records[rec_idx]
+                                filename = change[CSV_FILENAME_FIELD]
+                                matches = core_by_filename.get(filename, [])
+                                if len(matches) != 1 or matches[0].get('objectid', '').strip() != change['objectid']:
+                                    raise ValueError(f"Cannot merge '{filename}': core filename match changed or is ambiguous")
                             
                             # Detect new fields from Seeklight records that aren't in core CSV
                             new_fields = set()
@@ -5821,6 +5843,9 @@ Detailed results: {output_diff.name}
                             for rec_idx, field_name in selected_changes:
                                 if rec_idx < len(changed_records) and field_name not in fieldnames:
                                     new_fields.add(field_name)
+
+                            if '_metadata_source' not in fieldnames:
+                                new_fields.add('_metadata_source')
                             
                             # Add new fields to fieldnames and backfill existing rows
                             if new_fields:
@@ -5833,30 +5858,51 @@ Detailed results: {output_diff.name}
                                     for field in new_fields_list:
                                         if field not in row:
                                             row[field] = ''
+
+                            def tag_seeklight_fields(row, populated, cleared=()):
+                                prefix = 'Seeklight: '
+                                entries = [entry.strip() for entry in row.get('_metadata_source', '').split(' | ') if entry.strip()]
+                                other_entries = [entry for entry in entries if not entry.startswith(prefix)]
+                                fields = {
+                                    name.strip()
+                                    for entry in entries if entry.startswith(prefix)
+                                    for name in entry[len(prefix):].split(';') if name.strip()
+                                }
+                                fields.update(populated)
+                                fields.difference_update(cleared)
+                                row['_metadata_source'] = ' | '.join(
+                                    other_entries + ([prefix + '; '.join(sorted(fields))] if fields else [])
+                                )
                             
                             # Apply new records
                             for idx in selected_new:
                                 if idx < len(new_records):
                                     # Ensure all fieldnames are present in the new record
-                                    new_record = new_records[idx].copy()
+                                    new_record = {field: value for field, value in new_records[idx].items() if field != '_metadata_source'}
+                                    populated = {
+                                        field for field, value in new_record.items()
+                                        if field not in ('objectid', CSV_FILENAME_FIELD, LEGACY_CSV_FILENAME_FIELD, 'filepath')
+                                        and str(value or '').strip()
+                                    }
                                     for field in fieldnames:
                                         if field not in new_record:
                                             new_record[field] = ''
+                                    tag_seeklight_fields(new_record, populated)
                                     core_rows_list.append(new_record)
                                     add_log_message(f"[INFO] Added: {get_csv_filename_value(new_record)}")
                             
-                            # Apply field changes
-                            core_by_id = {row.get('objectid', '').strip(): row for row in core_rows_list}
-                            
+                            # Apply field changes to the uniquely matched core rows
                             for rec_idx, field_name in selected_changes:
                                 if rec_idx < len(changed_records):
                                     change = changed_records[rec_idx]
-                                    # Use the stored objectid (which is actually the basename)
-                                    core_objectid = change['objectid']
                                     new_val = change['fields'][field_name]['to']
-                                    
-                                    if core_objectid in core_by_id:
-                                        core_by_id[core_objectid][field_name] = new_val
+                                    core_row = core_by_filename[change[CSV_FILENAME_FIELD]][0]
+                                    core_row[field_name] = new_val
+                                    tag_seeklight_fields(
+                                        core_row,
+                                        {field_name} if new_val else (),
+                                        {field_name} if not new_val else (),
+                                    )
                             
                             # Write updated CSV
                             with open(old_csv, 'w', newline='', encoding='utf-8') as f:
@@ -5931,8 +5977,9 @@ Detailed results: {output_diff.name}
                             ft.Text(f"  • {len(matched)} exact matches (no changes needed)", color=ft.Colors.GREEN),
                             ft.Text(f"  • {len(new_records)} new records (no match in core)", color=ft.Colors.BLUE),
                             ft.Text(f"  • {len(changed_records)} records with field changes", color=ft.Colors.ORANGE),
+                            ft.Text(f"  • {len(ambiguous)} ambiguous filenames skipped (see log)", color=ft.Colors.RED_700),
                             ft.Text(""),
-                            ft.Text("Matching method: Seeklight filename basename ↔ Core objectid", size=10, italic=True),
+                            ft.Text("Matching method: Seeklight original_file_name ↔ Core original_file_name", size=10, italic=True),
                         ], spacing=4),
                         width=600,
                         height=300,
@@ -5947,7 +5994,7 @@ Detailed results: {output_diff.name}
                 results_dialog.open = True
                 page.update()
                 
-                update_status(f"Comparison complete: {len(new_records)} new, {len(changed_records)} changed")
+                update_status(f"Comparison complete: {len(new_records)} new, {len(changed_records)} changed, {len(ambiguous)} ambiguous skipped")
                 
             except Exception as ex:
                 logger.error(f"Comparison error: {ex}", exc_info=True)

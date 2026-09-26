@@ -26,6 +26,7 @@ After transforming Seeklight-generated metadata using Function 5, Function 6 hel
    - Records with no changes (matched)
    - New records (in Seeklight but not in core)
    - Records with field changes
+   - Ambiguous filenames skipped when multiple core rows share the same `original_file_name`
 
 ### 3. Review and Merge
 
@@ -44,9 +45,10 @@ All field changes are shown in this format:
 - Example: `title: "Untitled" ← "Portrait of a Woman"` means replace "Untitled" with "Portrait of a Woman"
 
 **Protected Fields**: The following fields are never shown as changeable:
-- `objectid` - Used for matching, never modified
+- `objectid` - Durable core identifier, never modified
 - `original_file_name` - Used for matching, never modified  
 - `filepath` - Internal DART field
+- `_metadata_source` - Maintained by Function 6, never copied from Seeklight input
 
 #### Change Categories
 
@@ -77,6 +79,10 @@ All field changes are shown in this format:
    - Log shows which columns were added (e.g., "_keywords", "_medium")
    - Common with Function 5's dynamic column creation for unmapped Seeklight fields
 5. **Core CSV updated**: Changes are written to your core metadata CSV
+   - Function 6 adds an `_metadata_source` column if needed. For each merged row it lists fields populated by Seeklight, for example `Seeklight: description; title`. The field values themselves are unchanged.
+   - Existing rows list only accepted, nonempty Seeklight changes; newly added rows list all nonempty metadata fields from Seeklight (not `objectid`, `original_file_name`, or `filepath`). Unchecked changes are not tagged.
+   - Repeated merges retain earlier Seeklight field names without duplicates. Accepting an empty Seeklight value removes that field's Seeklight tag; other provenance text in `_metadata_source` is preserved.
+   - This records Function 6 merges, not later manual edits or changes made by other workflows; review the tag if a value is edited afterward.
 6. **Error protection**: If merge fails for any reason:
    - Core CSV is NOT modified
    - Backup is preserved
@@ -85,20 +91,20 @@ All field changes are shown in this format:
 
 ## Matching Logic
 
-Function 6 uses **basename-to-objectid matching**:
-- Seeklight CSV `original_file_name` basename (without extension) ↔ Core CSV `objectid`
-- Example: Seeklight original_file_name "image001.jpg" → basename "image001" → matches core objectid "image001"
-- This differs from Function 4 which matches `original_file_name` to `original_file_name`
+Function 6 uses **exact original_file_name matching**, as Function 4 does:
+- Seeklight CSV `original_file_name` ↔ Core CSV `original_file_name`
+- The core `objectid` is preserved, even when it differs from the filename stem
+- If multiple core rows share the same filename, Function 6 skips that Seeklight row and logs a warning; it neither updates nor adds a row for that filename
 
 **How it works:**
 1. For each row in the Seeklight transformed CSV:
-   - Extract the `original_file_name` field (e.g., "image001.jpg")
-   - Get the basename without extension (e.g., "image001")
-   - Look for a core CSV row where `objectid` equals that basename
-2. If match found: Compare field values and track changes
-3. If no match: Mark as new record to add
+   - Read the `original_file_name` field (e.g., "image001.jpg")
+   - Look for a core CSV row with exactly the same `original_file_name`
+2. If exactly one match exists: Compare field values and track changes
+3. If multiple matches exist: Skip the ambiguous filename for manual review
+4. If no match exists: Mark as a new record to review before adding
 
-This matching method assumes your core metadata uses the file basename as the objectid (common in many CollectionBuilder projects).
+Before writing the merge, Function 6 rechecks selected filename matches against the current core CSV and stops without modifying it if a match has become ambiguous or a proposed new filename is already present. Existing duplicates from an earlier merge are not removed automatically; review the core CSV and its backup before changing them.
 
 ## Best Practices
 

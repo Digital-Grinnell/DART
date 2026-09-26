@@ -155,7 +155,8 @@ DART provides a comprehensive platform for digital asset management workflows:
   - Function 5 workflow documentation in the help system
 - **Function 6** 🔗: Compare and Merge Seeklight CSV
   - Compare Seeklight-transformed CSV files with core metadata
-  - Basename-to-objectid matching (Seeklight original_file_name basename matched to core objectid)
+  - Match Seeklight and core records by exact `original_file_name`; skip ambiguous duplicate filenames
+  - Track accepted Seeklight fields per row in `_metadata_source` without altering merged values
   - Interactive merge with field-level checkboxes for granular control
   - Data loss protection: unchecks fields where Seeklight value is empty
   - Selective merging: choose exactly which changes to accept
