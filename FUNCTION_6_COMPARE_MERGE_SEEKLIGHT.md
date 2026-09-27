@@ -61,6 +61,7 @@ All field changes are shown in this format:
 - Records that exist in both files but have different field values
 - Each field has its own checkbox for granular control
 - Shows: `field_name: old_value → new_value`
+- If an older Function 5 CSV mapped mixed Seeklight `Named Entities` to `people`, uncheck that change and curate people, places, and organizations separately. Function 6 does not retroactively move previously merged names out of `people`.
 
 **⚠️ DATA LOSS WARNINGS** (orange background)
 - Fields where Seeklight value is empty but core has data

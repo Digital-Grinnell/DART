@@ -21,8 +21,8 @@
     "Style": "",
     "Culture": "",
     "Period": "",
-    "Location": "",
-    "Named Entities": "people",
+    "Location": "location",
+    "Named Entities": "_named_entities",
     "Keywords": "",
     "Resource Type": "",
     "Media URL": ""
