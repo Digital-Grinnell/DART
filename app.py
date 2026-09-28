@@ -12,6 +12,7 @@ import json
 import platform
 import socket
 import re
+import html
 import csv
 import shutil
 import tempfile
@@ -226,6 +227,120 @@ def normalize_csv_filename_columns(fieldnames: list, rows: list) -> tuple[list, 
         normalized_rows.append(normalized)
 
     return normalized_fieldnames, normalized_rows
+
+
+def write_seeklight_merge_review_report(
+    dart_working_dir: Path,
+    core_csv_path: Path,
+    seeklight_csv_path: Path,
+    matched: list,
+    new_records: list,
+    changed_records: list,
+    ambiguous: list,
+    missing_filename_rows: list,
+) -> Path:
+    """Write a Markdown snapshot of Function 6 results and default selections."""
+    report_path = dart_working_dir / (
+        f"DART_seeklight_merge_review_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.md"
+    )
+
+    def markdown_cell(value):
+        text = str(value or "").strip()
+        if not text:
+            return "(empty)"
+        return (
+            html.escape(text, quote=False)
+            .replace("|", "&#124;")
+            .replace("\r\n", "<br>")
+            .replace("\n", "<br>")
+        )
+
+    def markdown_field(value):
+        return html.escape(str(value), quote=False).replace("`", "&#96;")
+
+    changed_field_count = sum(len(record["fields"]) for record in changed_records)
+    unchecked_field_count = sum(
+        bool(change["from"].strip() and not change["to"].strip())
+        for record in changed_records
+        for change in record["fields"].values()
+    )
+    checked_field_count = changed_field_count - unchecked_field_count
+    lines = [
+        "# Function 6 Seeklight Merge Review",
+        "",
+        f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+        "",
+        "## Inputs",
+        f"- Seeklight CSV: `{seeklight_csv_path}`",
+        f"- Core CSV: `{core_csv_path}`",
+        "",
+        "## Summary",
+        f"- Records with no changes: {len(matched)}",
+        f"- New records: {len(new_records)} (all checked by default)",
+        f"- Records with field changes: {len(changed_records)}",
+        f"- Changed fields: {changed_field_count} ({checked_field_count} checked and {unchecked_field_count} unchecked by default)",
+        f"- Ambiguous filenames skipped: {len(ambiguous)}",
+        f"- Rows missing `original_file_name` skipped: {len(missing_filename_rows)}",
+        "",
+        "## Checkbox Notes",
+        "This report is a snapshot of the comparison. `[x]` and `[ ]` show Function 6's default selections, not any manual checkbox changes made in the open dialog. New-record checkboxes default to checked. Changed fields that would replace a nonempty core value with an empty Seeklight value default to unchecked.",
+        "",
+        "The report does not perform a merge. Review all selections before merging.",
+    ]
+
+    if new_records:
+        lines.extend([
+            "",
+            "## New Records",
+            "",
+            "| Selection | Filename | Object ID | Title |",
+            "|---|---|---|---|",
+        ])
+        for record in new_records:
+            lines.append(
+                f"| [x] | {markdown_cell(get_csv_filename_value(record))} "
+                f"| {markdown_cell(record.get('objectid', ''))} "
+                f"| {markdown_cell(record.get('title', ''))} |"
+            )
+
+    if changed_records:
+        lines.extend(["", "## Changed Records"])
+        for record in changed_records:
+            lines.extend([
+                "",
+                f"### {markdown_cell(record.get(CSV_FILENAME_FIELD, ''))} "
+                f"({markdown_cell(record.get('objectid', ''))})",
+                "",
+                "| Selection | Field | Core value | Seeklight value |",
+                "|---|---|---|---|",
+            ])
+            for field_name, change in record["fields"].items():
+                old_value = change["from"]
+                new_value = change["to"]
+                is_data_loss = bool(old_value.strip() and not new_value.strip())
+                selection = "[ ]" if is_data_loss else "[x]"
+                lines.append(
+                    f"| {selection} | `{markdown_field(field_name)}` "
+                    f"| {markdown_cell(old_value)} | {markdown_cell(new_value)} |"
+                )
+
+    if matched:
+        lines.extend(["", "## Matched With No Changes", ""])
+        lines.extend(f"- {markdown_cell(filename)}" for filename in matched)
+
+    if ambiguous:
+        lines.extend(["", "## Ambiguous Filenames Skipped", ""])
+        lines.extend(f"- {markdown_cell(filename)}" for filename in ambiguous)
+
+    if missing_filename_rows:
+        lines.extend(["", "## Rows Missing original_file_name", ""])
+        lines.extend(
+            f"- Row {index}: {markdown_cell(row.get('title', ''))}"
+            for index, row in enumerate(missing_filename_rows, start=1)
+        )
+
+    report_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return report_path
 
 
 def get_merged_row_filename_value(row: dict) -> str:
@@ -5640,11 +5755,13 @@ Detailed results: {output_diff.name}
                 new_records = []
                 changed_records = []
                 ambiguous = []
+                missing_filename_rows = []
                 
                 for seeklight_row in seeklight_rows:
                     filename = get_csv_filename_value(seeklight_row)
                     
                     if not filename:
+                        missing_filename_rows.append(seeklight_row)
                         add_log_message(f"[WARNING] Seeklight row missing original_file_name, skipping")
                         continue
                     
@@ -5691,6 +5808,25 @@ Detailed results: {output_diff.name}
                 add_log_message(f"  • {len(new_records)} new records")
                 add_log_message(f"  • {len(changed_records)} records with changes")
                 add_log_message(f"  • {len(ambiguous)} ambiguous filenames skipped")
+
+                report_path = None
+                report_error = None
+                try:
+                    report_path = write_seeklight_merge_review_report(
+                        dart_working_dir,
+                        old_csv,
+                        Path(selected_new_csv),
+                        matched,
+                        new_records,
+                        changed_records,
+                        ambiguous,
+                        missing_filename_rows,
+                    )
+                    add_log_message(f"[SUCCESS] Pre-merge review report saved: {report_path}")
+                except Exception as report_ex:
+                    logger.error("Could not write Seeklight merge review report", exc_info=True)
+                    report_error = str(report_ex)
+                    add_log_message(f"[ERROR] Could not write pre-merge review report: {report_error}")
                 
                 def close_results_dialog(ev):
                     results_dialog.open = False
@@ -6006,6 +6142,13 @@ Detailed results: {output_diff.name}
                             ft.Text(f"  • {len(changed_records)} records with field changes", color=ft.Colors.ORANGE),
                             ft.Text(f"  • {len(ambiguous)} ambiguous filenames skipped (see log)", color=ft.Colors.RED_700),
                             ft.Text(""),
+                            ft.Text(
+                                f"Pre-merge review report: {report_path}" if report_path else
+                                f"Pre-merge review report could not be written: {report_error}",
+                                size=10,
+                                selectable=True,
+                                color=ft.Colors.GREY_700 if report_path else ft.Colors.RED_700,
+                            ),
                             ft.Text("Matching method: Seeklight original_file_name ↔ Core original_file_name", size=10, italic=True),
                         ], spacing=4),
                         width=600,

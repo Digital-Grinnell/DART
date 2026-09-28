@@ -27,6 +27,9 @@ After transforming Seeklight-generated metadata using Function 5, Function 6 hel
    - New records (in Seeklight but not in core)
    - Records with field changes
    - Ambiguous filenames skipped when multiple core rows share the same `original_file_name`
+   - A Markdown pre-merge review report is written for every completed comparison to `.DART-working-directory/DART_seeklight_merge_review_YYYYMMDD_HHMMSS_ffffff.md`; the results dialog and log show its path
+
+The report lists new records, field-level changes, unchanged matches, and skipped ambiguous or missing-filename rows. Its `[x]` and `[ ]` markers show Function 6's default checkbox selections; manual checkbox changes in the open dialog are not captured. If report writing fails, Function 6 displays and logs the error while leaving the comparison available.
 
 ### 3. Review and Merge
 
@@ -131,7 +134,7 @@ Before writing the merge, Function 6 rechecks selected filename matches against 
 | Feature | Function 4 | Function 6 |
 |---------|-----------|-----------|
 | **Input Files** | DART_export_*.csv | DART_seeklight_transformed_*.csv |
-| **Matching** | original_file_name to original_file_name | original_file_name basename to objectid |
+| **Matching** | original_file_name to original_file_name | original_file_name to original_file_name |
 | **Purpose** | Merge new asset batches | Merge AI-generated metadata |
 | **Source** | Function 2 exports | Function 5 transformations |
 | **Compound Objects** | Full support with parent/child | Standard field-level |
@@ -155,6 +158,7 @@ Before writing the merge, Function 6 rechecks selected filename matches against 
 
 - **Updated core CSV**: Your core metadata CSV with merged changes
 - **Backup file**: Timestamped backup of original core CSV
+- **Pre-merge review report**: Markdown snapshot created in `.DART-working-directory` after each completed comparison, before the merge dialog opens
 - **Log entries**: Detailed record of what was merged
 
 ## Troubleshooting
@@ -164,9 +168,8 @@ Before writing the merge, Function 6 rechecks selected filename matches against 
 - Check `.DART-working-directory` subfolder for DART_seeklight_transformed_*.csv files
 
 **Records don't match / All marked as "new"**
-- Check that your core CSV `objectid` values are the file basenames (without extensions)
-- Example: For file "image001.jpg", core CSV should have objectid="image001"
-- Verify Seeklight CSV has correct filenames in the `original_file_name` column
+- Verify the Seeklight and core CSV `original_file_name` values match exactly
+- Compare the report's listed filenames and confirm Function 6 used the intended core and Seeklight CSVs
 - Check for case sensitivity differences (Function 6 is case-sensitive)
 
 **Fields not appearing**
