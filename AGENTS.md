@@ -27,6 +27,7 @@ If a behavior is driven by documentation, mappings, or a focused helper script, 
 
 ### Durable Identifiers
 - `dg_<epoch>` object identifiers are intended to be permanent once assigned
+- Core CSVs carry a durable `key` column that follows the shared `common-DG-utilities` key rules (`dg_<epoch>`, optionally `<slug>_` prefixed, maintained for the life of the record); Function 4 enforces keys with `ensure_key()` and matches records on `key` instead of `original_file_name`. Preserve `key` values like `objectid`
 - As of v6.0, `collection-id` (formerly `dg_prefix`) is a **required** Function 0 setting; the settings dialog rejects blank values. It becomes part of every new object's unique ID (`<collection-id>_dg_<epoch>`) and is also used for Azure sub-directory names and CollectionBuilder slugs; preserve that value when present
 - `collection-id` values are CollectionBuilder collection identifiers. They may contain lowercase letters, numbers, hyphens, and underscores, and should be treated as collection-scoped uniqueness aids rather than editable metadata
 - Do not rewrite existing identifier mappings casually

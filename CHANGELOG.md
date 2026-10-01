@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [6.1] - 2026-10-01
+
+### Added
+- Introduced a durable `key` CSV field following the shared `common-DG-utilities` key rules: every record's `key` holds a `dg_<epoch>` value (optionally `<slug>_dg_<epoch>`), existing valid keys are preserved unchanged, a key fragment embedded in any field or filename is adopted, and a new key is minted only when no fragment exists.
+
+### Changed
+- Function 4 now matches records between CSVs on the durable `key` field instead of `original_file_name`, so identical filenames in different collections (for example two copies of the same TIFF with different `objectid` values) no longer pair as false "changed" records. The merge viewer still displays filenames for readability.
+- Merging in Function 4 persists the `key` column into the core metadata CSV (added as the first column when missing) so keys remain stable for the life of each record.
+- Bumped the application version to 6.1.
+
+---
+
 ## [6.0] - 2026-09-23
 
 ### Added
