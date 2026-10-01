@@ -29,7 +29,7 @@ import fitz  # PyMuPDF for PDF processing
 from seeklight import SeeklightClient, describe_files
 
 # Import common DG utilities
-from common_dg_utilities.dg_utils import ensure_key, generate_unique_id, get_mime_type
+from common_dg_utilities.dg_utils import generate_unique_id, get_mime_type
 
 
 def create_seeklight_client() -> SeeklightClient:
@@ -192,11 +192,6 @@ CSV_FILENAME_FIELD = "original_file_name"
 LEGACY_CSV_FILENAME_FIELD = "filename"
 CSV_FILENAME_FIELDS = [CSV_FILENAME_FIELD, LEGACY_CSV_FILENAME_FIELD]
 
-# Durable record key field (common-DG-utilities 'key' rules):
-# every record's 'key' holds a 'dg_<epoch>' value, optionally slug-prefixed,
-# maintained for the life of the record. Function 4 matches records on 'key'.
-CSV_KEY_FIELD = "key"
-
 # Required CollectionBuilder CSV fields
 REQUIRED_CSV_FIELDS = ["objectid", CSV_FILENAME_FIELD]
 RECOMMENDED_CSV_FIELDS = ["title", "format", "date"]
@@ -207,24 +202,6 @@ def get_csv_filename_value(row: dict) -> str:
     if not isinstance(row, dict):
         return ""
     return str(row.get(CSV_FILENAME_FIELD) or row.get(LEGACY_CSV_FILENAME_FIELD) or "").strip()
-
-
-def ensure_csv_key_column(fieldnames: list, rows: list, page=None, slug: str = "") -> list:
-    """Ensure every row carries a durable 'key' value per common-DG-utilities rules.
-
-    Applies ensure_key() to each row: an existing valid key is kept unchanged;
-    otherwise the first 'dg_<epoch>' fragment found in any field (or in the
-    record's filename) is adopted; otherwise a new key is minted. Rows are
-    updated in place and the 'key' column is prepended to fieldnames when
-    missing.
-
-    Returns the (possibly updated) fieldnames list.
-    """
-    if CSV_KEY_FIELD not in (fieldnames or []):
-        fieldnames = [CSV_KEY_FIELD] + list(fieldnames or [])
-    for row in rows:
-        ensure_key(row, page=page, slug=slug, filename=get_csv_filename_value(row))
-    return fieldnames
 
 
 def normalize_csv_filename_columns(fieldnames: list, rows: list) -> tuple[list, list]:
@@ -4464,14 +4441,6 @@ def main(page: ft.Page):
                         new_rows = list(reader)
                     new_fieldnames, new_rows = normalize_csv_filename_columns(new_fieldnames, new_rows)
                     
-                    # Enforce durable 'key' values (common-DG-utilities key rules) on
-                    # both files so records are matched by their dg_<epoch> identity
-                    # rather than by filename (filenames are not unique across
-                    # collections and can collide).
-                    key_slug = settings.get("collection-id", "")
-                    old_fieldnames = ensure_csv_key_column(old_fieldnames, old_rows, page=page, slug=key_slug)
-                    new_fieldnames = ensure_csv_key_column(new_fieldnames, new_rows, page=page, slug=key_slug)
-                    
                     # Create temporary filtered CSV files
                     temp_old = tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False, encoding='utf-8', newline='')
                     writer = csv.DictWriter(temp_old, fieldnames=old_fieldnames, extrasaction='ignore')
@@ -4487,9 +4456,8 @@ def main(page: ft.Page):
                     
                     add_log_message("[DEBUG] Stripped 'filepath' column from both CSVs for comparison")
                     
-                    # Use csvdiff to compare filtered files with the durable 'key'
-                    # column as the index so records pair by identity, not filename.
-                    diff_result = diff_files(temp_old.name, temp_new.name, index_columns=[CSV_KEY_FIELD])
+                    # Use csvdiff to compare filtered files with original_file_name as key.
+                    diff_result = diff_files(temp_old.name, temp_new.name, index_columns=[CSV_FILENAME_FIELD])
                     
                     # Clean up temp files
                     import os
@@ -4552,18 +4520,8 @@ Detailed results: {output_diff.name}
                             view_rows = []
                             
                             # Create field order based on new CSV columns (for consistent display)
-                            # Remove filename/key columns since they are identifiers, not merge targets.
-                            field_order = [f for f in new_fieldnames if f not in CSV_FILENAME_FIELDS and f != CSV_KEY_FIELD]
-                            
-                            # csvdiff indexes on the durable 'key' column; map keys back
-                            # to filenames for friendly display and compound grouping.
-                            key_to_new_filename = {str(r.get(CSV_KEY_FIELD, '')): get_csv_filename_value(r) for r in new_rows}
-                            key_to_old_filename = {str(r.get(CSV_KEY_FIELD, '')): get_csv_filename_value(r) for r in old_rows}
-                            
-                            def key_display_name(key_value):
-                                """Return a friendly filename for a durable key value."""
-                                key_value = str(key_value or '')
-                                return key_to_new_filename.get(key_value) or key_to_old_filename.get(key_value) or key_value
+                            # Remove filename key columns since they are identifiers, not merge targets.
+                            field_order = [f for f in new_fieldnames if f not in CSV_FILENAME_FIELDS]
                             
                             # Count data loss warnings (old value replaced with empty)
                             data_loss_count = 0
@@ -4698,15 +4656,14 @@ Detailed results: {output_diff.name}
                                 # Identify parents from changed records
                                 for idx, change in enumerate(diff_result.get('changed', [])):
                                     key = change.get('key', ['Unknown'])[0]
-                                    key_name = key_display_name(key)
-                                    if key_name and key_name.startswith('_'):
+                                    if key and key.startswith('_'):
                                         # Extract objectid from the record (check fields for objectid if available)
                                         parent_id = None
                                         # Try to get objectid from changed fields or original record
-                                        # For csvdiff, the key is the durable record key
+                                        # For csvdiff, the key is typically the filename
                                         # We need to look through all records to find matching objectid
-                                        # For now, use the filename as parent identifier
-                                        parent_records[key_name] = {'idx': idx, 'type': 'changed', 'change': change}
+                                        # For now, use the key as parent identifier
+                                        parent_records[key] = {'idx': idx, 'type': 'changed', 'change': change}
                                 
                                 # Second pass: identify children and link to parents
                                 for idx, change in enumerate(diff_result.get('changed', [])):
@@ -4732,7 +4689,6 @@ Detailed results: {output_diff.name}
                                         continue
                                     
                                     key = change.get('key', ['Unknown'])[0]
-                                    record_name = key_display_name(key)
                                     fields = change.get('fields', {})
                                     
                                     # Check if this record has children
@@ -4750,7 +4706,7 @@ Detailed results: {output_diff.name}
                                         
                                         # Parent header
                                         compound_container.controls.append(ft.Text(
-                                            f"📦 COMPOUND OBJECT: {record_name} ({record_objectid})",
+                                            f"📦 COMPOUND OBJECT: {key} ({record_objectid})",
                                             weight=ft.FontWeight.BOLD,
                                             size=14,
                                             color=ft.Colors.PURPLE_700
@@ -4857,7 +4813,7 @@ Detailed results: {output_diff.name}
                                         
                                         # Show parent's own changes
                                         parent_change_container = ft.Column([
-                                            ft.Text(f"📄 Parent: {record_name}", weight=ft.FontWeight.BOLD, size=13),
+                                            ft.Text(f"📄 Parent: {key}", weight=ft.FontWeight.BOLD, size=13),
                                             ft.Divider(height=1, color=ft.Colors.PURPLE_200)
                                         ], spacing=2)
                                         
@@ -4935,7 +4891,7 @@ Detailed results: {output_diff.name}
                                             child_fields = child_change.get('fields', {})
                                             
                                             child_change_container = ft.Column([
-                                                ft.Text(f"  ↳ {key_display_name(child_key)}", weight=ft.FontWeight.BOLD, size=12),
+                                                ft.Text(f"  ↳ {child_key}", weight=ft.FontWeight.BOLD, size=12),
                                                 ft.Divider(height=1, color=ft.Colors.PURPLE_100)
                                             ], spacing=2)
                                             
@@ -5051,7 +5007,7 @@ Detailed results: {output_diff.name}
                                         )
                                         
                                         change_container = ft.Column([
-                                            ft.Text(f"📄 {record_name} ({len(fields)} fields changed)", 
+                                            ft.Text(f"📄 {key} ({len(fields)} fields changed)", 
                                                    weight=ft.FontWeight.BOLD, size=14),
                                             ft.Divider(height=1, color=ft.Colors.ORANGE_200)
                                         ], spacing=4)
@@ -5193,20 +5149,12 @@ Detailed results: {output_diff.name}
                                                 core_rows = list(reader)
                                             fieldnames, core_rows = normalize_csv_filename_columns(fieldnames, core_rows)
                                             
-                                            # Enforce durable 'key' values on core rows using the same
-                                            # deterministic rules applied at comparison time, and
-                                            # persist the 'key' column when the core CSV is written.
-                                            fieldnames = ensure_csv_key_column(
-                                                fieldnames, core_rows,
-                                                page=page, slug=settings.get("collection-id", ""),
-                                            )
-                                            
-                                            # Create key-to-row mapping (matches the csvdiff index)
-                                            core_by_key = {}
+                                            # Create filename-to-row mapping (canonical field + legacy fallback)
+                                            core_by_filename = {}
                                             for row in core_rows:
-                                                row_key = str(row.get(CSV_KEY_FIELD, '')).strip()
-                                                if row_key:
-                                                    core_by_key[row_key] = row
+                                                filename_key = get_csv_filename_value(row)
+                                                if filename_key:
+                                                    core_by_filename[filename_key] = row
                                             
                                             # Apply selected additions
                                             added_records = diff_result.get('added', [])
@@ -5224,21 +5172,19 @@ Detailed results: {output_diff.name}
                                             for record_idx, field_name in selected_field_changes:
                                                 if record_idx < len(changed_records):
                                                     change = changed_records[record_idx]
-                                                    record_key = change.get('key', [''])[0]
+                                                    filename_key = change.get('key', [''])[0]
                                                     
-                                                    if record_key in core_by_key:
+                                                    if filename_key in core_by_filename:
                                                         # Update this specific field only
                                                         field_change = change.get('fields', {}).get(field_name, {})
                                                         new_value = field_change.get('to', '')
-                                                        core_by_key[record_key][field_name] = new_value
+                                                        core_by_filename[filename_key][field_name] = new_value
                                                         fields_updated_count += 1
-                                                        records_updated.add(record_key)
-                                                    else:
-                                                        add_log_message(f"[WARNING] No core row found with key '{record_key}', skipping field '{field_name}'")
+                                                        records_updated.add(filename_key)
                                             
                                             if records_updated:
-                                                for record_key in records_updated:
-                                                    add_log_message(f"[INFO] Updated fields in: {key_display_name(record_key)}")
+                                                for filename in records_updated:
+                                                    add_log_message(f"[INFO] Updated fields in: {filename}")
                                             
                                             # Write updated CSV using atomic write (temp file then rename)
                                             # This prevents "_1" copies and ensures clean overwrite

@@ -15,9 +15,8 @@ Use this function when you want to:
 - **Working/Outputs folder** must be set
 - **Core metadata CSV** must be configured in Function 0 settings
 - **At least 1 DART_export CSV file** must exist in the `.DART-working-directory` subfolder (for comparison)
-- Both CSV files must have an `original_file_name` column (used for display and key derivation)
-- A `key` column is supported but not required — DART derives or mints durable `key` values automatically, and existing valid keys are always preserved
-- No duplicate `key` values within each file (duplicates cause the comparison to fail)
+- Both CSV files must have an `original_file_name` column (unique identifier)
+- No duplicate `original_file_name` values within each file
 - **csvdiff Python package** must be installed (included in requirements)
 
 **Note**: DART automatically creates a `.DART-working-directory` subfolder within your working/outputs folder to keep DART_export files isolated from other project files. The core metadata CSV can be located anywhere (inside or outside the working directory).
@@ -85,20 +84,14 @@ Function 4 uses the csvdiff Python library for comparison:
 ## What Gets Compared
 
 DART automatically:
-- Enforces a durable `key` value on every record in both files, following the shared `common-DG-utilities` key rules:
-  1. An existing valid `key` (`dg_<epoch>` or `<slug>_dg_<epoch>`) is kept unchanged
-  2. Otherwise the first `dg_<epoch>` fragment found in any field (for example `objectid`) or in the filename is adopted as the record's key
-  3. Otherwise a new key is minted, prefixed with your `collection-id` when configured
-- Uses `key` as the unique identifier for matching records between files, so records pair by durable identity rather than filename — identical filenames in different collections no longer produce false matches
-- Detects all shared columns between both files (excludes the `key` index column and the internal `filepath` column; `original_file_name` is now compared like any other field)
+- Uses `original_file_name` as the unique identifier for matching records between files
+- Detects all shared columns between both files (excludes `original_file_name` and `filepath`)
 - Performs **case-sensitive** comparison of all values
 - Normalizes whitespace (strips leading/trailing spaces)
 - Treats empty strings and missing values (NaN) as equivalent
-- Validates that `key` is unique in both files
-- For display purposes: maps each `key` back to its `original_file_name` so records are still shown by filename
+- Validates that `original_file_name` is unique in both files
+- For display purposes: Uses `original_file_name` to identify records
   - Note: Compound parent objects now have underscore-prefixed filenames (e.g., `_photo_001.jpg`) rather than blank
-
-**Key persistence:** When you merge changes, the `key` column is written into the core metadata CSV (added as the first column if missing) so every record's key remains stable for the life of the record.
 
 ## Row Order Preservation
 
