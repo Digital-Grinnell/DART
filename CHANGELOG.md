@@ -12,6 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Added `create_multiple_objects` to Function 0 settings (default `true`). When `false`, Functions 1 and 2 attach numbered sequence files directly to the folder's compound object instead of nesting them under a `multiple`-type sub-object. Intended for Alma/GEMS-style migrations, where each compound is a flat object and `multiple` has no counterpart; sequence numbers are still recorded for child ordering.
 - Added `GEMS_FILENAME_RULES.md`, a shareable guide to DART's compound-object filename rules and CSV merge contract for external systems (GEMS), including the recommended one-folder-per-compound layout for Alma migrations.
+- Added `scripts/organize_compound_folders.py`, a dry-run-by-default helper that reorganizes a flat GEMS/Alma export into per-compound subfolders using DART's filename grouping rules (`--apply` to execute).
+
+### Changed
+- Functions 1 and 2 now scan the Inputs Folder **recursively**, so assets organized into per-compound subfolders are all discovered; each subfolder still gets its own compound parent.
+- Function 3's source-file fallback lookup (used when a CSV row has no valid `filepath`) now searches the Inputs Folder recursively instead of only the top level.
 
 ---
 

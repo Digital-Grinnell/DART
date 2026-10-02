@@ -97,7 +97,14 @@ objects/grinnell_21717/grinnell_21717-01.tiff
 objects/grinnell_21717/grinnell_21717-02.jpg
 ```
 
-DART creates exactly one compound parent per folder, so each Alma compound becomes its own DART compound instead of hundreds of compounds being lumped under a single untitled folder-level parent.
+DART creates exactly one compound parent per folder, so each Alma compound becomes its own DART compound instead of hundreds of compounds being lumped under a single untitled folder-level parent. As of **v6.1**, Functions 1 and 2 scan the Inputs Folder **recursively**, so pointing DART at the top-level `objects/` folder discovers every per-compound subfolder.
+
+**Already have a flat export?** The helper script `scripts/organize_compound_folders.py` in the DART repo reorganizes an existing flat folder into this structure using these same filename rules (dry-run by default, `--apply` to execute):
+
+```bash
+python3 scripts/organize_compound_folders.py /path/to/objects          # preview
+python3 scripts/organize_compound_folders.py /path/to/objects --apply  # move files
+```
 
 ### 2. Disable `multiple` objects in DART (v6.1+)
 In **Function 0: App Settings**, set:

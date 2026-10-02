@@ -30,7 +30,7 @@ Use this function to:
 
 ## Requirements
 - **Either**: Files selected using the Files Selection picker (recommended)
-- **Or**: Inputs folder must be selected (will scan entire folder)
+- **Or**: Inputs folder must be selected (scans the folder **and all its subfolders recursively**, v6.1+; each subfolder gets its own compound parent when grouping is enabled)
 - **Optional**: Working/Outputs folder (to load compound grouping setting)
 - **OHM-data mode**: When `process_OHM_data` is enabled in Function 0, select the project folder containing `OHM-data` (or select `OHM-data` itself). Function 1 ignores file selections and ordinary assets, recursively finds only `.mp3` files, and assigns each one a standard persistent DG identifier.
 
@@ -38,7 +38,8 @@ Use this function to:
 1. **First checks** if files are selected in the Files Selection area
    - If files are selected, analyzes only those files
 2. **Falls back** to scanning the Inputs Folder if no files are selected
-   - Scans all files in the folder matching supported types
+   - Scans all files in the folder **and its subfolders** matching supported types (recursive as of v6.1)
+   - Each folder (and subfolder) is analyzed separately for compound grouping, so per-compound subfolders each produce their own compound parent
 3. **Generates unique identifiers** using the standard DG format: `dg_<epoch_time>`
    - Each file receives a permanent identifier
    - If `collection-id` is set in Function 0, the generated format becomes `<collection-id>_dg_<epoch_time>`

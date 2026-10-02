@@ -24,7 +24,7 @@ Use this function when you want to:
 
 2. Select digital assets:
    - Either use the **File Selector** to choose specific files
-   - Or set an **Inputs Folder** to process all assets in that folder
+   - Or set an **Inputs Folder** to process all assets in that folder **and its subfolders** (recursive as of v6.1)
 
 3. Select **Function 2: Export Assets to CSV and Azure** from the dropdown
 

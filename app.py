@@ -2656,7 +2656,8 @@ def main(page: ft.Page):
             
             add_log_message(f"[DEBUG] No files selected - scanning Inputs Folder: {current_directory}")
             logger.info(f"[DEBUG] Scanning folder: {current_directory}")
-            for file_path in current_directory.glob("*"):
+            # Recursive scan: includes per-compound subfolders (one compound per folder)
+            for file_path in current_directory.rglob("*"):
                 if file_path.is_file() and file_path.suffix.lower() in asset_extensions:
                     files.append(str(file_path))  # Store full path
             source_description = f"in {current_directory.name}"
@@ -3130,7 +3131,8 @@ def main(page: ft.Page):
                 update_status("Error: Please select files or an inputs folder first", is_error=True)
                 return
             
-            for file_path in current_directory.glob("*"):
+            # Recursive scan: includes per-compound subfolders (one compound per folder)
+            for file_path in current_directory.rglob("*"):
                 if file_path.is_file() and file_path.suffix.lower() in asset_extensions:
                     files.append(str(file_path))
 
@@ -3806,9 +3808,14 @@ def main(page: ft.Page):
             # Find source file (the MP3 itself for OHM rows; the asset file otherwise)
             source_path = Path(row.get('filepath', ''))
             if not source_path.exists() or not source_path.is_file():
-                # Try to find it in input directory
+                # Try to find it in input directory (top level first, then
+                # recursively to cover per-compound subfolders)
                 if input_directory:
                     source_path = input_directory / filename
+                    if not source_path.exists():
+                        subfolder_matches = sorted(input_directory.rglob(filename))
+                        if subfolder_matches:
+                            source_path = subfolder_matches[0]
                 if not source_path.exists() or not source_path.is_file():
                     add_log_message(f"[ERROR #{idx+1}] Source file not found: {filename} (filepath: {row.get('filepath', 'empty')})")
                     skipped_count += 1
