@@ -12,6 +12,7 @@ The encryption key is stored separately in `~/.DART-data/encryption_key` with re
 - **⚠️ Before creating a NEW collection**: The Function 0 settings dialog displays an on-screen reminder to consult `docs/DG-documents/Creating a New Collection (Overlay Model).md` in the `DG-with-CB-and-Pagefind` repository before assigning a new `collection-id`, since that document governs how the identifier is used downstream (overlay slug, `_config.yml`, CSV naming).
 - **collection-id**: **Required** CollectionBuilder collection identifier. This value becomes part of every new object's permanent unique ID (`<collection-id>_dg_<epoch>`) and is also used to name Azure sub-directories and CollectionBuilder slugs; blank values are rejected on save. It may be any length and can contain letters, numbers, hyphens, and underscores; the trailing underscore is added automatically. For the unified Digital.Grinnell site, use the same value as the collection slug and Azure asset-path directory, such as `student-life` with `objs/student-life`, `smalls/student-life`, and `thumbs/student-life`. **[REQUIRED]**
 - **group_compound_objects**: When `true`, groups similar filenames as compound objects in asset analysis. **[BOOLEAN]**
+- **create_multiple_objects**: When `true` (default), each numeric sequence of 2+ numbered files is nested under its own `multiple`-type sub-object inside the folder's compound. When `false`, numbered files attach directly to the compound as flat children (their sequence numbers are still recorded for ordering). Set to `false` for Alma/GEMS-style migrations, where each compound is a flat object and `multiple` has no Alma counterpart; see `GEMS_FILENAME_RULES.md`. Has no effect when `group_compound_objects` is `false`. **[BOOLEAN]**
 - **process_OHM_data**: When `true`, enables OHM-data processing in Functions 1 and 2. Saving this as `true` automatically sets `group_compound_objects` to `false` because OHM-data processing uses a different object-handling model. **[BOOLEAN]**
 - **use_working_folder_for_file_selection**: When `true`, the File Selector opens in the working/outputs folder. When `false`, it opens in the inputs folder. **[BOOLEAN]**
 - **automatic_four**: When `true`, automatically executes Functions 2, 3, and 4 sequentially after Function 1 completes successfully. This creates a seamless workflow from asset analysis through CSV export, derivative generation, and metadata merge. Automatically resets to `false` at the start of each new session. **[BOOLEAN]**
@@ -46,7 +47,7 @@ The encryption key is stored separately in `~/.DART-data/encryption_key` with re
 - Location: Inside `.DART-working-directory` under the selected working/outputs folder
 
 ## Accepted Boolean Values
-For boolean settings (`group_compound_objects`, `process_OHM_data`, `use_working_folder_for_file_selection`, `automatic_four`, `overwrite_existing_azure_files`), you can enter:
+For boolean settings (`group_compound_objects`, `create_multiple_objects`, `process_OHM_data`, `use_working_folder_for_file_selection`, `automatic_four`, `overwrite_existing_azure_files`), you can enter:
 - true/false
 - yes/no
 - 1/0
@@ -58,6 +59,7 @@ For boolean settings (`group_compound_objects`, `process_OHM_data`, `use_working
 - If a legacy root-level `dart_settings.json` is found, DART automatically migrates it into `.DART-working-directory`
 - Sensitive fields (marked **[ENCRYPTED]**) are stored encrypted in the JSON file
 - `group_compound_objects` controls whether Function 1 groups similar filenames as compound objects
+- `create_multiple_objects` controls whether numbered sequences are nested under `multiple` sub-objects (`true`, default) or attach directly to the compound (`false`, flat Alma/GEMS-style compounds). Changing it for an already-analyzed folder re-parents numbered children on the next run; any previously created `multiple` IDs simply become unused
 - `process_OHM_data` enables OHM-data processing in Functions 1 and 2. OHM file identifiers come from existing filename stems, with `collection-id` prepended. When it is saved as `true`, `group_compound_objects` is automatically saved as `false`
 - In OHM mode, select the project folder containing `OHM-data` (or select `OHM-data` itself). The package layout is expected to contain one `.mp3` and one transcript `.csv` in each recording directory.
 - `use_working_folder_for_file_selection` controls where the File Selector dialog opens (working/outputs folder when true, inputs folder when false)

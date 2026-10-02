@@ -134,6 +134,7 @@ When `group_compound_objects` is enabled in Function 0:
    - Unnumbered files in the same group become direct children of the compound - siblings of the `multiple` object, not its children
    - Groups that are NOT a numeric sequence (all-unnumbered, or only 1 numbered file) skip the `multiple` wrapper entirely - their files attach directly to the compound
    - The `multiple` ID is reused if the same group (folder + group base) is processed again, just like compound IDs
+   - Set `create_multiple_objects` to `false` in Function 0 (v6.1+) to skip this wrapper entirely: numbered files then attach directly to the compound, keeping their sequence numbers for ordering. Intended for Alma/GEMS-style migrations, where each compound is a flat object and `multiple` has no counterpart - see `GEMS_FILENAME_RULES.md`
 
 7. **Child Tracking**: Each child asset:
    - Has its own unique permanent identifier (objectid)

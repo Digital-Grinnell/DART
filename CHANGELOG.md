@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [6.1] - 2026-10-02
+
+### Added
+- Added `create_multiple_objects` to Function 0 settings (default `true`). When `false`, Functions 1 and 2 attach numbered sequence files directly to the folder's compound object instead of nesting them under a `multiple`-type sub-object. Intended for Alma/GEMS-style migrations, where each compound is a flat object and `multiple` has no counterpart; sequence numbers are still recorded for child ordering.
+- Added `GEMS_FILENAME_RULES.md`, a shareable guide to DART's compound-object filename rules and CSV merge contract for external systems (GEMS), including the recommended one-folder-per-compound layout for Alma migrations.
+
+---
+
 ## [6.0] - 2026-09-23
 
 ### Added

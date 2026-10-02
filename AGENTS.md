@@ -109,6 +109,7 @@ Consult these repo documents when needed:
 - `FUNCTION_0_APP_SETTINGS.md` — settings behavior, encryption, core metadata CSV, Azure details
 - `FUNCTION_1_ANALYZE_ASSETS.md` through `FUNCTION_6_COMPARE_MERGE_SEEKLIGHT.md` — per-function behavior
 - `RENAME_METADATA_FIELD.md` and `FIXING_RENAME_ISSUES.md` — legacy metadata field normalization guidance
+- `GEMS_FILENAME_RULES.md` — filename and CSV contract for external systems (GEMS/Alma) producing files and metadata CSVs for DART ingestion, including the flat-compound migration pattern using the `create_multiple_objects` setting
 - `CHANGELOG.md` — release history and behavior changes
 
 ## Validation

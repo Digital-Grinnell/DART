@@ -1897,6 +1897,12 @@ def main(page: ft.Page):
             hint_text="true or false - group similar assets as compound objects",
             width=320,
         )
+        create_multiple_objects_field = ft.TextField(
+            label="create_multiple_objects",
+            value=str(settings.get("create_multiple_objects", True)).lower(),
+            hint_text="true or false - nest numbered sequences under 'multiple' objects (false = flat Alma/GEMS-style compounds)",
+            width=320,
+        )
         process_ohm_data_field = ft.TextField(
             label="process_OHM_data",
             value=str(settings.get("process_OHM_data", False)).lower(),
@@ -2056,6 +2062,14 @@ def main(page: ft.Page):
 
             if parsed_process_ohm_data:
                 parsed_group_compound = False
+
+            parsed_create_multiple = parse_bool_text(create_multiple_objects_field.value)
+            if parsed_create_multiple is None:
+                update_status(
+                    "Error: create_multiple_objects must be true/false (or yes/no, 1/0)",
+                    is_error=True,
+                )
+                return
             
             parsed_use_working_folder = parse_bool_text(use_working_folder_field.value)
             if parsed_use_working_folder is None:
@@ -2112,6 +2126,7 @@ def main(page: ft.Page):
             new_settings = dict(settings)
             new_settings.update({
                 "group_compound_objects": parsed_group_compound,
+                "create_multiple_objects": parsed_create_multiple,
                 "process_OHM_data": parsed_process_ohm_data,
                 "use_working_folder_for_file_selection": parsed_use_working_folder,
                 "automatic_four": parsed_automatic_four,
@@ -2167,6 +2182,7 @@ def main(page: ft.Page):
                         collection_id_field,
                         ft.Container(height=8),
                         group_compound_field,
+                        create_multiple_objects_field,
                         process_ohm_data_field,
                         use_working_folder_field,
                         automatic_four_field,
@@ -2217,7 +2233,7 @@ def main(page: ft.Page):
         settings_dialog.open = True
         page.update()
 
-    def analyze_compound_objects(objects, group_compound, file_to_id_map, page, collection_id=""):
+    def analyze_compound_objects(objects, group_compound, file_to_id_map, page, collection_id="", create_multiple=True):
         """
         Analyze objects for compound grouping patterns and assign parent/child relationships.
         
@@ -2232,6 +2248,10 @@ def main(page: ft.Page):
             file_to_id_map: Dict of existing file/compound ID mappings
             page: Flet page object for ID generation
             collection_id: Required collection identifier prefix for newly generated IDs
+            create_multiple: When True (default), each numeric sequence of 2+ numbered
+                files is nested under its own 'multiple' sub-object. When False, numbered
+                files attach directly to the folder's compound (flat Alma/GEMS-style
+                compounds); sequence numbers are still recorded for ordering.
             
         Returns:
             tuple: (compound_objects, file_to_id_map, new_mappings, reused_mappings)
@@ -2258,6 +2278,8 @@ def main(page: ft.Page):
             return compound_objects, file_to_id_map, compound_new_mappings, compound_reused_mappings
         
         add_log_message(f"[DEBUG] Compound grouping ENABLED - analyzing filename patterns")
+        if not create_multiple:
+            add_log_message(f"[DEBUG] create_multiple_objects DISABLED - numbered sequences attach directly to the compound")
         logger.info("[DEBUG] Starting compound object analysis")
         
         # FIRST PASS: Parse all filenames to extract prefix and number components
@@ -2515,7 +2537,7 @@ def main(page: ft.Page):
                 else:
                     display_text_base = first_raw_stem
 
-                if len(numbered_items) >= 2:
+                if create_multiple and len(numbered_items) >= 2:
                     # A numeric sequence of 2+ files gets its own 'multiple' parent
                     # nested under the compound; unnumbered files in the same group
                     # become direct children of the compound (siblings of 'multiple').
@@ -2554,7 +2576,8 @@ def main(page: ft.Page):
                         child_obj["type"] = "child"
                         child_obj["sequence_number"] = None
                 else:
-                    # Not a sequence - all items in this group are direct compound children
+                    # Not a sequence (or 'multiple' creation disabled) - all items
+                    # in this group are direct compound children
                     for parsed_item in numbered_items + unnumbered_items:
                         child_obj = parsed_item['obj']
                         child_obj["parentid"] = compound_id
@@ -2576,6 +2599,7 @@ def main(page: ft.Page):
         group_compound = False
         process_ohm_data = False
         collection_id = ""
+        create_multiple = True
         if working_dir:
             settings, _ = load_app_settings(working_dir)
             group_compound = settings.get("group_compound_objects", False)
@@ -2583,10 +2607,12 @@ def main(page: ft.Page):
             if process_ohm_data:
                 group_compound = False
             collection_id = settings.get("collection-id", "")
+            create_multiple = settings.get("create_multiple_objects", True)
         
         # DEBUG: Log settings
         add_log_message(f"[DEBUG] Working/Outputs Folder: {working_dir or 'Not set'}")
         add_log_message(f"[DEBUG] Compound grouping: {group_compound}")
+        add_log_message(f"[DEBUG] Create multiple objects: {create_multiple}")
         add_log_message(f"[DEBUG] OHM-data processing: {process_ohm_data}")
         logger.info(f"[DEBUG] Working folder: {working_dir}, Compound grouping: {group_compound}")
 
@@ -2718,7 +2744,7 @@ def main(page: ft.Page):
             compound_reused = 0
         else:
             compound_objects, file_to_id_map, compound_new, compound_reused = analyze_compound_objects(
-                objects, group_compound, file_to_id_map, page, collection_id
+                objects, group_compound, file_to_id_map, page, collection_id, create_multiple
             )
         
         # Update mapping counts
@@ -3073,6 +3099,7 @@ def main(page: ft.Page):
         if process_ohm_data:
             group_compound = False
         collection_id = settings.get("collection-id", "")
+        create_multiple = settings.get("create_multiple_objects", True)
         
         asset_extensions = {
             '.jpg', '.jpeg', '.png', '.gif', '.tif', '.tiff', '.bmp', '.webp',
@@ -3177,7 +3204,7 @@ def main(page: ft.Page):
             compound_reused = 0
         else:
             compound_objects, file_to_id_map, compound_new, compound_reused = analyze_compound_objects(
-                objects, group_compound, file_to_id_map, page, collection_id
+                objects, group_compound, file_to_id_map, page, collection_id, create_multiple
             )
         
         # Update mapping counts
