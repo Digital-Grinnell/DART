@@ -22,9 +22,18 @@ Grouping rules mirror app.py's analyze_compound_objects():
 - Numbered files: base = everything before the trailing number
   (regex ^(.+?)[\\s_\\-]*(\\d+)$ on the file stem).
 - Unnumbered files: attached when the stem starts with a known numbered
-  base followed by a separator (space, underscore, hyphen).
+  base followed by a separator (space, underscore, hyphen) AND a
+  descriptive word (letters only, e.g. Poster, Program, Cover).
 - Only bases shared by 2+ files become folders; everything else is left
   in place and reported.
+
+Migration caveat: this script groups purely by filename and does not know
+GEMS's record boundaries. Unnumbered single-file records that merely share a
+collection prefix (e.g. grinnell_75_OBJ.pdf, grinnell-1135.pdf) must stay at
+the folder root. Pass 2 therefore refuses to attach an unnumbered file whose
+suffix after the base is a bare number or any token containing digits
+(`1135`, `214_OBJ`), which would otherwise lump unrelated singles into one
+shared folder and mint a spurious compound.
 
 Dry-run by default. Pass --apply to actually move files.
 
@@ -100,7 +109,10 @@ def main() -> int:
             display = NUMBERED_RE.match(path.stem).group(1).strip().rstrip(" _-")
             numbered_bases[base] = display
 
-    # Pass 2: attach unnumbered files that start with a known numbered base + separator
+    # Pass 2: attach unnumbered files that start with a known numbered base + separator,
+    # but only when the remainder is a descriptive word (Poster, Program, Cover). A bare
+    # number or digit-bearing token (1135, 214_OBJ) means the file is an unrelated single
+    # that merely shares a collection prefix — leave it at the root, don't group it.
     still_unassigned: list[Path] = []
     for path in unnumbered:
         stem_lower = path.stem.strip().lower()
@@ -108,9 +120,14 @@ def main() -> int:
         for base in numbered_bases:
             if stem_lower.startswith(base):
                 remainder = stem_lower[len(base):]
-                if not remainder or remainder[0] in SEPARATORS:
-                    if best_match is None or len(base) > len(best_match):
-                        best_match = base
+                if not remainder or remainder[0] not in SEPARATORS:
+                    continue
+                descriptor = remainder.lstrip(" _-")
+                # Require a letters-only descriptor; a number or _OBJ-style token is a single.
+                if not descriptor.isalpha():
+                    continue
+                if best_match is None or len(base) > len(best_match):
+                    best_match = base
         if best_match:
             file_bases[path] = best_match
         else:
