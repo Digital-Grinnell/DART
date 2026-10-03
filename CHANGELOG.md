@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [6.5] - 2026-10-03
+
+### Added
+- Added `process_gems_output` to Function 0 settings (default `false`) for processing GEMS migration exports. When `true`, Functions 1 and 2 force compound grouping on (`group_compound_objects = true`) and `multiple` sub-objects off (`create_multiple_objects = false`), ignore any Files Selection, and recursively scan the Inputs Folder, expecting the GEMS one-subfolder-per-object layout (a subfolder with several files becomes one flat compound; a single-file subfolder stays a standalone object). Saving it as `true` also persists the two forced values, and the settings dialog rejects enabling it together with `process_OHM_data`.
+
+---
+
 ## [6.1] - 2026-10-02
 
 ### Added

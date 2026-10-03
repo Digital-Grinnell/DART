@@ -109,14 +109,14 @@ python3 scripts/organize_compound_folders.py /path/to/objects --apply  # move fi
 
 The script groups by shared filename base, so it can only separate compounds from each other — a flat batch of **individual** exports that share a base (`grinnell-310.pdf`, `grinnell-1135.pdf`, …) would be herded into one folder and still mis-group. For those, re-export from current GEMS (one folder per record) or, if the collection is truly all individuals, turn off compound grouping for that working folder (`group_compound_objects = false` in Function 0).
 
-### 2. Disable `multiple` objects in DART (v6.1+)
+### 2. Turn on GEMS mode in DART (v6.2+)
 In **Function 0: App Settings**, set:
 
 ```
-create_multiple_objects = false
+process_gems_output = true
 ```
 
-Numbered sequences then attach **directly to the compound** as flat children (sequence numbers are still recorded for ordering) instead of being nested under a `multiple` sub-object. Leave this `true` (the default) for new-content workflows, where the `multiple` layer is a legitimate grouping.
+This master switch turns compound grouping **on** and `create_multiple_objects` **off** for you, and Functions 1 and 2 then ignore any Files Selection and always scan the Inputs Folder recursively. (Before v6.2, the equivalent was setting `group_compound_objects = true` and `create_multiple_objects = false` by hand.) Numbered sequences attach **directly to the compound** as flat children (sequence numbers are still recorded for ordering) instead of being nested under a `multiple` sub-object. Leave the mode `false` (the default) for new-content workflows, where the `multiple` layer is a legitimate grouping and Files Selection remains available.
 
 ### 3. Resulting structure
 

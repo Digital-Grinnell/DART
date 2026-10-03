@@ -176,7 +176,9 @@ SENSITIVE_FIELDS = ["azure_connection_string"]
 APP_SETTINGS_FILENAME = "dart_settings.json"
 DEFAULT_APP_SETTINGS = {
     "group_compound_objects": False,
+    "create_multiple_objects": True,
     "process_OHM_data": False,
+    "process_gems_output": False,
     "use_working_folder_for_file_selection": False,
     "automatic_four": False,
     "overwrite_existing_azure_files": False,
@@ -1903,6 +1905,12 @@ def main(page: ft.Page):
             hint_text="true or false - nest numbered sequences under 'multiple' objects (false = flat Alma/GEMS-style compounds)",
             width=320,
         )
+        process_gems_output_field = ft.TextField(
+            label="process_gems_output",
+            value=str(settings.get("process_gems_output", False)).lower(),
+            hint_text="true or false - GEMS mode: forces compound grouping on and 'multiple' objects off, and ignores Files selection to recursively scan the Inputs Folder (one subfolder per object)",
+            width=320,
+        )
         process_ohm_data_field = ft.TextField(
             label="process_OHM_data",
             value=str(settings.get("process_OHM_data", False)).lower(),
@@ -2070,6 +2078,25 @@ def main(page: ft.Page):
                     is_error=True,
                 )
                 return
+
+            parsed_process_gems_output = parse_bool_text(process_gems_output_field.value)
+            if parsed_process_gems_output is None:
+                update_status(
+                    "Error: process_gems_output must be true/false (or yes/no, 1/0)",
+                    is_error=True,
+                )
+                return
+
+            if parsed_process_gems_output:
+                if parsed_process_ohm_data:
+                    update_status(
+                        "Error: process_gems_output and process_OHM_data cannot both be true",
+                        is_error=True,
+                    )
+                    return
+                # GEMS mode is a master switch: compounds on, 'multiple' objects off.
+                parsed_group_compound = True
+                parsed_create_multiple = False
             
             parsed_use_working_folder = parse_bool_text(use_working_folder_field.value)
             if parsed_use_working_folder is None:
@@ -2128,6 +2155,7 @@ def main(page: ft.Page):
                 "group_compound_objects": parsed_group_compound,
                 "create_multiple_objects": parsed_create_multiple,
                 "process_OHM_data": parsed_process_ohm_data,
+                "process_gems_output": parsed_process_gems_output,
                 "use_working_folder_for_file_selection": parsed_use_working_folder,
                 "automatic_four": parsed_automatic_four,
                 "overwrite_existing_azure_files": parsed_overwrite_existing_azure_files,
@@ -2183,6 +2211,7 @@ def main(page: ft.Page):
                         ft.Container(height=8),
                         group_compound_field,
                         create_multiple_objects_field,
+                        process_gems_output_field,
                         process_ohm_data_field,
                         use_working_folder_field,
                         automatic_four_field,
@@ -2600,6 +2629,7 @@ def main(page: ft.Page):
         process_ohm_data = False
         collection_id = ""
         create_multiple = True
+        process_gems_output = False
         if working_dir:
             settings, _ = load_app_settings(working_dir)
             group_compound = settings.get("group_compound_objects", False)
@@ -2608,12 +2638,18 @@ def main(page: ft.Page):
                 group_compound = False
             collection_id = settings.get("collection-id", "")
             create_multiple = settings.get("create_multiple_objects", True)
+            process_gems_output = settings.get("process_gems_output", False)
+            if process_gems_output:
+                # GEMS mode: one subfolder per object - compounds on, 'multiple' objects off.
+                group_compound = True
+                create_multiple = False
         
         # DEBUG: Log settings
         add_log_message(f"[DEBUG] Working/Outputs Folder: {working_dir or 'Not set'}")
         add_log_message(f"[DEBUG] Compound grouping: {group_compound}")
         add_log_message(f"[DEBUG] Create multiple objects: {create_multiple}")
         add_log_message(f"[DEBUG] OHM-data processing: {process_ohm_data}")
+        add_log_message(f"[DEBUG] GEMS output processing: {process_gems_output}")
         logger.info(f"[DEBUG] Working folder: {working_dir}, Compound grouping: {group_compound}")
 
         # Digital asset file extensions
@@ -2638,7 +2674,8 @@ def main(page: ft.Page):
             add_log_message(f"[DEBUG] OHM-data mode: scanning {ohm_data_directory}")
             logger.info(f"[DEBUG] OHM-data files: {files}")
         else:
-            selected_files = get_selected_files()
+            # GEMS mode always works from the Inputs Folder; any Files selection is ignored.
+            selected_files = [] if process_gems_output else get_selected_files()
 
         if not process_ohm_data and selected_files:
             # Use selected files
@@ -2651,9 +2688,14 @@ def main(page: ft.Page):
         elif not process_ohm_data:
             # Fall back to scanning inputs folder
             if not current_directory or not current_directory.exists():
-                update_status("Error: Please select files or an inputs folder first", is_error=True)
+                if process_gems_output:
+                    update_status("Error: GEMS mode requires an inputs folder containing the GEMS export", is_error=True)
+                else:
+                    update_status("Error: Please select files or an inputs folder first", is_error=True)
                 return
             
+            if process_gems_output:
+                add_log_message(f"[DEBUG] GEMS mode: ignoring Files selection, scanning Inputs Folder recursively: {current_directory}")
             add_log_message(f"[DEBUG] No files selected - scanning Inputs Folder: {current_directory}")
             logger.info(f"[DEBUG] Scanning folder: {current_directory}")
             # Recursive scan: includes per-compound subfolders (one compound per folder)
@@ -3101,6 +3143,11 @@ def main(page: ft.Page):
             group_compound = False
         collection_id = settings.get("collection-id", "")
         create_multiple = settings.get("create_multiple_objects", True)
+        process_gems_output = settings.get("process_gems_output", False)
+        if process_gems_output:
+            # GEMS mode: one subfolder per object - compounds on, 'multiple' objects off.
+            group_compound = True
+            create_multiple = False
         
         asset_extensions = {
             '.jpg', '.jpeg', '.png', '.gif', '.tif', '.tiff', '.bmp', '.webp',
@@ -3120,7 +3167,8 @@ def main(page: ft.Page):
             files = [str(file_path) for file_path in ohm_files]
             add_log_message(f"[DEBUG] OHM-data mode: exporting MP3 files from {ohm_data_directory}")
         else:
-            selected_files = get_selected_files()
+            # GEMS mode always works from the Inputs Folder; any Files selection is ignored.
+            selected_files = [] if process_gems_output else get_selected_files()
 
         if not process_ohm_data and selected_files:
             for file_path in selected_files:
@@ -3128,9 +3176,14 @@ def main(page: ft.Page):
                     files.append(str(file_path))
         elif not process_ohm_data:
             if not current_directory or not current_directory.exists():
-                update_status("Error: Please select files or an inputs folder first", is_error=True)
+                if process_gems_output:
+                    update_status("Error: GEMS mode requires an inputs folder containing the GEMS export", is_error=True)
+                else:
+                    update_status("Error: Please select files or an inputs folder first", is_error=True)
                 return
             
+            if process_gems_output:
+                add_log_message(f"[DEBUG] GEMS mode: ignoring Files selection, scanning Inputs Folder recursively: {current_directory}")
             # Recursive scan: includes per-compound subfolders (one compound per folder)
             for file_path in current_directory.rglob("*"):
                 if file_path.is_file() and file_path.suffix.lower() in asset_extensions:
@@ -6510,7 +6563,7 @@ Detailed results: {output_diff.name}
             return storage.get_ui_state("last_file")
     
     file_field = ft.TextField(
-        label="Select Files",
+        label="Select Files (Not necessary when processing files from GEMS)",
         value=get_initial_file_display(),
         read_only=True,
         expand=True,
