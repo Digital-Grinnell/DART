@@ -30,10 +30,10 @@ Use this function to:
 
 ## Requirements
 - **Either**: Files selected using the Files Selection picker (recommended)
-- **Or**: Inputs folder must be selected (scans the folder **and all its subfolders recursively**, v6.1+; each subfolder gets its own compound parent when grouping is enabled)
+- **Or**: Inputs folder must be selected (scans the folder **and all its subfolders recursively**, v6.1+; each subfolder gets its own compound parent when grouping is enabled). Dot-prefixed files and folders (`.DS_Store`, `._` AppleDouble files, `.Trashes`) are always skipped (v6.5+)
 - **Optional**: Working/Outputs folder (to load compound grouping setting)
 - **OHM-data mode**: When `process_OHM_data` is enabled in Function 0, select the project folder containing `OHM-data` (or select `OHM-data` itself). Function 1 ignores file selections and ordinary assets, recursively finds only `.mp3` files, and assigns each one a standard persistent DG identifier.
-- **GEMS mode**: When `process_gems_output` is enabled in Function 0 (v6.2+), the Files Selection is ignored entirely; Function 1 always scans the Inputs Folder recursively and expects the GEMS one-subfolder-per-object layout. Compound grouping is forced on and `multiple` sub-objects are forced off, so each multi-file subfolder becomes one flat compound and each single-file subfolder stays standalone.
+- **GEMS mode**: When `process_gems_output` is enabled in Function 0 (v6.5+), the Files Selection is ignored entirely; Function 1 always scans the Inputs Folder recursively and expects the GEMS one-subfolder-per-object layout. Compound grouping is forced on and `multiple` sub-objects are forced off, so each multi-file subfolder becomes one flat compound and each single-file subfolder stays standalone.
 
 ## How It Works
 1. **First checks** if files are selected in the Files Selection area
@@ -60,7 +60,7 @@ Function 2 creates one standalone metadata record for each OHM MP3. OHM mode doe
 
 ### GEMS Export Processing
 
-When `process_gems_output` is `true` (v6.2+), Function 1 ignores the Files Selection, recursively scans the Inputs Folder, forces `group_compound_objects` on and `create_multiple_objects` off, and treats each subfolder as one object: several files in a subfolder become a flat compound (sequence numbers recorded for ordering); a lone file becomes a standalone object. This matches the GEMS export layout described in `GEMS_FILENAME_RULES.md` and cannot be combined with `process_OHM_data`.
+When `process_gems_output` is `true` (v6.5+), Function 1 ignores the Files Selection, recursively scans the Inputs Folder, forces `group_compound_objects` on and `create_multiple_objects` off, and treats each subfolder as one object: several files in a subfolder become a flat compound (sequence numbers recorded for ordering); a lone file becomes a standalone object. This matches the GEMS export layout described in `GEMS_FILENAME_RULES.md` and cannot be combined with `process_OHM_data`.
 
 ## Compound Object Grouping
 

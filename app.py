@@ -550,6 +550,7 @@ def find_ohm_data_mp3_files(input_directory: Path) -> Tuple[list, Path]:
     files = [
         path for path in ohm_data_directory.rglob("*")
         if path.is_file() and path.suffix.lower() == ".mp3"
+        and not is_hidden_path(path, ohm_data_directory)
     ]
     return sorted(files), ohm_data_directory
 
@@ -572,6 +573,7 @@ def find_ohm_sibling_image(mp3_path: Path) -> Optional[Path]:
     image_files = sorted(
         path for path in mp3_path.parent.iterdir()
         if path.is_file() and path.suffix.lower() in image_extensions
+        and not path.name.startswith(".")
     )
     return image_files[0] if len(image_files) == 1 else None
 
@@ -689,6 +691,16 @@ def get_stable_path(full_path: str) -> str:
         logger.debug(f"[STABLE PATH] {full_path} -> {stable}")
         return str(stable)
     return full_path
+
+
+def is_hidden_path(path: Path, root: Path) -> bool:
+    """True when any path part below root starts with '.' — .DS_Store, ._ AppleDouble files, .Trashes.
+    Folder scans must skip these so Finder metadata and recently trashed files are never assets."""
+    try:
+        parts = path.relative_to(root).parts
+    except ValueError:
+        parts = path.parts
+    return any(part.startswith(".") for part in parts)
 
 
 def prepare_ohm_data_objects(
@@ -2700,7 +2712,8 @@ def main(page: ft.Page):
             logger.info(f"[DEBUG] Scanning folder: {current_directory}")
             # Recursive scan: includes per-compound subfolders (one compound per folder)
             for file_path in current_directory.rglob("*"):
-                if file_path.is_file() and file_path.suffix.lower() in asset_extensions:
+                if (file_path.is_file() and file_path.suffix.lower() in asset_extensions
+                        and not is_hidden_path(file_path, current_directory)):
                     files.append(str(file_path))  # Store full path
             source_description = f"in {current_directory.name}"
 
@@ -3186,7 +3199,8 @@ def main(page: ft.Page):
                 add_log_message(f"[DEBUG] GEMS mode: ignoring Files selection, scanning Inputs Folder recursively: {current_directory}")
             # Recursive scan: includes per-compound subfolders (one compound per folder)
             for file_path in current_directory.rglob("*"):
-                if file_path.is_file() and file_path.suffix.lower() in asset_extensions:
+                if (file_path.is_file() and file_path.suffix.lower() in asset_extensions
+                        and not is_hidden_path(file_path, current_directory)):
                     files.append(str(file_path))
 
         if not files:
