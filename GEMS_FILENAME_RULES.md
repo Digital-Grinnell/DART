@@ -98,7 +98,7 @@ objects/grinnell_21717/grinnell_21717-02.jpg
 objects/grinnell_103_OBJ/grinnell_103_OBJ.pdf   ← single: one file, one folder
 ```
 
-DART creates exactly one compound parent per folder, so each Alma compound becomes its own DART compound instead of hundreds of compounds being lumped under a single untitled folder-level parent — and a single file alone in its folder can never be mis-grouped with unrelated records that share a filename base (e.g., `grinnell-310.pdf` next to `grinnell-1135.pdf`). As of **v6.1**, Functions 1 and 2 scan the Inputs Folder **recursively**, so pointing DART at the top-level `objects/` folder discovers every per-object subfolder.
+DART creates exactly one compound parent per folder, so each Alma compound becomes its own DART compound instead of hundreds of compounds being lumped under a single untitled folder-level parent — and a single file alone in its folder can never be mis-grouped with unrelated records that share a filename base (e.g., `grinnell-310.pdf` next to `grinnell-1135.pdf`). Grouping is strictly folder-scoped (v6.5+): filename comparisons never cross folder boundaries. As of **v6.1**, Functions 1 and 2 scan the Inputs Folder **recursively**, so pointing DART at the top-level `objects/` folder discovers every per-object subfolder.
 
 **Already have a flat export?** The helper script `scripts/organize_compound_folders.py` in the DART repo reorganizes an existing flat folder into this structure using these same filename rules (dry-run by default, `--apply` to execute):
 
@@ -109,14 +109,15 @@ python3 scripts/organize_compound_folders.py /path/to/objects --apply  # move fi
 
 The script groups by shared filename base, so it can only separate compounds from each other — a flat batch of **individual** exports that share a base (`grinnell-310.pdf`, `grinnell-1135.pdf`, …) would be herded into one folder and still mis-group. For those, re-export from current GEMS (one folder per record) or, if the collection is truly all individuals, turn off compound grouping for that working folder (`group_compound_objects = false` in Function 0).
 
-### 2. Turn on GEMS mode in DART (v6.5+)
+### 2. Flat compounds in DART (v6.1+)
 In **Function 0: App Settings**, set:
 
 ```
-process_gems_output = true
+group_compound_objects = true
+create_multiple_objects = false
 ```
 
-This master switch turns compound grouping **on** and `create_multiple_objects` **off** for you, and Functions 1 and 2 then ignore any Files Selection and always scan the Inputs Folder recursively. (Before v6.5, the equivalent was setting `group_compound_objects = true` and `create_multiple_objects = false` by hand.) Numbered sequences attach **directly to the compound** as flat children (sequence numbers are still recorded for ordering) instead of being nested under a `multiple` sub-object. Leave the mode `false` (the default) for new-content workflows, where the `multiple` layer is a legitimate grouping and Files Selection remains available.
+Grouping is folder-scoped (v6.5+), so each subfolder stands on its own: a subfolder with several files becomes one compound, and a single-file subfolder stays standalone. With `create_multiple_objects = false`, numbered sequences attach **directly to the compound** as flat children (sequence numbers are still recorded for ordering) instead of being nested under a `multiple` sub-object. Leave `create_multiple_objects` at `true` (the default) for new-content workflows, where the `multiple` layer is a legitimate grouping.
 
 ### 3. Resulting structure
 

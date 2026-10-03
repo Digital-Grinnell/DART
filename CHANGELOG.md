@@ -10,10 +10,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [6.5] - 2026-10-03
 
 ### Added
-- Added `process_gems_output` to Function 0 settings (default `false`) for processing GEMS migration exports. When `true`, Functions 1 and 2 force compound grouping on (`group_compound_objects = true`) and `multiple` sub-objects off (`create_multiple_objects = false`), ignore any Files Selection, and recursively scan the Inputs Folder, expecting the GEMS one-subfolder-per-object layout (a subfolder with several files becomes one flat compound; a single-file subfolder stays a standalone object). Saving it as `true` also persists the two forced values, and the settings dialog rejects enabling it together with `process_OHM_data`.
 
 ### Changed
 - All folder scans (Functions 1 and 2 asset scans, OHM MP3 discovery, and the OHM sibling-image lookup) now skip dot-prefixed files and folders — `.DS_Store`, `._` AppleDouble files, `.Trashes` — so Finder metadata and recently trashed files on network volumes can never be ingested as assets.
+
+### Fixed
+- Compound analysis is now strictly folder-scoped (v6.5): Pass 2 prefix matching, Pass 3 common-base detection, and prefix grouping all key on the file's parent folder. Previously a shared filename prefix (`grinnell-…`) spanning several subfolders was grouped globally and then attached to whichever folder sorted first, collapsing same-named singles from different GEMS subfolders into one misassigned compound. Grouping now never crosses folder boundaries, matching the documented "one compound parent per folder" behavior.
+
+### Removed
+- Removed the short-lived `process_gems_output` Function 0 setting. The folder-scoped grouping fix makes DART's compound behavior correct for the GEMS one-subfolder-per-object layout without any special mode, and the Files Selection label ("Not necessary when processing files from GEMS") plus the recursive scan cover the rest.
 
 ---
 

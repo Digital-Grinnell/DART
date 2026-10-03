@@ -178,7 +178,6 @@ DEFAULT_APP_SETTINGS = {
     "group_compound_objects": False,
     "create_multiple_objects": True,
     "process_OHM_data": False,
-    "process_gems_output": False,
     "use_working_folder_for_file_selection": False,
     "automatic_four": False,
     "overwrite_existing_azure_files": False,
@@ -1917,12 +1916,6 @@ def main(page: ft.Page):
             hint_text="true or false - nest numbered sequences under 'multiple' objects (false = flat Alma/GEMS-style compounds)",
             width=320,
         )
-        process_gems_output_field = ft.TextField(
-            label="process_gems_output",
-            value=str(settings.get("process_gems_output", False)).lower(),
-            hint_text="true or false - GEMS mode: forces compound grouping on and 'multiple' objects off, and ignores Files selection to recursively scan the Inputs Folder (one subfolder per object)",
-            width=320,
-        )
         process_ohm_data_field = ft.TextField(
             label="process_OHM_data",
             value=str(settings.get("process_OHM_data", False)).lower(),
@@ -2090,25 +2083,6 @@ def main(page: ft.Page):
                     is_error=True,
                 )
                 return
-
-            parsed_process_gems_output = parse_bool_text(process_gems_output_field.value)
-            if parsed_process_gems_output is None:
-                update_status(
-                    "Error: process_gems_output must be true/false (or yes/no, 1/0)",
-                    is_error=True,
-                )
-                return
-
-            if parsed_process_gems_output:
-                if parsed_process_ohm_data:
-                    update_status(
-                        "Error: process_gems_output and process_OHM_data cannot both be true",
-                        is_error=True,
-                    )
-                    return
-                # GEMS mode is a master switch: compounds on, 'multiple' objects off.
-                parsed_group_compound = True
-                parsed_create_multiple = False
             
             parsed_use_working_folder = parse_bool_text(use_working_folder_field.value)
             if parsed_use_working_folder is None:
@@ -2167,7 +2141,6 @@ def main(page: ft.Page):
                 "group_compound_objects": parsed_group_compound,
                 "create_multiple_objects": parsed_create_multiple,
                 "process_OHM_data": parsed_process_ohm_data,
-                "process_gems_output": parsed_process_gems_output,
                 "use_working_folder_for_file_selection": parsed_use_working_folder,
                 "automatic_four": parsed_automatic_four,
                 "overwrite_existing_azure_files": parsed_overwrite_existing_azure_files,
@@ -2223,7 +2196,6 @@ def main(page: ft.Page):
                         ft.Container(height=8),
                         group_compound_field,
                         create_multiple_objects_field,
-                        process_gems_output_field,
                         process_ohm_data_field,
                         use_working_folder_field,
                         automatic_four_field,
@@ -2356,8 +2328,15 @@ def main(page: ft.Page):
                 })
                 logger.info(f"[PARSE] '{obj['filename']}' → no trailing number (defer prefix assignment)")
         
-        # SECOND PASS: For unnumbered files, find matching prefix from numbered files
-        logger.info(f"[PREFIX MATCHING] Found {len(numbered_prefixes)} numbered prefixes: {sorted(numbered_prefixes)}")
+        # SECOND PASS: For unnumbered files, find matching prefix from numbered files.
+        # Numbered prefixes are per-folder: a folder's unnumbered files may only borrow
+        # a prefix from numbered files in the SAME folder (grouping never crosses folders).
+        folder_numbered_prefixes = {}
+        for pf in parsed_files:
+            if pf['number'] is not None:
+                pf_folder = str(Path(pf['obj']['filepath']).parent)
+                folder_numbered_prefixes.setdefault(pf_folder, set()).add(pf['prefix'])
+        logger.info(f"[PREFIX MATCHING] Found {len(numbered_prefixes)} numbered prefixes across {len(folder_numbered_prefixes)} folders: {sorted(numbered_prefixes)}")
         
         for pf in parsed_files:
             if pf['prefix'] is None:  # Unnumbered file needing prefix assignment
@@ -2365,8 +2344,9 @@ def main(page: ft.Page):
                 best_match = None
                 best_match_length = 0
                 
-                # Check if this stem starts with any known numbered prefix
-                for known_prefix in numbered_prefixes:
+                # Check if this stem starts with any known numbered prefix from its own folder
+                pf_folder = str(Path(pf['obj']['filepath']).parent)
+                for known_prefix in folder_numbered_prefixes.get(pf_folder, set()):
                     if stem_lower.startswith(known_prefix):
                         # Verify there's a separator or end after prefix (not just substring match)
                         remainder = stem_lower[len(known_prefix):]
@@ -2378,14 +2358,16 @@ def main(page: ft.Page):
                 
                 if best_match:
                     pf['prefix'] = best_match
-                    logger.info(f"[PREFIX MATCH] '{pf['filename']}' matched prefix '{best_match}' (common with numbered files)")
+                    logger.info(f"[PREFIX MATCH] '{pf['filename']}' matched prefix '{best_match}' (common with numbered files in its folder)")
                 else:
                     # No match - use full stem as its own prefix (may be refined in pass 3)
                     pf['prefix'] = stem_lower
-                    logger.info(f"[PREFIX MATCH] '{pf['filename']}' → no match, using full stem: '{stem_lower}'")
+                    logger.info(f"[PREFIX MATCH] '{pf['filename']}' → no match in its folder, using full stem: '{stem_lower}'")
         
-        # THIRD PASS: Find common prefixes among remaining unnumbered files
-        unmatched = [pf for pf in parsed_files if pf['number'] is None and pf['prefix'] not in numbered_prefixes]
+        # THIRD PASS: Find common prefixes among remaining unnumbered files, per folder.
+        # 'Numbered in this folder' is judged per folder (same scope as Pass 2).
+        unmatched = [pf for pf in parsed_files
+                     if pf['number'] is None and pf['prefix'] not in folder_numbered_prefixes.get(str(Path(pf['obj']['filepath']).parent), set())]
         
         logger.info(f"[THIRD PASS] Total parsed files: {len(parsed_files)}")
         logger.info(f"[THIRD PASS] Unnumbered files: {len([pf for pf in parsed_files if pf['number'] is None])}")
@@ -2401,7 +2383,8 @@ def main(page: ft.Page):
             for pf in unmatched:
                 logger.info(f"[COMMON PREFIX SEARCH] Unmatched file: '{pf['filename']}' with prefix: '{pf['prefix']}'")
             
-            # Build a map of potential base prefixes
+            # Build a map of potential base prefixes, keyed by folder so a shared base
+            # only groups unnumbered files that live in the SAME folder.
             potential_bases = {}
             for pf in unmatched:
                 stem = pf['prefix']
@@ -2412,18 +2395,19 @@ def main(page: ft.Page):
                     potential_base = match.group(1).strip().rstrip(' _-')
                     logger.info(f"[COMMON PREFIX] '{pf['filename']}' (stem: '{stem}') → potential base: '{potential_base}'")
                     if len(potential_base) >= 3:
-                        if potential_base not in potential_bases:
-                            potential_bases[potential_base] = []
-                        potential_bases[potential_base].append(pf)
+                        pf_folder = str(Path(pf['obj']['filepath']).parent)
+                        if (pf_folder, potential_base) not in potential_bases:
+                            potential_bases[(pf_folder, potential_base)] = []
+                        potential_bases[(pf_folder, potential_base)].append(pf)
                 else:
                     logger.info(f"[COMMON PREFIX] '{pf['filename']}' (stem: '{stem}') → NO MATCH for base extraction regex")
             
-            logger.info(f"[COMMON PREFIX] Found {len(potential_bases)} potential base(s): {list(potential_bases.keys())}")
+            logger.info(f"[COMMON PREFIX] Found {len(potential_bases)} potential folder/base pair(s): {sorted(potential_bases.keys())}")
             
-            # Apply common base to files that share it (2+ files with same base)
-            for base, files in potential_bases.items():
+            # Apply common base to files that share it (2+ files in one folder with same base)
+            for (folder, base), files in potential_bases.items():
                 if len(files) >= 2:
-                    msg = f"[COMMON PREFIX] Found {len(files)} files sharing base: '{base}'"
+                    msg = f"[COMMON PREFIX] Found {len(files)} files in {Path(folder).name} sharing base: '{base}'"
                     logger.info(msg)
                     add_log_message(msg)
                     for pf in files:
@@ -2431,22 +2415,25 @@ def main(page: ft.Page):
                         pf['prefix'] = base
                         logger.info(f"[COMMON PREFIX] '{pf['filename']}' → prefix changed from '{old_prefix}' to '{base}'")
         
-        # Group by prefix (must be 3+ characters for grouping)
+        # Group by (folder, prefix): prefix comparisons must never span folders, otherwise
+        # same-named singles in different subfolders (GEMS one-folder-per-record layout)
+        # would collapse into one misassigned compound. A prefix < 3 chars never groups.
         prefix_groups = {}
         for pf in parsed_files:
             prefix = pf['prefix']
             # Only group if prefix is 3+ characters (weighted matching)
             if len(prefix) >= 3:
-                if prefix not in prefix_groups:
-                    prefix_groups[prefix] = []
-                prefix_groups[prefix].append(pf)
+                pf_folder = str(Path(pf['obj']['filepath']).parent)
+                if (pf_folder, prefix) not in prefix_groups:
+                    prefix_groups[(pf_folder, prefix)] = []
+                prefix_groups[(pf_folder, prefix)].append(pf)
         
         # Analyze each prefix group for patterns
-        add_log_message(f"[GROUP ANALYSIS] Found {len(prefix_groups)} prefix groups (3+ char prefixes)")
-        logger.info(f"[GROUP ANALYSIS] Analyzing {len(prefix_groups)} prefix groups")
+        add_log_message(f"[GROUP ANALYSIS] Found {len(prefix_groups)} folder/prefix groups (3+ char prefixes)")
+        logger.info(f"[GROUP ANALYSIS] Analyzing {len(prefix_groups)} folder/prefix groups")
         
         groups = {}
-        for prefix, items in prefix_groups.items():
+        for (pf_folder, prefix), items in prefix_groups.items():
             # Extract numbers from this group
             numbers = [item['number'] for item in items if item['number'] is not None]
             
@@ -2509,8 +2496,8 @@ def main(page: ft.Page):
             add_log_message(msg)
             logger.info(msg)
             
-            # Store group with padding info
-            groups[prefix] = {
+            # Store group with padding info, keyed by (folder, prefix)
+            groups[(pf_folder, prefix)] = {
                 'files': [item['obj'] for item in items],
                 'zero_pad_width': zero_pad_width,
                 'items': items  # Keep parsed items for sorting
@@ -2519,12 +2506,12 @@ def main(page: ft.Page):
         # Bucket groups (2+ files) by folder so each folder gets ONE top-level
         # compound; sequence groups (2+ numbered files) become nested 'multiple'
         # children, and non-sequence groups attach directly to the compound.
+        # Groups are folder-scoped by construction, so the bucket key is the group's folder.
         folder_buckets = {}
-        for text_base, group_data in groups.items():
+        for (pf_folder, text_base), group_data in groups.items():
             group_files = group_data['files']
             if len(group_files) >= 2:
-                folder_path = str(Path(group_files[0]['filepath']).parent)
-                folder_buckets.setdefault(folder_path, []).append((text_base, group_data))
+                folder_buckets.setdefault(pf_folder, []).append((text_base, group_data))
             else:
                 # Single file - not part of a compound
                 group_files[0]["parentid"] = None
@@ -2641,7 +2628,6 @@ def main(page: ft.Page):
         process_ohm_data = False
         collection_id = ""
         create_multiple = True
-        process_gems_output = False
         if working_dir:
             settings, _ = load_app_settings(working_dir)
             group_compound = settings.get("group_compound_objects", False)
@@ -2650,18 +2636,12 @@ def main(page: ft.Page):
                 group_compound = False
             collection_id = settings.get("collection-id", "")
             create_multiple = settings.get("create_multiple_objects", True)
-            process_gems_output = settings.get("process_gems_output", False)
-            if process_gems_output:
-                # GEMS mode: one subfolder per object - compounds on, 'multiple' objects off.
-                group_compound = True
-                create_multiple = False
         
         # DEBUG: Log settings
         add_log_message(f"[DEBUG] Working/Outputs Folder: {working_dir or 'Not set'}")
         add_log_message(f"[DEBUG] Compound grouping: {group_compound}")
         add_log_message(f"[DEBUG] Create multiple objects: {create_multiple}")
         add_log_message(f"[DEBUG] OHM-data processing: {process_ohm_data}")
-        add_log_message(f"[DEBUG] GEMS output processing: {process_gems_output}")
         logger.info(f"[DEBUG] Working folder: {working_dir}, Compound grouping: {group_compound}")
 
         # Digital asset file extensions
@@ -2686,8 +2666,7 @@ def main(page: ft.Page):
             add_log_message(f"[DEBUG] OHM-data mode: scanning {ohm_data_directory}")
             logger.info(f"[DEBUG] OHM-data files: {files}")
         else:
-            # GEMS mode always works from the Inputs Folder; any Files selection is ignored.
-            selected_files = [] if process_gems_output else get_selected_files()
+            selected_files = get_selected_files()
 
         if not process_ohm_data and selected_files:
             # Use selected files
@@ -2700,14 +2679,9 @@ def main(page: ft.Page):
         elif not process_ohm_data:
             # Fall back to scanning inputs folder
             if not current_directory or not current_directory.exists():
-                if process_gems_output:
-                    update_status("Error: GEMS mode requires an inputs folder containing the GEMS export", is_error=True)
-                else:
-                    update_status("Error: Please select files or an inputs folder first", is_error=True)
+                update_status("Error: Please select files or an inputs folder first", is_error=True)
                 return
             
-            if process_gems_output:
-                add_log_message(f"[DEBUG] GEMS mode: ignoring Files selection, scanning Inputs Folder recursively: {current_directory}")
             add_log_message(f"[DEBUG] No files selected - scanning Inputs Folder: {current_directory}")
             logger.info(f"[DEBUG] Scanning folder: {current_directory}")
             # Recursive scan: includes per-compound subfolders (one compound per folder)
@@ -3156,11 +3130,6 @@ def main(page: ft.Page):
             group_compound = False
         collection_id = settings.get("collection-id", "")
         create_multiple = settings.get("create_multiple_objects", True)
-        process_gems_output = settings.get("process_gems_output", False)
-        if process_gems_output:
-            # GEMS mode: one subfolder per object - compounds on, 'multiple' objects off.
-            group_compound = True
-            create_multiple = False
         
         asset_extensions = {
             '.jpg', '.jpeg', '.png', '.gif', '.tif', '.tiff', '.bmp', '.webp',
@@ -3180,8 +3149,7 @@ def main(page: ft.Page):
             files = [str(file_path) for file_path in ohm_files]
             add_log_message(f"[DEBUG] OHM-data mode: exporting MP3 files from {ohm_data_directory}")
         else:
-            # GEMS mode always works from the Inputs Folder; any Files selection is ignored.
-            selected_files = [] if process_gems_output else get_selected_files()
+            selected_files = get_selected_files()
 
         if not process_ohm_data and selected_files:
             for file_path in selected_files:
@@ -3189,14 +3157,9 @@ def main(page: ft.Page):
                     files.append(str(file_path))
         elif not process_ohm_data:
             if not current_directory or not current_directory.exists():
-                if process_gems_output:
-                    update_status("Error: GEMS mode requires an inputs folder containing the GEMS export", is_error=True)
-                else:
-                    update_status("Error: Please select files or an inputs folder first", is_error=True)
+                update_status("Error: Please select files or an inputs folder first", is_error=True)
                 return
             
-            if process_gems_output:
-                add_log_message(f"[DEBUG] GEMS mode: ignoring Files selection, scanning Inputs Folder recursively: {current_directory}")
             # Recursive scan: includes per-compound subfolders (one compound per folder)
             for file_path in current_directory.rglob("*"):
                 if (file_path.is_file() and file_path.suffix.lower() in asset_extensions
