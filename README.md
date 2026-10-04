@@ -107,6 +107,7 @@ DART provides a comprehensive platform for digital asset management workflows:
   - Stops immediately if any errors occur
   - Automatically resets to `false` at start of each new session (opt-in per session)
   - **Required Collection Identifier**: Set `collection-id` to generate new IDs as `<collection-id>_dg_<epoch>` for multi-collection uniqueness. This value becomes part of every new object's unique ID and is also used for Azure sub-directory names and CollectionBuilder slugs. Blank values are rejected on save. Collection identifiers may be any length and can contain letters, numbers, hyphens, and underscores
+  - **Optional GEMS Metadata CSV**: Set `gems_metadata_csv` (Browse/Clear) to the GEMS run's `collection_metadata.csv` so Function 4 fills new records with GEMS metadata
 - **Function 1** 🎯: Analyze digital assets and generate standard DG identifiers (dg_<epoch>)
   - Creates compound objects for related file groups (optional)
   - Permanent ID assignment with folder-based compound tracking
@@ -140,6 +141,8 @@ DART provides a comprehensive platform for digital asset management workflows:
   - Auto-selects newest DART_export CSV from `.DART-working-directory` subfolder
   - Classifies records: added (new), removed (missing in new), changed (different values)
   - Generates JSON diff results and text summary
+  - **Optional GEMS backfill**: When `gems_metadata_csv` is set, a checkbox (checked by default) fills the export's empty fields from GEMS before comparing. It matches on `original_file_name`, and compound parents can also match through their children. DART identifiers, structure, and Azure/derivative URLs are never overwritten.
+  - **Missing-metadata warning**: Flags new records that have only DART-generated fields (no title, date, description, etc.) and explains how to enable the GEMS backfill
   - **Interactive merge with preview**: Field-level checkboxes (checked by default), data loss fields disabled/grayed requiring manual enable
   - **Smart merge behavior**: Always updates core CSV file (wherever it's located)
   - Case-sensitive comparison with whitespace normalization

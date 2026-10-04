@@ -135,6 +135,9 @@ A compound parent's `original_file_name` is the alphabetically-first child filen
 ### 5. Use a fresh working folder
 After reorganizing into per-compound folders, point DART at a **new working folder**. Reusing one whose `file_to_id_map` was built under the old flat layout would leave stale compound/`multiple` ID mappings, and moved files (new paths) would receive new identifiers anyway.
 
+### 6. Bring GEMS metadata into later batches (DART `gems_metadata_csv`, v6.6+)
+After the first batch, the core metadata CSV holds published DART IDs for earlier records, but not the GEMS rows for the next batch. Merging a new DART export straight into it adds the batch as records with **no GEMS metadata**. Instead, in DART Function 0, set **gems_metadata_csv** to the GEMS run's cumulative `collection_metadata.csv`, then run Functions 1 → 2 → 3 → 4 as usual. Function 4's **Backfill empty fields from GEMS metadata CSV** checkbox, on by default, fills the export's empty fields from GEMS before comparing, so the batch is added with full metadata. DART identifiers, structure, and Azure URLs are never taken from GEMS. Update the setting after each new GEMS run. See "GEMS Backfill" in `FUNCTION_4_COMPARE_MERGE_CSV.md`.
+
 ---
 
 ## Examples

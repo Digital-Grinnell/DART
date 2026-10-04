@@ -14,6 +14,7 @@ Use this function when you want to:
 ## Requirements
 - **Working/Outputs folder** must be set
 - **Core metadata CSV** must be configured in Function 0 settings
+- **Optional:** `gems_metadata_csv` in Function 0 settings, to backfill GEMS metadata (see "GEMS Backfill")
 - **At least 1 DART_export CSV file** must exist in the `.DART-working-directory` subfolder (for comparison)
 - Both CSV files must have an `original_file_name` column (unique identifier)
 - No duplicate `original_file_name` values within each file
@@ -73,6 +74,7 @@ Function 4 uses the csvdiff Python library for comparison:
    - Auto-selects the newest DART_export CSV as the "new" file
    - If newest is same as core, uses second newest DART_export CSV
    - Strips `filepath` column from both CSVs before comparison (internal DART data)
+   - If **Backfill empty fields from GEMS metadata CSV** is checked, it first backfills the selected export from `gems_metadata_csv` (see "GEMS Backfill" below)
 
 6. DART performs the comparison using csvdiff and generates output files
 
@@ -80,6 +82,35 @@ Function 4 uses the csvdiff Python library for comparison:
    - Summary counts by status (added, changed, removed)
    - **Interactive merge viewer** for selective merging
    - Links to JSON and text summary output files
+
+## GEMS Backfill (optional, v6.6+)
+
+GEMS gathers the descriptive metadata (title, date, description, subjects, rights, …) into its own `collection_metadata.csv`. A DART export holds only DART's fields (`objectid`, `parentid`, Azure URLs, derivatives). After the first batch, your core CSV holds published records for the earlier batches, but **not** the GEMS rows for the batch you're processing. Without a backfill, Function 4 adds that batch as records with no GEMS metadata.
+
+**Setup:** in Function 0, set **gems_metadata_csv** to the GEMS run's `collection_metadata.csv` for the current batch. GEMS's CSV is cumulative, so a run covering records 151–350 also contains 1–150, and the extra rows are ignored.
+
+**Use:** the Function 4 file-selection dialog shows a **Backfill empty fields from GEMS metadata CSV** checkbox. It's checked by default when the setting points at an existing file, and disabled when the setting is blank. Uncheck it to compare the raw export. Your GEMS batch workflow is then just Functions 1 → 2 → 3 → 4, and `automatic_four` uses the same checkbox.
+
+**What the backfill does** before csvdiff runs:
+1. Matches each export row to a GEMS row on exact `original_file_name`
+2. **Compound parents**: DART names a parent `_<first child filename>`. If GEMS listed an extra child that DART didn't see, its parent name differs. When a parent's name isn't in GEMS, it's matched through its children's GEMS `parentid`.
+3. Fills only **empty** export cells from non-empty GEMS values, so **non-empty DART values always win** (for example, DART's `type` of `child`/`compound`, or `originating_system_id`)
+4. **Never fills** `objectid`, `parentid`, `original_file_name`, `filepath`, `display_template`, `object_location`, `image_small`, `image_thumb`. DART owns identifiers, structure, and Azure locations.
+5. Ignores GEMS columns that aren't in the export (for example, `key`)
+6. Reorders rows into GEMS (manifest) order, so the records added to the core follow the GEMS sequence. Rows with no GEMS match stay with their compound family, or go last.
+7. Writes `DART_export_with_gems_<timestamp>.csv` to `.DART-working-directory` for audit, and compares that file against the core
+
+The results dialog adds a **GEMS Backfill** section showing:
+- rows matched, including parents matched through their children
+- how many empty fields were filled
+- any export rows with no GEMS match, which still get merged but without GEMS metadata
+- any duplicate GEMS filenames that were skipped
+
+If **no** rows match, Function 4 stops with an error before comparing. This usually means `gems_metadata_csv` points at the wrong GEMS run.
+
+`DART_export_with_gems_*` files are intermediate outputs. They aren't listed for selection, because Function 4 regenerates them from the real export on every run. Function 3 ignores them too.
+
+**Recovering a batch merged without GEMS metadata:** if the bare records haven't been merged yet, set `gems_metadata_csv` and rerun Function 4. The core CSV is only written when you click Merge, so a comparison you closed without merging changed nothing.
 
 ## What Gets Compared
 
@@ -200,6 +231,11 @@ Core metadata CSV is configured in settings
 - **"Missing original_file_name column"**: Both files must have this column
 - **"Duplicate original_file_name values"**: Fix duplicates before comparison
 - **"Error comparing CSVs"**: Check log for csvdiff or data format issues
+- **Only "new" and "missing" records, 0 "changed", and the new records have no titles or descriptions**: The core CSV doesn't contain this batch's GEMS rows, for example because it holds an earlier batch. Close the dialog without merging. Set `gems_metadata_csv` in Function 0 to the GEMS run's `collection_metadata.csv`, then run Function 4 again with the GEMS backfill checkbox checked. See "GEMS Backfill" above.
+- **⚠️ "NEW RECORDS HAVE NO METADATA" banner** (v6.6+): At least half of the new records have values only in DART-generated columns (`objectid`, `parentid`, `display_template`, `original_file_name`, `filepath`, `originating_system_id`, `object_location`, `image_small`, `image_thumb`, `type`, `format`). Title, date, description and every other metadata column are empty. The banner appears in the results dialog and the review/merge view, and is also written to the log and status bar. It's only a warning, and merging is still allowed. Its advice depends on the situation:
+  - No `gems_metadata_csv` is set: set it and run Function 4 again.
+  - The backfill checkbox was unchecked: run Function 4 again with it checked.
+  - The backfill ran: `gems_metadata_csv` probably points at a GEMS run that doesn't cover these records.
 
 ## Comparison Logic
 

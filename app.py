@@ -183,6 +183,7 @@ DEFAULT_APP_SETTINGS = {
     "overwrite_existing_azure_files": False,
     "collection-id": "",
     "core_metadata_csv": "",
+    "gems_metadata_csv": "",
     "azure_blob_storage_path": "",
     "azure_connection_string": "",
     "file_to_id_map": {},  # Maps full file paths to assigned dg_<epoch> IDs
@@ -985,6 +986,248 @@ PROTECTED_CORE_CSV_NAME = "collection-template.csv"
 def is_protected_core_csv_name(csv_path: Union[str, Path]) -> bool:
     """Return True if the core CSV filename is the reserved template name that must never be merge-overwritten."""
     return Path(csv_path).name.strip().lower() == PROTECTED_CORE_CSV_NAME
+
+
+GEMS_BACKFILL_OUTPUT_PREFIX = "DART_export_with_gems_"
+
+# DART owns identity, structure, and Azure locations; GEMS never fills these even when DART left them blank.
+GEMS_BACKFILL_PROTECTED_COLUMNS = frozenset({
+    "objectid",
+    "parentid",
+    "original_file_name",
+    "filepath",
+    "display_template",
+    "object_location",
+    "image_small",
+    "image_thumb",
+})
+
+# Columns DART's own exports populate; any other non-empty value means the row carries descriptive metadata.
+DART_GENERATED_COLUMNS = GEMS_BACKFILL_PROTECTED_COLUMNS | frozenset({
+    "originating_system_id",
+    "type",
+    "format",
+})
+
+MISSING_METADATA_WARNING_RATIO = 0.5
+
+
+def find_records_without_descriptive_metadata(records):
+    """Return the records whose only non-empty values are in DART-generated columns."""
+    bare = []
+    for record in records:
+        has_metadata = any(
+            str(value or "").strip()
+            for field, value in record.items()
+            if field and field not in DART_GENERATED_COLUMNS and not str(field).startswith("_")
+        )
+        if not has_metadata:
+            bare.append(record)
+    return bare
+
+
+def should_warn_missing_metadata(added_records):
+    """True when most added records lack descriptive metadata, e.g. a GEMS batch merged without GEMS backfill."""
+    if not added_records:
+        return False
+    bare = find_records_without_descriptive_metadata(added_records)
+    return len(bare) / len(added_records) >= MISSING_METADATA_WARNING_RATIO
+
+
+def backfill_dart_export_from_gems(
+    dart_fieldnames: list,
+    dart_rows: list,
+    gems_fieldnames: list,
+    gems_rows: list,
+) -> Tuple[list, dict]:
+    """Fill empty DART export cells from matching GEMS collection_metadata.csv rows.
+
+    Rows match on exact original_file_name. A DART compound parent whose
+    underscore-prefixed name is not in GEMS is matched through its children's
+    GEMS parentid. Non-empty DART values always win and protected columns are
+    never filled. Output rows follow GEMS order; unmatched rows stay with their
+    family when possible, otherwise they go last. Returns (rows, stats).
+    """
+    def clean(value) -> str:
+        return str(value or "").strip()
+
+    gems_index_by_name = {}
+    gems_duplicates = set()
+    for index, row in enumerate(gems_rows):
+        name = clean(row.get("original_file_name"))
+        if not name:
+            continue
+        if name in gems_index_by_name:
+            gems_duplicates.add(name)
+        else:
+            gems_index_by_name[name] = index
+    for name in gems_duplicates:
+        gems_index_by_name.pop(name, None)
+
+    gems_index_by_objectid = {}
+    for index, row in enumerate(gems_rows):
+        objectid = clean(row.get("objectid"))
+        if objectid and objectid not in gems_index_by_objectid:
+            gems_index_by_objectid[objectid] = index
+
+    dart_children = {}
+    for row in dart_rows:
+        parent = clean(row.get("parentid"))
+        if parent:
+            dart_children.setdefault(parent, []).append(row)
+
+    matched_index = {}
+    matched_via_children = []
+    for position, row in enumerate(dart_rows):
+        name = clean(row.get("original_file_name"))
+        if name in gems_index_by_name:
+            matched_index[position] = gems_index_by_name[name]
+            continue
+        children = dart_children.get(clean(row.get("objectid")), [])
+        candidate_parents = set()
+        for child in children:
+            child_gems_index = gems_index_by_name.get(clean(child.get("original_file_name")))
+            if child_gems_index is None:
+                continue
+            gems_parentid = clean(gems_rows[child_gems_index].get("parentid"))
+            if gems_parentid in gems_index_by_objectid:
+                candidate_parents.add(gems_index_by_objectid[gems_parentid])
+        if len(candidate_parents) == 1:
+            gems_parent_index = candidate_parents.pop()
+            matched_index[position] = gems_parent_index
+            matched_via_children.append(
+                (name, clean(gems_rows[gems_parent_index].get("original_file_name")))
+            )
+
+    fill_columns = [
+        col for col in dart_fieldnames
+        if col in gems_fieldnames and col not in GEMS_BACKFILL_PROTECTED_COLUMNS
+    ]
+    ignored_gems_columns = [col for col in gems_fieldnames if col not in dart_fieldnames]
+
+    output_rows = []
+    fields_filled = 0
+    filled_by_column = {}
+    rows_filled = 0
+    for position, row in enumerate(dart_rows):
+        new_row = dict(row)
+        gems_index = matched_index.get(position)
+        if gems_index is not None:
+            gems_row = gems_rows[gems_index]
+            row_changed = False
+            for col in fill_columns:
+                gems_value = gems_row.get(col, "")
+                if not clean(new_row.get(col)) and clean(gems_value):
+                    new_row[col] = gems_value
+                    fields_filled += 1
+                    filled_by_column[col] = filled_by_column.get(col, 0) + 1
+                    row_changed = True
+            if row_changed:
+                rows_filled += 1
+        output_rows.append(new_row)
+
+    # Unmatched children sort right after their matched family; anything else goes last.
+    family_last_index = {}
+    for position, row in enumerate(dart_rows):
+        gems_index = matched_index.get(position)
+        if gems_index is None:
+            continue
+        for key in (clean(row.get("objectid")), clean(row.get("parentid"))):
+            if key:
+                family_last_index[key] = max(family_last_index.get(key, -1), gems_index)
+
+    def sort_key(position: int):
+        if position in matched_index:
+            return (matched_index[position], 0, position)
+        parent = clean(dart_rows[position].get("parentid"))
+        if parent in family_last_index:
+            return (family_last_index[parent], 1, position)
+        return (float("inf"), 1, position)
+
+    order = sorted(range(len(dart_rows)), key=sort_key)
+    output_rows = [output_rows[position] for position in order]
+
+    unmatched_names = [
+        clean(dart_rows[position].get("original_file_name"))
+        for position in range(len(dart_rows))
+        if position not in matched_index
+    ]
+    stats = {
+        "dart_rows": len(dart_rows),
+        "gems_rows": len(gems_rows),
+        "matched_rows": len(matched_index),
+        "matched_via_children": matched_via_children,
+        "unmatched_dart_rows": unmatched_names,
+        "rows_filled": rows_filled,
+        "fields_filled": fields_filled,
+        "filled_by_column": filled_by_column,
+        "ignored_gems_columns": ignored_gems_columns,
+        "gems_duplicate_names": sorted(gems_duplicates),
+    }
+    return output_rows, stats
+
+
+def write_gems_backfilled_export(
+    dart_export_csv: Path,
+    gems_csv: Path,
+    dart_working_dir: Path,
+) -> Tuple[Optional[Path], dict, str]:
+    """
+    Backfill a DART export from a GEMS CSV and write DART_export_with_gems_<ts>.csv.
+    Returns (output_path, stats, error); output_path is None and error is set on failure.
+    """
+    def read_csv_rows(path: Path) -> Tuple[list, list]:
+        with open(path, "r", encoding="utf-8-sig", newline="") as f:
+            reader = csv.DictReader(f)
+            return list(reader.fieldnames or []), list(reader)
+
+    try:
+        dart_fieldnames, dart_rows = read_csv_rows(dart_export_csv)
+        gems_fieldnames, gems_rows = read_csv_rows(gems_csv)
+    except Exception as ex:
+        return None, {}, f"Error reading CSV for GEMS backfill: {ex}"
+
+    if CSV_FILENAME_FIELD not in gems_fieldnames:
+        return None, {}, f"GEMS metadata CSV has no {CSV_FILENAME_FIELD} column: {gems_csv.name}"
+    if CSV_FILENAME_FIELD not in dart_fieldnames:
+        return None, {}, f"{dart_export_csv.name} has no {CSV_FILENAME_FIELD} column"
+
+    output_rows, stats = backfill_dart_export_from_gems(dart_fieldnames, dart_rows, gems_fieldnames, gems_rows)
+    if stats["matched_rows"] == 0:
+        return None, stats, (
+            f"No rows in {dart_export_csv.name} matched the GEMS metadata CSV ({gems_csv.name}); "
+            "check that gems_metadata_csv points at the GEMS run for this batch"
+        )
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_csv = Path(dart_working_dir) / f"{GEMS_BACKFILL_OUTPUT_PREFIX}{timestamp}.csv"
+    try:
+        with open(output_csv, "w", encoding="utf-8", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=dart_fieldnames, extrasaction="ignore")
+            writer.writeheader()
+            writer.writerows(output_rows)
+    except Exception as ex:
+        return None, stats, f"Error writing GEMS-backfilled CSV: {ex}"
+    return output_csv, stats, ""
+
+
+def validate_gems_metadata_csv(csv_path: str) -> Tuple[bool, str]:
+    """Validate the optional GEMS metadata CSV used by Function 4's backfill step."""
+    if not csv_path or not csv_path.strip():
+        return True, "No GEMS metadata CSV specified (optional; Function 4 GEMS backfill disabled)"
+    csv_file = Path(csv_path)
+    if not csv_file.is_file():
+        return False, f"GEMS metadata CSV file not found: {csv_path}"
+    try:
+        with open(csv_file, "r", encoding="utf-8-sig", newline="") as f:
+            reader = csv.DictReader(f)
+            headers = list(reader.fieldnames or [])
+            row_count = sum(1 for _ in reader)
+    except Exception as ex:
+        return False, f"Could not read GEMS metadata CSV: {ex}"
+    if CSV_FILENAME_FIELD not in headers:
+        return False, f"GEMS metadata CSV has no {CSV_FILENAME_FIELD} column"
+    return True, f"✓ GEMS CSV valid ({row_count} rows, {len(headers)} columns)"
 
 
 def validate_core_metadata_csv(csv_path: str) -> Tuple[bool, str]:
@@ -1995,6 +2238,55 @@ def main(page: ft.Page):
             height=40,
         )
         
+        # GEMS metadata CSV (optional) with picker; Function 4 backfills new DART exports from it
+        gems_csv_field = ft.TextField(
+            label="gems_metadata_csv",
+            value=str(settings.get("gems_metadata_csv", "")),
+            hint_text="Optional: GEMS run's collection_metadata.csv; Function 4 fills empty export fields from it",
+            width=500,
+        )
+        gems_csv_validation_text = ft.Text("", size=11, color=ft.Colors.GREY_700, visible=False)
+        
+        def show_gems_csv_validation(path_value: str):
+            valid, msg = validate_gems_metadata_csv(path_value)
+            gems_csv_validation_text.value = msg
+            gems_csv_validation_text.color = ft.Colors.GREEN if valid else ft.Colors.RED
+            gems_csv_validation_text.visible = True
+            return valid, msg
+        
+        if settings.get("gems_metadata_csv", ""):
+            show_gems_csv_validation(settings.get("gems_metadata_csv", ""))
+        
+        def on_gems_csv_picker_result(picker_event: ft.FilePickerResultEvent):
+            if picker_event.files and picker_event.files[0].path:
+                gems_path = picker_event.files[0].path
+                gems_csv_field.value = gems_path
+                storage.set_ui_state("last_gems_dir", str(Path(gems_path).parent))
+                show_gems_csv_validation(gems_path)
+                page.update()
+        
+        gems_csv_picker = ft.FilePicker(on_result=on_gems_csv_picker_result)
+        page.overlay.append(gems_csv_picker)
+        
+        def browse_gems_csv_click(evt):
+            current = (gems_csv_field.value or "").strip()
+            start_dir = str(Path(current).parent) if current else storage.get_ui_state("last_gems_dir", "")
+            gems_csv_picker.pick_files(
+                dialog_title="Select the GEMS collection_metadata.csv",
+                allowed_extensions=["csv"],
+                allow_multiple=False,
+                initial_directory=start_dir if start_dir and Path(start_dir).is_dir() else None,
+            )
+        
+        gems_csv_browse_button = ft.ElevatedButton("Browse...", on_click=browse_gems_csv_click, height=40)
+        
+        def clear_gems_csv_click(evt):
+            gems_csv_field.value = ""
+            gems_csv_validation_text.visible = False
+            page.update()
+        
+        gems_csv_clear_button = ft.TextButton("Clear", on_click=clear_gems_csv_click)
+        
         azure_storage_field = ft.TextField(
             label="azure_blob_storage_path",
             value=str(settings.get("azure_blob_storage_path", "")),
@@ -2126,6 +2418,15 @@ def main(page: ft.Page):
             # Core CSV stays wherever the user put it (no copying to working directory)
             # This allows CollectionBuilder projects to keep core CSV in _data/ folder
             
+            gems_csv_path = (gems_csv_field.value or "").strip()
+            if gems_csv_path:
+                valid, msg = show_gems_csv_validation(gems_csv_path)
+                if not valid:
+                    update_status(f"GEMS CSV validation error: {msg}", is_error=True)
+                    page.update()
+                    return
+                add_log_message(f"GEMS metadata CSV validated: {msg}")
+            
             page.update()
 
             # Validate Azure path before saving
@@ -2146,6 +2447,7 @@ def main(page: ft.Page):
                 "overwrite_existing_azure_files": parsed_overwrite_existing_azure_files,
                 "collection-id": parsed_collection_id,
                 "core_metadata_csv": core_csv_path,
+                "gems_metadata_csv": gems_csv_path,
                 "azure_blob_storage_path": azure_path_value,
                 "azure_connection_string": (azure_connection_field.value or "").strip(),
             })
@@ -2214,6 +2516,21 @@ def main(page: ft.Page):
                             alignment=ft.MainAxisAlignment.START,
                         ),
                         core_csv_validation_text,
+                        ft.Container(height=8),
+                        ft.Text(
+                            "GEMS Metadata CSV (optional):",
+                            size=12,
+                            weight=ft.FontWeight.BOLD,
+                        ),
+                        ft.Row(
+                            controls=[
+                                gems_csv_field,
+                                gems_csv_browse_button,
+                                gems_csv_clear_button,
+                            ],
+                            alignment=ft.MainAxisAlignment.START,
+                        ),
+                        gems_csv_validation_text,
                         ft.Container(height=8),
                         ft.Text(
                             "Azure Storage:",
@@ -3685,10 +4002,13 @@ def main(page: ft.Page):
             add_log_message("[WARN] No input directory set - files must have valid filepath in CSV")
         
         # Find latest CSV export or let user select
-        # Exclude derivative CSVs (which contain "with_derivatives") to avoid processing output as input
+        # Exclude derivative and GEMS-backfilled CSVs (both are outputs) to avoid processing output as input
         dart_working_dir = get_dart_working_dir(working_dir)
         all_csv_files = sorted(dart_working_dir.glob("DART_export_*.csv"), reverse=True)
-        csv_files = [f for f in all_csv_files if "with_derivatives" not in f.name]
+        csv_files = [
+            f for f in all_csv_files
+            if "with_derivatives" not in f.name and not f.name.startswith(GEMS_BACKFILL_OUTPUT_PREFIX)
+        ]
         if not csv_files:
             update_status("Error: No CSV exports found. Run Function 2 first.", is_error=True)
             return
@@ -4208,9 +4528,13 @@ def main(page: ft.Page):
             add_log_message(f"[ERROR] Refusing to merge into reserved template file: {old_csv.name}")
             return
 
-        # Find all DART_export CSV files in DART working subdirectory, sorted by modification time (newest first)
+        # Find DART_export CSVs in the DART working subdirectory, newest first.
+        # GEMS-backfilled outputs are intermediate files that Function 4 regenerates, so they aren't offered.
         csv_files = sorted(
-            [f for f in dart_working_dir.glob("DART_export_*.csv") if f.is_file()],
+            [
+                f for f in dart_working_dir.glob("DART_export_*.csv")
+                if f.is_file() and not f.name.startswith(GEMS_BACKFILL_OUTPUT_PREFIX)
+            ],
             key=lambda p: p.stat().st_mtime,
             reverse=True
         )
@@ -4236,6 +4560,34 @@ def main(page: ft.Page):
         
         add_log_message(f"[INFO] Using core metadata CSV as 'old': {old_csv.name}")
         add_log_message(f"[INFO] Auto-selected newest DART_export CSV as 'new': {new_csv.name}")
+        
+        gems_csv_setting = (settings.get("gems_metadata_csv", "") or "").strip()
+        gems_csv_path = Path(gems_csv_setting) if gems_csv_setting else None
+        gems_csv_available = bool(gems_csv_path and gems_csv_path.is_file())
+        gems_backfill_checkbox = ft.Checkbox(
+            label=(
+                f"Backfill empty fields from GEMS metadata CSV: {gems_csv_path.parent.name}/{gems_csv_path.name}"
+                if gems_csv_path else "Backfill empty fields from GEMS metadata CSV"
+            ),
+            value=gems_csv_available,
+            disabled=not gems_csv_available,
+        )
+        if not gems_csv_path:
+            gems_backfill_note = ft.Text(
+                "GEMS backfill off: set gems_metadata_csv in Function 0 to fill new records with GEMS metadata.",
+                size=11, italic=True, color=ft.Colors.GREY_700,
+            )
+        elif not gems_csv_available:
+            gems_backfill_note = ft.Text(
+                f"⚠️ gems_metadata_csv not found: {gems_csv_setting}. Fix it in Function 0.",
+                size=11, color=ft.Colors.RED,
+            )
+        else:
+            gems_backfill_note = ft.Text(
+                "Fills only empty cells; DART IDs, structure, and Azure URLs are never taken from GEMS.",
+                size=11, italic=True, color=ft.Colors.GREY_700,
+            )
+        gems_backfill_stats = {}
         
         # Define helper functions
         def show_comparison_results(result):
@@ -4468,6 +4820,32 @@ def main(page: ft.Page):
         # Perform comparison directly
         def perform_comparison(selected_new_csv):
             try:
+                if gems_backfill_checkbox.value and gems_csv_available:
+                    add_log_message(f"[INFO] GEMS backfill: {Path(selected_new_csv).name} ← {gems_csv_path}")
+                    update_status("Backfilling DART export from GEMS metadata CSV...")
+                    backfilled_csv, stats, error = write_gems_backfilled_export(
+                        Path(selected_new_csv), gems_csv_path, dart_working_dir
+                    )
+                    if error:
+                        update_status(f"Error: {error}", is_error=True, log_clickable=True)
+                        add_log_message(f"[ERROR] GEMS backfill: {error}")
+                        return
+                    for dart_name, gems_name in stats["matched_via_children"]:
+                        add_log_message(f"[INFO] GEMS backfill: parent {dart_name} matched GEMS parent {gems_name} via children")
+                    for name in stats["unmatched_dart_rows"]:
+                        add_log_message(f"[WARN] GEMS backfill: no GEMS row for {name}")
+                    add_log_message(
+                        f"[SUCCESS] GEMS backfill: {stats['matched_rows']}/{stats['dart_rows']} rows matched, "
+                        f"{stats['fields_filled']} empty fields filled; wrote {backfilled_csv.name}"
+                    )
+                    gems_backfill_stats.clear()
+                    gems_backfill_stats.update(stats)
+                    selected_new_csv = backfilled_csv
+                else:
+                    gems_backfill_stats.clear()
+                    if gems_csv_available:
+                        add_log_message("[INFO] GEMS backfill skipped (unchecked)")
+                
                 add_log_message(f"[INFO] Comparing CSV files...")
                 add_log_message("[INFO] Using csvdiff tool for comparison")
                 
@@ -4567,7 +4945,62 @@ Detailed results: {output_diff.name}
                     add_log_message(f"[SUCCESS] Wrote results: {output_diff.name}")
                     add_log_message(f"[SUCCESS] Wrote summary: {output_summary.name}")
                     
+                    added_records_list = diff_result.get('added', [])
+                    bare_added_count = len(find_records_without_descriptive_metadata(added_records_list))
+                    warn_missing_metadata = should_warn_missing_metadata(added_records_list)
+                    new_csv_is_gems_backfill = bool(gems_backfill_stats)
+                    missing_metadata_banner = None
+                    if warn_missing_metadata:
+                        if new_csv_is_gems_backfill:
+                            advice = ("GEMS backfill ran, so gems_metadata_csv may not cover this batch. Close without merging, "
+                                      "point gems_metadata_csv (Function 0) at the GEMS run's collection_metadata.csv for these "
+                                      "records, then run Function 4 again.")
+                        elif gems_csv_available:
+                            advice = ("GEMS backfill was unchecked. If this is a GEMS batch, Close without merging and run "
+                                      "Function 4 again with the GEMS backfill checkbox checked.")
+                        else:
+                            advice = ("If this is a GEMS batch, Close without merging, set gems_metadata_csv in Function 0 to "
+                                      "the GEMS run's collection_metadata.csv, then run Function 4 again.")
+                        add_log_message(f"[WARNING] {bare_added_count} of {added} new record(s) have no descriptive metadata "
+                                        f"(title, date, description, etc. are all empty). {advice}")
+                        missing_metadata_banner = ft.Container(
+                            content=ft.Row([
+                                ft.Text("⚠️", size=20),
+                                ft.Column([
+                                    ft.Text("NEW RECORDS HAVE NO METADATA", weight=ft.FontWeight.BOLD, color=ft.Colors.ORANGE_900, size=13),
+                                    ft.Text(f"{bare_added_count} of {added} new record(s) contain only DART-generated fields "
+                                            f"(IDs, filenames, Azure URLs) — title, date, description, etc. are all empty.",
+                                            size=11, color=ft.Colors.ORANGE_800),
+                                    ft.Text(advice, size=11, italic=True),
+                                ], spacing=2, expand=True),
+                            ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.START),
+                            bgcolor=ft.Colors.ORANGE_100,
+                            border=ft.border.all(2, ft.Colors.ORANGE_400),
+                            border_radius=4,
+                            padding=10,
+                        )
+                    
                     # Show result dialog with color-coded viewer option
+                    def gems_backfill_summary_controls():
+                        if not gems_backfill_stats:
+                            return []
+                        s = gems_backfill_stats
+                        controls = [
+                            ft.Text("GEMS Backfill:", weight=ft.FontWeight.BOLD),
+                            ft.Text(f"  • {s['matched_rows']} of {s['dart_rows']} export rows matched GEMS "
+                                    f"({len(s['matched_via_children'])} parent(s) via children)", size=11),
+                            ft.Text(f"  • {s['fields_filled']} empty fields filled across {s['rows_filled']} rows", size=11),
+                        ]
+                        if s["unmatched_dart_rows"]:
+                            preview = ", ".join(s["unmatched_dart_rows"][:5]) + (" …" if len(s["unmatched_dart_rows"]) > 5 else "")
+                            controls.append(ft.Text(f"  ⚠️ {len(s['unmatched_dart_rows'])} row(s) had no GEMS match: {preview}",
+                                                    size=11, color=ft.Colors.ORANGE_800, selectable=True))
+                        if s["gems_duplicate_names"]:
+                            controls.append(ft.Text(f"  ⚠️ {len(s['gems_duplicate_names'])} duplicate GEMS filename(s) skipped",
+                                                    size=11, color=ft.Colors.ORANGE_800))
+                        controls.append(ft.Text(""))
+                        return controls
+                    
                     def close_csvdiff_dialog(e):
                         csvdiff_dialog.open = False
                         page.update()
@@ -4635,6 +5068,18 @@ Detailed results: {output_diff.name}
                                 view_rows.append(ft.Text(""))
                             
                             # Added records (Blue) with checkboxes
+                            if added > 0 and warn_missing_metadata:
+                                view_rows.append(ft.Container(
+                                    content=ft.Text(
+                                        f"⚠️ {bare_added_count} of {added} new record(s) have no descriptive metadata. "
+                                        "For a GEMS batch, close this view and see the advice in the results dialog before merging.",
+                                        size=12, weight=ft.FontWeight.BOLD, color=ft.Colors.ORANGE_900),
+                                    bgcolor=ft.Colors.ORANGE_100,
+                                    border=ft.border.all(2, ft.Colors.ORANGE_400),
+                                    border_radius=4,
+                                    padding=10,
+                                    margin=ft.margin.only(bottom=10),
+                                ))
                             if added > 0:
                                 view_rows.append(ft.Text(f"✨ NEW RECORDS ({added})", weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE, size=14))
                                 view_rows.append(ft.Divider(height=1))
@@ -5342,7 +5787,7 @@ Detailed results: {output_diff.name}
                         modal=True,
                         title=ft.Text("📊 csvdiff Comparison Results"),
                         content=ft.Container(
-                            content=ft.Column([
+                            content=ft.Column(([missing_metadata_banner, ft.Text("")] if missing_metadata_banner else []) + [
                                 ft.Text(f"Core CSV: {old_csv.name}", size=11),
                                 ft.Text(f"New CSV: {Path(selected_new_csv).name}", size=11),
                                 ft.Text(""),
@@ -5351,12 +5796,14 @@ Detailed results: {output_diff.name}
                                 ft.Text(f"  • {changed} changed records", color=ft.Colors.ORANGE),
                                 ft.Text(f"  • {removed} missing in new", color=ft.Colors.RED),
                                 ft.Text(""),
+                            ] + (gems_backfill_summary_controls()) + [
                                 ft.Text("Output Files:", weight=ft.FontWeight.BOLD),
                                 ft.Text(f"  • {output_diff.name} (detailed JSON)", size=11),
                                 ft.Text(f"  • {output_summary.name} (summary)", size=11),
                             ], spacing=4, scroll=ft.ScrollMode.AUTO),
                             width=600,
-                            height=300,
+                            height=(300 + (120 if missing_metadata_banner else 0)
+                                    + (100 if gems_backfill_stats else 0)),
                         ),
                         actions=[
                             ft.ElevatedButton("Review & Merge Changes", on_click=show_color_coded_view, bgcolor=ft.Colors.GREEN),
@@ -5368,7 +5815,9 @@ Detailed results: {output_diff.name}
                     csvdiff_dialog.open = True
                     page.update()
                     
-                    update_status(f"csvdiff comparison complete: {added} new, {changed} changed, {removed} missing")
+                    update_status(f"csvdiff comparison complete: {added} new, {changed} changed, {removed} missing"
+                                  + (f" — ⚠️ {bare_added_count} new record(s) have no metadata" if warn_missing_metadata else ""),
+                                  is_error=warn_missing_metadata)
                     return
                 
                 except Exception as csvdiff_err:
@@ -5438,7 +5887,10 @@ Detailed results: {output_diff.name}
                     ft.Text("Select the new CSV file to compare against core:", size=13),
                     ft.Text("⭐ Newest file is recommended (highlighted)", size=11, italic=True),
                     ft.Container(height=8),
-                    ft.Column(csv_choices, spacing=2, scroll=ft.ScrollMode.AUTO),
+                    ft.Column(csv_choices, spacing=2, scroll=ft.ScrollMode.AUTO, expand=True),
+                    ft.Divider(),
+                    gems_backfill_checkbox,
+                    gems_backfill_note,
                 ], spacing=4),
                 width=600,
                 height=450,

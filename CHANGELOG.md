@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [6.6] - 2026-10-04
+
+### Added
+- Added the optional **`gems_metadata_csv`** setting to Function 0, with a Browse/Clear selector and validation. Point it at the GEMS run's `collection_metadata.csv`.
+- Added an optional **GEMS backfill** step to Function 4. A **Backfill empty fields from GEMS metadata CSV** checkbox, checked by default when `gems_metadata_csv` is set, fills empty cells in the selected DART export from GEMS before comparing:
+  - Rows match on `original_file_name`. Compound parents whose underscore names differ from GEMS are matched through their children.
+  - Identifier, structure, and Azure columns are never filled from GEMS, and non-empty DART values always win.
+  - The backfilled export is written in GEMS manifest order as `DART_export_with_gems_<timestamp>.csv`, and a GEMS Backfill summary appears in the results.
+  - This fixes GEMS batch runs that would otherwise add records without GEMS metadata when the core CSV holds only earlier batches. The GEMS batch workflow stays Functions 1 → 2 → 3 → 4. Documented in `FUNCTION_4_COMPARE_MERGE_CSV.md` ("GEMS Backfill").
+- Function 4 now shows a **"NEW RECORDS HAVE NO METADATA"** warning when at least half of the new records have values only in DART-generated columns (IDs, filenames, Azure URLs, `type`, `format`). The warning appears in the results dialog, the review/merge view, the log and the status bar, and explains how to enable or fix the GEMS backfill. Merging is still allowed.
+
+### Fixed
+- Function 3 no longer picks a `DART_export_with_gems_*` file as its input export.
+
+---
+
 ## [6.5] - 2026-10-03
 
 ### Added
