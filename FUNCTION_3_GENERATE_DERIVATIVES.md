@@ -225,6 +225,8 @@ Function 3 intelligently checks Azure before generating new derivatives:
 
 **Location**: Your working/outputs folder
 
+**Run ledger (v6.6+)**: When the input export belongs to the latest Function 2 run, this output's name is added to `DART_gems_run_ledger.json`. Function 4 can then retire GEMS object folders after merging it. Any image/PDF left without derivative URLs keeps its object folder in `objects/`.
+
 **Added Columns**:
 - `image_small` - Azure URL for small derivative
 - `image_thumb` - Azure URL for thumbnail derivative

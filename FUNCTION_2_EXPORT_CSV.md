@@ -220,6 +220,8 @@ DART automatically maps file types to appropriate layouts. For compound objects 
 
 **Location**: Your working/outputs folder
 
+**Run ledger (v6.6+)**: Each export also rewrites `.DART-working-directory/DART_gems_run_ledger.json`. It records the inputs folder, whether it was scanned with no files selected, the export name, and any files whose Azure upload failed. Function 4 uses it to decide which GEMS object folders can be moved to `objects/.complete`.
+
 ## Example Output Structure
 
 ### Simple Export (No Compound Grouping)

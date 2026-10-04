@@ -1230,6 +1230,158 @@ def validate_gems_metadata_csv(csv_path: str) -> Tuple[bool, str]:
     return True, f"✓ GEMS CSV valid ({row_count} rows, {len(headers)} columns)"
 
 
+GEMS_OBJECTS_DIR_NAME = "objects"
+GEMS_COMPLETE_DIR_NAME = ".complete"
+GEMS_RUN_LEDGER_NAME = "DART_gems_run_ledger.json"
+GEMS_ASSET_EXTENSIONS = {
+    '.jpg', '.jpeg', '.png', '.gif', '.tif', '.tiff', '.bmp', '.webp',
+    '.pdf',
+    '.mp4', '.mov', '.avi', '.mkv', '.wmv', '.flv', '.webm',
+    '.mp3', '.wav', '.flac', '.aac', '.ogg', '.m4a', '.wma',
+    '.zip', '.tar', '.gz', '.7z', '.rar', '.bz2',
+}
+GEMS_DERIVATIVE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.tif', '.tiff', '.bmp', '.webp', '.pdf'}
+
+
+def is_gems_objects_dir(input_dir) -> bool:
+    """True when the inputs folder is a GEMS `objects/` directory."""
+    return bool(input_dir) and Path(input_dir).name == GEMS_OBJECTS_DIR_NAME and Path(input_dir).is_dir()
+
+
+def _normalized_path(path_value) -> str:
+    return os.path.normpath(os.path.abspath(str(path_value)))
+
+
+def load_gems_run_ledger(dart_working_dir: Path) -> dict:
+    ledger_path = Path(dart_working_dir) / GEMS_RUN_LEDGER_NAME
+    try:
+        with open(ledger_path, "r", encoding="utf-8") as f:
+            ledger = json.load(f)
+        return ledger if isinstance(ledger, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _save_gems_run_ledger(dart_working_dir: Path, ledger: dict) -> None:
+    ledger_path = Path(dart_working_dir) / GEMS_RUN_LEDGER_NAME
+    with open(ledger_path, "w", encoding="utf-8") as f:
+        json.dump(ledger, f, indent=2)
+
+
+def start_gems_run_ledger(dart_working_dir: Path, input_dir, scanned_input_dir: bool,
+                          export_csv_name: str, error_filepaths) -> None:
+    """Record a Function 2 export so Function 4 can later decide which object folders are complete."""
+    _save_gems_run_ledger(dart_working_dir, {
+        "created": datetime.now().isoformat(timespec="seconds"),
+        "input_dir": _normalized_path(input_dir) if input_dir else "",
+        "scanned_input_dir": bool(scanned_input_dir),
+        "csv_lineage": [export_csv_name],
+        "error_filepaths": sorted({_normalized_path(p) for p in error_filepaths if p}),
+    })
+
+
+def extend_gems_run_ledger(dart_working_dir: Path, source_csv_name: str, output_csv_name: str,
+                           error_filepaths=()) -> None:
+    """Add a derived CSV (e.g. Function 3 output) to the current run's lineage."""
+    ledger = load_gems_run_ledger(dart_working_dir)
+    lineage = ledger.get("csv_lineage", [])
+    if source_csv_name not in lineage:
+        return
+    lineage.append(output_csv_name)
+    errors = set(ledger.get("error_filepaths", []))
+    errors.update(_normalized_path(p) for p in error_filepaths if p)
+    ledger["csv_lineage"] = lineage
+    ledger["error_filepaths"] = sorted(errors)
+    _save_gems_run_ledger(dart_working_dir, ledger)
+
+
+def plan_gems_object_moves(input_dir, compared_rows: list, core_objectids: set,
+                           error_filepaths=()) -> Tuple[list[Path], dict[str, str]]:
+    """Decide which top-level object folders under a GEMS `objects/` dir are safe to retire.
+
+    A folder qualifies only when every non-hidden asset file inside it appears in the compared CSV,
+    every such row (and its parent) is present in the merged core CSV, no error was recorded for it,
+    it has an object_location, and image/PDF rows have both derivative URLs.
+    Returns (folders_to_move, {folder_name: reason_held}).
+    """
+    root = Path(_normalized_path(input_dir))
+    errors = {_normalized_path(p) for p in error_filepaths if p}
+    rows_by_dir: dict[str, list] = {}
+    for row in compared_rows:
+        filepath = (row.get("filepath") or "").strip()
+        if not filepath:
+            continue
+        try:
+            rel_parts = Path(_normalized_path(filepath)).relative_to(root).parts
+        except ValueError:
+            continue
+        if len(rel_parts) < 2 or rel_parts[0].startswith("."):
+            continue
+        rows_by_dir.setdefault(rel_parts[0], []).append(row)
+
+    to_move: list[Path] = []
+    held: dict[str, str] = {}
+    for dir_name in sorted(rows_by_dir):
+        object_dir = root / dir_name
+        rows = rows_by_dir[dir_name]
+        reason = ""
+        row_paths = {_normalized_path(r.get("filepath", "")) for r in rows}
+        if not object_dir.is_dir():
+            reason = "folder no longer exists"
+        if not reason:
+            for file_path in object_dir.rglob("*"):
+                if (file_path.is_file() and file_path.suffix.lower() in GEMS_ASSET_EXTENSIONS
+                        and not is_hidden_path(file_path, object_dir)
+                        and _normalized_path(file_path) not in row_paths):
+                    reason = f"{file_path.name} was not part of this DART run"
+                    break
+        for row in rows:
+            if reason:
+                break
+            name = get_csv_filename_value(row) or Path(row.get("filepath", "")).name
+            objectid = (row.get("objectid") or "").strip()
+            parentid = (row.get("parentid") or "").strip()
+            if _normalized_path(row.get("filepath", "")) in errors:
+                reason = f"{name} had an error in Function 2/3"
+            elif not objectid or objectid not in core_objectids:
+                reason = f"{name} was not merged into the core CSV"
+            elif parentid and parentid not in core_objectids:
+                reason = f"parent {parentid} of {name} was not merged into the core CSV"
+            elif not (row.get("object_location") or "").strip():
+                reason = f"{name} has no object_location"
+            elif (Path(name).suffix.lower() in GEMS_DERIVATIVE_EXTENSIONS
+                  and not ((row.get("image_small") or "").strip() and (row.get("image_thumb") or "").strip())):
+                reason = f"{name} is missing derivative URLs"
+        if reason:
+            held[dir_name] = reason
+        else:
+            to_move.append(object_dir)
+    return to_move, held
+
+
+def move_gems_objects_to_complete(input_dir, object_dirs) -> Tuple[list[str], dict[str, str]]:
+    """Move object folders into `<objects>/.complete/` without overwriting. Returns (moved, failed)."""
+    complete_dir = Path(input_dir) / GEMS_COMPLETE_DIR_NAME
+    moved: list[str] = []
+    failed: dict[str, str] = {}
+    try:
+        complete_dir.mkdir(exist_ok=True)
+    except OSError as ex:
+        return moved, {Path(d).name: f"could not create {complete_dir}: {ex}" for d in object_dirs}
+    for object_dir in object_dirs:
+        object_dir = Path(object_dir)
+        target = complete_dir / object_dir.name
+        if target.exists():
+            failed[object_dir.name] = f"{GEMS_COMPLETE_DIR_NAME}/{object_dir.name} already exists"
+            continue
+        try:
+            object_dir.rename(target)
+            moved.append(object_dir.name)
+        except OSError as ex:
+            failed[object_dir.name] = str(ex)
+    return moved, failed
+
+
 def validate_core_metadata_csv(csv_path: str) -> Tuple[bool, str]:
     """
     Validate the core metadata CSV file.
@@ -3565,6 +3717,7 @@ def main(page: ft.Page):
         upload_skip_count = 0
         upload_overwrite_count = 0
         upload_fail_count = 0
+        upload_error_paths = []
         overwrite_existing_azure_files = bool(settings.get("overwrite_existing_azure_files", False))
         
         if azure_enabled and blob_service_client:
@@ -3667,11 +3820,13 @@ def main(page: ft.Page):
                             add_log_message(f"[SUCCESS] {upload_msg}")
                         else:
                             upload_fail_count += 1
+                            upload_error_paths.append(file_path)
                             logger.error(f"Upload failed: {upload_msg}")
                             add_log_message(f"[ERROR] {upload_msg}")
                             # Still include object_location in CSV even if upload failed
                     else:
                         obj['object_location'] = ''
+                        upload_error_paths.append(file_path)
                         logger.error(f"Failed to build object_location: {msg}")
                         add_log_message(f"[ERROR] {msg}")
                 
@@ -3850,6 +4005,17 @@ def main(page: ft.Page):
             parent_count = len(compound_objects)
             add_log_message(f"[SUCCESS] Exported {len(objects) + parent_count} objects to {csv_filename}")
             logger.info(f"CSV export successful: {csv_output_path}")
+
+            try:
+                start_gems_run_ledger(
+                    dart_working_dir,
+                    current_directory,
+                    scanned_input_dir=(not process_ohm_data) and not selected_files,
+                    export_csv_name=csv_filename,
+                    error_filepaths=upload_error_paths,
+                )
+            except OSError as ex:
+                add_log_message(f"[WARN] Could not write {GEMS_RUN_LEDGER_NAME}: {ex}")
             
             # Update settings with new mappings
             settings["file_to_id_map"] = file_to_id_map
@@ -4400,6 +4566,10 @@ def main(page: ft.Page):
             
             add_log_message(f"[SUCCESS] Updated CSV saved: {output_csv.name}")
             logger.info(f"Saved updated CSV: {output_csv}")
+            try:
+                extend_gems_run_ledger(dart_working_dir, csv_path.name, output_csv.name)
+            except OSError as ex:
+                add_log_message(f"[WARN] Could not update {GEMS_RUN_LEDGER_NAME}: {ex}")
             
             # Show results
             def close_dialog(e):
@@ -4588,6 +4758,89 @@ def main(page: ft.Page):
                 size=11, italic=True, color=ft.Colors.GREY_700,
             )
         gems_backfill_stats = {}
+
+        gems_input_dir_value = (input_dir_field.value or "").strip()
+        gems_run_ledger = load_gems_run_ledger(dart_working_dir)
+        gems_objects_mode = (
+            is_gems_objects_dir(gems_input_dir_value)
+            and gems_run_ledger.get("scanned_input_dir") is True
+            and gems_run_ledger.get("input_dir") == _normalized_path(gems_input_dir_value)
+        )
+        gems_retire_checkbox = ft.Checkbox(
+            label=f"After a successful merge, move completed object folders to {GEMS_OBJECTS_DIR_NAME}/{GEMS_COMPLETE_DIR_NAME}",
+            value=gems_objects_mode,
+            disabled=not gems_objects_mode,
+        )
+        if gems_objects_mode:
+            gems_retire_note = ft.Text(
+                "Only folders whose files were all exported, merged, and error-free are moved; others stay for a re-run.",
+                size=11, italic=True, color=ft.Colors.GREY_700,
+            )
+        else:
+            gems_retire_note = ft.Text(
+                f"Object retirement off: requires Functions 2–3 run on a GEMS '{GEMS_OBJECTS_DIR_NAME}' inputs folder with no files selected.",
+                size=11, italic=True, color=ft.Colors.GREY_700,
+            )
+        comparison_context = {}
+
+        def retire_completed_gems_objects(merged_core_rows):
+            """Final Function 4 step: move fully processed GEMS object folders into objects/.complete."""
+            if not (gems_objects_mode and gems_retire_checkbox.value):
+                return
+            ledger = load_gems_run_ledger(dart_working_dir)
+            source_name = comparison_context.get("source_csv_name", "")
+            if source_name not in ledger.get("csv_lineage", []):
+                add_log_message(
+                    f"[INFO] GEMS object retirement skipped: {source_name} is not from the latest "
+                    f"Function 2 run on {gems_input_dir_value}"
+                )
+                return
+            try:
+                with open(comparison_context["compared_csv"], "r", encoding="utf-8") as f:
+                    compared_rows = list(csv.DictReader(f))
+            except (OSError, KeyError) as ex:
+                add_log_message(f"[ERROR] GEMS object retirement skipped: could not read compared CSV: {ex}")
+                return
+            core_ids = {(r.get("objectid") or "").strip() for r in merged_core_rows}
+            to_move, held = plan_gems_object_moves(
+                gems_input_dir_value, compared_rows, core_ids, ledger.get("error_filepaths", [])
+            )
+            moved, failed = move_gems_objects_to_complete(gems_input_dir_value, to_move)
+            held.update(failed)
+            for name in moved:
+                add_log_message(f"[INFO] Moved {name} → {GEMS_COMPLETE_DIR_NAME}/")
+            for name, reason in held.items():
+                add_log_message(f"[WARN] Kept {name} in {GEMS_OBJECTS_DIR_NAME}/: {reason}")
+            add_log_message(
+                f"[SUCCESS] GEMS object retirement: {len(moved)} folder(s) moved to "
+                f"{GEMS_OBJECTS_DIR_NAME}/{GEMS_COMPLETE_DIR_NAME}, {len(held)} kept for re-run"
+            )
+
+            def close_retire_dialog(ev):
+                retire_dialog.open = False
+                page.update()
+
+            held_lines = [f"  • {name}: {reason}" for name, reason in sorted(held.items())]
+            retire_dialog = ft.AlertDialog(
+                modal=True,
+                title=ft.Text("📦 GEMS Object Folders", weight=ft.FontWeight.BOLD),
+                content=ft.Container(
+                    content=ft.Column([
+                        ft.Text(f"Moved to {GEMS_OBJECTS_DIR_NAME}/{GEMS_COMPLETE_DIR_NAME}: {len(moved)}",
+                                color=ft.Colors.GREEN_700, weight=ft.FontWeight.BOLD),
+                        ft.Text(f"Kept in {GEMS_OBJECTS_DIR_NAME}/ for a re-run: {len(held)}",
+                                color=ft.Colors.ORANGE_800 if held else ft.Colors.GREY_700,
+                                weight=ft.FontWeight.BOLD),
+                        *[ft.Text(line, size=11, selectable=True) for line in held_lines[:200]],
+                    ], spacing=4, scroll=ft.ScrollMode.AUTO),
+                    width=650,
+                    height=min(400, 120 + 18 * len(held_lines)),
+                ),
+                actions=[ft.TextButton("OK", on_click=close_retire_dialog)],
+            )
+            page.overlay.append(retire_dialog)
+            retire_dialog.open = True
+            page.update()
         
         # Define helper functions
         def show_comparison_results(result):
@@ -4819,6 +5072,8 @@ def main(page: ft.Page):
         
         # Perform comparison directly
         def perform_comparison(selected_new_csv):
+            comparison_context.clear()
+            comparison_context["source_csv_name"] = Path(selected_new_csv).name
             try:
                 if gems_backfill_checkbox.value and gems_csv_available:
                     add_log_message(f"[INFO] GEMS backfill: {Path(selected_new_csv).name} ← {gems_csv_path}")
@@ -4845,6 +5100,7 @@ def main(page: ft.Page):
                     gems_backfill_stats.clear()
                     if gems_csv_available:
                         add_log_message("[INFO] GEMS backfill skipped (unchecked)")
+                comparison_context["compared_csv"] = str(selected_new_csv)
                 
                 add_log_message(f"[INFO] Comparing CSV files...")
                 add_log_message("[INFO] Using csvdiff tool for comparison")
@@ -5720,11 +5976,18 @@ Detailed results: {output_diff.name}
                                             # Close dialogs
                                             color_view_dialog.open = False
                                             page.update()
-                                            
                                         except Exception as merge_ex:
                                             logger.error(f"Error during merge: {merge_ex}")
                                             update_status(f"Merge error: {merge_ex}", is_error=True)
                                             add_log_message(f"[ERROR] Merge failed: {merge_ex}")
+                                            return
+
+                                        try:
+                                            retire_completed_gems_objects(core_rows)
+                                        except Exception as retire_ex:
+                                            logger.error(f"GEMS object retirement error: {retire_ex}", exc_info=True)
+                                            add_log_message(f"[ERROR] GEMS object retirement failed: {retire_ex}")
+                                            update_status(f"Merged, but moving GEMS object folders failed: {retire_ex}", is_error=True)
                                     
                                     def cancel_merge(ev):
                                         confirm_dialog.open = False
@@ -5891,9 +6154,11 @@ Detailed results: {output_diff.name}
                     ft.Divider(),
                     gems_backfill_checkbox,
                     gems_backfill_note,
+                    gems_retire_checkbox,
+                    gems_retire_note,
                 ], spacing=4),
                 width=600,
-                height=450,
+                height=500,
             ),
             actions=[
                 ft.ElevatedButton("Use Newest", on_click=use_default, icon=ft.Icons.STAR),

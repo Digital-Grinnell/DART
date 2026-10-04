@@ -142,6 +142,7 @@ DART provides a comprehensive platform for digital asset management workflows:
   - Classifies records: added (new), removed (missing in new), changed (different values)
   - Generates JSON diff results and text summary
   - **Optional GEMS backfill**: When `gems_metadata_csv` is set, a checkbox (checked by default) fills the export's empty fields from GEMS before comparing. It matches on `original_file_name`, and compound parents can also match through their children. DART identifiers, structure, and Azure/derivative URLs are never overwritten.
+  - **GEMS object retirement**: After a successful merge of a GEMS `objects/` batch scanned with no files selected, moves each fully processed, error-free object folder into `objects/.complete`. Folders with any error stay for a re-run.
   - **Missing-metadata warning**: Flags new records that have only DART-generated fields (no title, date, description, etc.) and explains how to enable the GEMS backfill
   - **Interactive merge with preview**: Field-level checkboxes (checked by default), data loss fields disabled/grayed requiring manual enable
   - **Smart merge behavior**: Always updates core CSV file (wherever it's located)
@@ -331,6 +332,7 @@ When you run the application, these are created automatically:
 │   ├── DART_seeklight_transformed_*.csv         # Function 5 transformed output
 │   ├── csvdiff_result_*.json                    # Function 4 diff output
 │   ├── csvdiff_summary_*.txt                    # Function 4 summary output
+│   ├── DART_gems_run_ledger.json                # Functions 2/3 run ledger (GEMS object retirement)
 │   ├── *.backup_YYYYMMDD_HHMMSS                 # Merge backups (Functions 4 and 6)
 │   └── temp_derivatives/                        # Temporary derivative staging
 └── logfiles/

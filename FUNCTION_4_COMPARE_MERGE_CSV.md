@@ -83,6 +83,8 @@ Function 4 uses the csvdiff Python library for comparison:
    - **Interactive merge viewer** for selective merging
    - Links to JSON and text summary output files
 
+8. After a successful merge of a GEMS batch, completed object folders are moved to `objects/.complete` (see "Retiring Completed GEMS Object Folders" below)
+
 ## GEMS Backfill (optional, v6.6+)
 
 GEMS gathers the descriptive metadata (title, date, description, subjects, rights, …) into its own `collection_metadata.csv`. A DART export holds only DART's fields (`objectid`, `parentid`, Azure URLs, derivatives). After the first batch, your core CSV holds published records for the earlier batches, but **not** the GEMS rows for the batch you're processing. Without a backfill, Function 4 adds that batch as records with no GEMS metadata.
@@ -111,6 +113,33 @@ If **no** rows match, Function 4 stops with an error before comparing. This usua
 `DART_export_with_gems_*` files are intermediate outputs. They aren't listed for selection, because Function 4 regenerates them from the real export on every run. Function 3 ignores them too.
 
 **Recovering a batch merged without GEMS metadata:** if the bare records haven't been merged yet, set `gems_metadata_csv` and rerun Function 4. The core CSV is only written when you click Merge, so a comparison you closed without merging changed nothing.
+
+## Retiring Completed GEMS Object Folders (v6.6+)
+
+GEMS writes one folder per object under `objects/`. After a batch is merged, those folders must not be fed to DART again. As its final step, Function 4 moves each **fully processed** object folder into `objects/.complete/`. DART's folder scans skip dot-prefixed folders, so `.complete` is never rescanned.
+
+**When it applies:** the Function 4 file-selection dialog shows an **After a successful merge, move completed object folders to objects/.complete** checkbox. It's checked by default and enabled only when:
+- the Inputs Folder is a GEMS `objects` folder
+- the latest Function 2 run scanned that folder with **no files selected**
+
+Uncheck it to leave the folders in place.
+
+**Run ledger:** Function 2 writes `DART_gems_run_ledger.json` to `.DART-working-directory`. It records:
+- the inputs folder, and whether it was scanned
+- the export CSV name
+- any file whose Azure upload or `object_location` failed
+
+Function 3 adds its output CSV name to the same ledger. Function 4 retires folders only when the CSV you compared (before any GEMS backfill) is one of those ledger CSVs. Otherwise it logs that retirement was skipped.
+
+**Per-folder rules:** folders move individually. A folder whose objects all succeeded is moved, while a folder with any problem stays in `objects/` for a re-run. A folder is moved only when:
+- every non-hidden asset file inside it was part of the compared CSV
+- no Function 2 error was recorded for any of its files
+- every one of its records, and its compound parent, is present in the core CSV after the merge (deselected records hold their folder back)
+- every file has an `object_location`
+- every image/PDF has both `image_small` and `image_thumb` (Function 3 failures leave these empty)
+- nothing named `objects/.complete/<folder>` already exists; folders are never overwritten
+
+The merge itself always completes first. Every move and every held folder, with its reason, is logged, and a summary dialog lists the held folders. A move error never affects the merged core CSV. Moved files have new paths, so DART treats them as new files if you ever point it at `.complete` directly. Move a folder back into `objects/` to reprocess it under its existing IDs.
 
 ## What Gets Compared
 
