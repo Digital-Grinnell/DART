@@ -20,8 +20,6 @@ This application was created by extracting the proven UI framework from OHM (Ora
 - **FUNCTION_2_EXPORT_CSV.md** - Help for CSV export function
 - **FUNCTION_3_GENERATE_DERIVATIVES.md** - Help for Function 3: Generate derivatives
 - **FUNCTION_4_COMPARE_MERGE_CSV.md** - Help for Function 4: Compare and merge CSV metadata
-- **FUNCTION_5_ENGAGE_SEEKLIGHT.md** - Help for Function 5: Transform Seeklight metadata
-- **FUNCTION_6_COMPARE_MERGE_SEEKLIGHT.md** - Help for Function 6: Merge Seeklight metadata
 - **CHANGELOG.md** - Version history starting at 1.0.0
 - **LICENSE** - MIT license
 
@@ -58,8 +56,6 @@ The app includes multiple functions:
 - **Function 3**: Generate Derivatives for CSV and Azure
   - **Tip**: TIFF derivatives now preserve scanner/grayscale ICC intent by converting embedded profiles to sRGB before JPEG output
 - **Function 4**: Compare and Merge CSV Files
-- **Function 5**: Engage Seeklight Metadata Generation (transform AI-generated metadata)
-- **Function 6**: Compare and Merge Seeklight CSV (merge AI metadata into core)
 - **Function 9**: System Information
 
 **Automated Workflow**: Set `automatic_four = true` in Function 0 to automatically run the complete workflow (Functions 1→2→3→4) with a single click. Perfect for batch processing!

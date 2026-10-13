@@ -82,7 +82,6 @@ rsync -a \
     --exclude='.venv/' \
     --exclude='.git/' \
     --exclude='.env*' \
-    --exclude='seeklight_credentials.json' \
     --exclude='api-info/' \
     --exclude='*.dmg' \
     --exclude='*.zip' \

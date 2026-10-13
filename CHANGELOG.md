@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [6.7] - 2026-10-12
+
+### Removed
+- Removed the Seeklight-based Functions 5 and 6 from DART. Seeklight workflows now belong in SIFT.
+- Removed DART's Seeklight API client dependency, credential setup, mapping template, and Function 5/6 help documentation.
+
 ## [6.6] - 2026-10-04
 
 ### Added

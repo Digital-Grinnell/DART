@@ -6,10 +6,9 @@ Use `AGENTS.md` as the primary repository source of truth for DART-specific beha
 
 Before editing `app.py`, check whether the request belongs in one of these higher-level surfaces:
 
-1. `seeklight_mapping_template.json`
-2. `FUNCTION_*.md`, `README.md`, `INSTALLATION.md`, `QUICKSTART.md`
-3. Focused helper scripts such as `scripts/rename_metadata_field.py`, `scripts/fix_config_csv_fields.sh`, `scripts/batch_rename_dublin_core.sh`
-4. `app.py`
+1. `FUNCTION_*.md`, `README.md`, `INSTALLATION.md`, `QUICKSTART.md`
+2. Focused helper scripts such as `scripts/rename_metadata_field.py`, `scripts/fix_config_csv_fields.sh`, `scripts/batch_rename_dublin_core.sh`
+3. `app.py`
 
 ## DART-Specific Rules
 
@@ -21,7 +20,6 @@ Before editing `app.py`, check whether the request belongs in one of these highe
 - Keep generated artifacts in `.DART-working-directory`, including `DART_*`, `csvdiff_*`, `dart_settings.json`, merge backups (`*.backup_*`), and temporary derivative files.
 - Do not edit `app.py.bak`, `app.py.bak2`, files in `logfiles/`, DMGs, or generated `.DART-working-directory` output unless the user explicitly asks.
 - If a numbered workflow function changes behavior, update the matching `FUNCTION_*.md` file.
-- If the change affects Seeklight field routing or defaults, inspect `seeklight_mapping_template.json` before changing runtime logic.
 - Avoid packaging changes unless the request is specifically about launchers or distribution.
 
 ## Ask Before Risky Changes
@@ -54,7 +52,7 @@ When you need context, read the nearest relevant file first:
 - `README.md`
 - `ARCHITECTURE.md`
 - `BEST_PRACTICES.md`
-- `FUNCTION_0_APP_SETTINGS.md` through `FUNCTION_6_COMPARE_MERGE_SEEKLIGHT.md`
+- `FUNCTION_0_APP_SETTINGS.md` through `FUNCTION_4_COMPARE_MERGE_CSV.md`
 - `RENAME_METADATA_FIELD.md`
 - `FIXING_RENAME_ISSUES.md`
 - `CHANGELOG.md`

@@ -16,7 +16,7 @@ GEMS never assigns DART identifiers and never creates parent/compound rows. Its 
    - Unnumbered parts (Poster, Program, Cover) attach directly to the compound parent.
 3. DART assigns durable IDs (`<collection-id>_dg_<epoch>`) to every object, parent, and child.
 4. **Function 2** exports a CollectionBuilder CSV with `objectid`, `parentid`, `original_file_name`, `display_template`, etc.
-5. External metadata (GEMS, Alma, Seeklight) is merged into the core CSV afterward, matching rows on **`original_file_name`**.
+5. External metadata (GEMS or Alma) is merged into the core CSV afterward, matching rows on **`original_file_name`**.
 
 ---
 

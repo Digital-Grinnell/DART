@@ -14,10 +14,9 @@ If a repository rule changes, update `AGENTS.md`. Treat it as authoritative so t
 DART is a workflow application, not just a codebase. Most requests fall into one of five buckets:
 
 1. A workflow behavior in `app.py`
-2. A mapping or default in `seeklight_mapping_template.json`
-3. A helper script that repairs or normalizes metadata/config files
-4. User-facing documentation for one workflow function
-5. Packaging or launcher behavior
+2. A focused helper script that repairs or normalizes metadata/config files
+3. User-facing documentation for one workflow function
+4. Packaging or launcher behavior
 
 Your job with AI is to describe the workflow outcome you want, then scan the diff to make sure it touched the right bucket.
 
@@ -27,8 +26,6 @@ The agent usually works better if you describe the workflow result you want inst
 
 | Instead of | Try |
 |---|---|
-| "Edit `app.py` to change Seeklight fields" | "Make Function 5 map Seeklight Title into the standard `title` CSV field" |
-| "Change the JSON template" | "Update the shipped Seeklight mapping defaults to match CollectionBuilder CSV field names" |
 | "Fix the rename script" | "Make the legacy field cleanup tools remove `dc_` prefixes instead of adding them" |
 | "Update the docs" | "Document this as a required step to keep DART in sync with collectionbuilder-csv" |
 
@@ -48,7 +45,6 @@ For routine work, stop and review closely if the AI:
 
 A clean change usually touches one or more of these and little else:
 
-- `seeklight_mapping_template.json`
 - one focused section of `app.py`
 - one helper script
 - the matching function markdown doc

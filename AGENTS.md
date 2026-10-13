@@ -1,6 +1,6 @@
 # DART — AI Agent Instructions
 
-DART is a Python desktop application built with Flet for Digital.Grinnell digital asset workflows. The repository combines a large application entry point, workflow-specific helper scripts, and user-facing markdown documentation. DART is workflow-driven: it analyzes a source set of digital files, assigns durable identifiers, exports CollectionBuilder-compatible metadata, generates derivatives, optionally transforms Seeklight metadata, and merges updates back into a core metadata CSV.
+DART is a Python desktop application built with Flet for Digital.Grinnell digital asset workflows. The repository combines a large application entry point, workflow-specific helper scripts, and user-facing markdown documentation. DART is workflow-driven: it analyzes a source set of digital files, assigns durable identifiers, exports CollectionBuilder-compatible metadata, generates derivatives, and merges updates back into a core metadata CSV.
 
 > Companion files in this repo: `CLAUDE.md` points to this file so Claude-based tools get the same rules. `HUMANS.md` is the human-facing guide to working with AI on DART. Keep repository rules here in `AGENTS.md` so the other files do not drift.
 
@@ -8,11 +8,10 @@ DART is a Python desktop application built with Flet for Digital.Grinnell digita
 
 Always make the smallest change at the highest appropriate layer before editing lower-level runtime code:
 
-1. `seeklight_mapping_template.json` — Seeklight field mapping and default metadata values
-2. `FUNCTION_*.md`, `README.md`, `INSTALLATION.md`, `QUICKSTART.md`, and related docs — workflow guidance and expected user behavior
-3. Targeted helper scripts such as `scripts/rename_metadata_field.py`, `scripts/fix_config_csv_fields.sh`, `scripts/batch_rename_dublin_core.sh`, and packaging scripts
-4. `app.py` — core application logic and UI behavior
-5. Build/distribution artifacts only when explicitly requested
+1. `FUNCTION_*.md`, `README.md`, `INSTALLATION.md`, `QUICKSTART.md`, and related docs — workflow guidance and expected user behavior
+2. Targeted helper scripts such as `scripts/rename_metadata_field.py`, `scripts/fix_config_csv_fields.sh`, `scripts/batch_rename_dublin_core.sh`, and packaging scripts
+3. `app.py` — core application logic and UI behavior
+4. Build/distribution artifacts only when explicitly requested
 
 If a behavior is driven by documentation, mappings, or a focused helper script, do not edit `app.py` first.
 
@@ -21,7 +20,7 @@ If a behavior is driven by documentation, mappings, or a focused helper script, 
 ### Core Metadata CSV
 - Treat the core metadata CSV as the project's source of truth
 - Preserve `objectid` and `original_file_name` semantics unless the user explicitly asks to change them
-- As of v6.0, Functions 4 and 6 refuse to merge into a core CSV literally named `collection-template.csv`; this reserved template filename must never be overwritten by a merge
+- As of v6.0, Function 4 refuses to merge into a core CSV literally named `collection-template.csv`; this reserved template filename must never be overwritten by a merge
 - Canonical CollectionBuilder CSV field names are unprefixed: `title`, `description`, `date`, and similar
 - Treat `dc_`-prefixed field names as legacy cleanup targets, not new canonical names
 
@@ -46,11 +45,6 @@ If a behavior is driven by documentation, mappings, or a focused helper script, 
 - When runtime behavior changes for a numbered workflow function, update the matching `FUNCTION_*.md` file
 - Keep user-facing docs in sync with actual application behavior
 - Prefer updating the specific function doc over hiding important behavior only in `README.md`
-
-### Seeklight Integration
-- Seeklight behavior is partly driven by `seeklight_mapping_template.json`
-- If the change is about field routing or defaults, check that file before changing runtime logic
-- Function 5 transforms metadata; Function 6 compares and selectively merges it back into the core CSV
 
 ### Settings and Secrets
 - Per-project settings live in `dart_settings.json` inside `.DART-working-directory` under the selected working folder at runtime
@@ -78,8 +72,7 @@ Explain your plan and get confirmation before:
 | File or Area | What it controls |
 |---|---|
 | `app.py` | Main Flet application, workflow logic, dialogs, validation, merge behavior |
-| `seeklight_mapping_template.json` | Function 5 field mapping and default values |
-| `FUNCTION_0_APP_SETTINGS.md` through `FUNCTION_6_COMPARE_MERGE_SEEKLIGHT.md` | User help for each workflow function |
+| `FUNCTION_0_APP_SETTINGS.md` through `FUNCTION_4_COMPARE_MERGE_CSV.md` | User help for workflow functions 0 through 4 |
 | `README.md` / `QUICKSTART.md` / `INSTALLATION.md` | High-level onboarding, setup, and workflow documentation |
 | `scripts/rename_metadata_field.py` | Targeted metadata field renaming across CSV/config contexts |
 | `scripts/fix_config_csv_fields.sh` | Cleanup of CSV-based CollectionBuilder config field references |
@@ -107,7 +100,7 @@ Consult these repo documents when needed:
 - `ARCHITECTURE.md` — design decisions and data model rationale
 - `BEST_PRACTICES.md` — filename conventions and compound grouping guidance
 - `FUNCTION_0_APP_SETTINGS.md` — settings behavior, encryption, core metadata CSV, Azure details
-- `FUNCTION_1_ANALYZE_ASSETS.md` through `FUNCTION_6_COMPARE_MERGE_SEEKLIGHT.md` — per-function behavior
+- `FUNCTION_1_ANALYZE_ASSETS.md` through `FUNCTION_4_COMPARE_MERGE_CSV.md` — per-function behavior
 - `RENAME_METADATA_FIELD.md` and `FIXING_RENAME_ISSUES.md` — legacy metadata field normalization guidance
 - `GEMS_FILENAME_RULES.md` — filename and CSV contract for external systems (GEMS/Alma) producing files and metadata CSVs for DART ingestion, including the flat-compound migration pattern using the `create_multiple_objects` setting
 - `CHANGELOG.md` — release history and behavior changes

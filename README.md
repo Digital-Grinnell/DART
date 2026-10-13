@@ -1,15 +1,13 @@
 # DART - Digital Asset Routing and Transformation
 
-**DART** (Digital Asset Routing and Transformation) is a desktop application built with Python and [Flet](https://flet.dev) for managing digital asset workflows in Grinnell College Libraries. Using DART the user selects a 'truth' set of digital asset files, then applies up to 6 powerful functions to manage the workflow.  
+**DART** (Digital Asset Routing and Transformation) is a desktop application built with Python and [Flet](https://flet.dev) for managing digital asset workflows in Grinnell College Libraries. Using DART the user selects a 'truth' set of digital asset files, then applies four workflow functions to manage the process.
 
 Key functions, in typical order of execution, include: 
 
 1) analyzing assets and assigning unique IDs to each while optionally grouping like-named assets into compound objects, 
 2) creating initial control/management metadata around the new IDs, 
 3) generating small and thumbnail derivatives, 
-4) deposit objects and derivatives properly into managed, web-addressable Azure Blob Storage, 
-5) optionally engage Seeklight to generate additional or alternative metadata, and
-6) manage the process of selectively merging new metadata with old to complete our routing and transformation workflow.
+4) compare and selectively merge new metadata with old to complete the routing and transformation workflow, including depositing objects and derivatives into managed, web-addressable Azure Blob Storage.
 
 ## Working with AI
 
@@ -148,24 +146,6 @@ DART provides a comprehensive platform for digital asset management workflows:
   - **Smart merge behavior**: Always updates core CSV file (wherever it's located)
   - Case-sensitive comparison with whitespace normalization
   - **Preserves core CSV structure**: Never reorders rows from core metadata CSV
-- **Function 5** 🔍: Engage Seeklight Metadata Generation
-  - Send selected images, PDFs, or page folders directly to the Seeklight Public API
-  - Request metadata, with optional transcripts, image alt text, and user context
-  - Display processing progress in the background and retain raw API results
-  - Create mapped, timestamped CSV output for Function 6
-  - JSON-based field mapping template (`seeklight_mapping_template.json`)
-  - Credentials from environment variables, a per-user file outside the app, or the sibling development resources (see `INSTALLATION.md`)
-  - Customizable field mappings and default values
-  - Function 5 workflow documentation in the help system
-- **Function 6** 🔗: Compare and Merge Seeklight CSV
-  - Compare Seeklight-transformed CSV files with core metadata
-  - Match Seeklight and core records by exact `original_file_name`; skip ambiguous duplicate filenames
-  - Track accepted Seeklight fields per row in `_metadata_source` without altering merged values
-  - Interactive merge with field-level checkboxes for granular control
-  - Data loss protection: unchecks fields where Seeklight value is empty
-  - Selective merging: choose exactly which changes to accept
-  - Automatic backup creation before merge
-  - Shows matched, new, and changed records with clear indicators
 - **Function 9** 💻: Display system information
 
 *Additional asset processing functions are added as needed for your specific workflow.*
@@ -329,11 +309,10 @@ When you run the application, these are created automatically:
 │   ├── dart_settings.json                       # Per-folder app settings
 │   ├── DART_export_YYYYMMDD_HHMMSS.csv          # CSV exports from Function 2
 │   ├── DART_export_with_derivatives_*.csv       # Function 3 outputs
-│   ├── DART_seeklight_transformed_*.csv         # Function 5 transformed output
 │   ├── csvdiff_result_*.json                    # Function 4 diff output
 │   ├── csvdiff_summary_*.txt                    # Function 4 summary output
 │   ├── DART_gems_run_ledger.json                # Functions 2/3 run ledger (GEMS object retirement)
-│   ├── *.backup_YYYYMMDD_HHMMSS                 # Merge backups (Functions 4 and 6)
+│   ├── *.backup_YYYYMMDD_HHMMSS                 # Function 4 merge backups
 │   └── temp_derivatives/                        # Temporary derivative staging
 └── logfiles/
     └── dart_YYYYMMDD_HHMMSS.log               # Application logs
