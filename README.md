@@ -20,6 +20,23 @@ This repository now includes project-specific AI guidance files:
 
 If you use AI to work on DART, start with these files before making changes. Keep `AGENTS.md` as the source of truth when repository rules evolve.
 
+## Private Linux Browser Operation
+
+The optional managed workflow runs on `dg-landing`, bound only to loopback,
+and is reached from Firefox on a Mac through an SSH tunnel. Desktop launchers
+and existing helper-script CLIs remain available.
+
+- [Installation And Storage Preparation](INSTALL-LINUX.md)
+- [Everyday Operating Overview](LINUX-WEB-OVERVIEW.md)
+- [Isolated Acceptance Testing](LINUX-ACCEPTANCE.md)
+
+Normal DART uses port **8560**; isolated acceptance uses **8561**, separate
+from GEMS 8550/8551. Intended private roots are `/data/dart/config` and
+`/data/dart/data`; provisioning/deployment require separate approval.
+Browser jobs persist independently of tabs, enforce one managed writer, and
+require explicit consent for uploads and reviewed core merges. No source
+trees are copied wholesale, retired, or silently remapped.
+
 ## Core Mission
 
 DART is focused on providing a valid import/ingest-compatible CSV metadata file using the digital objects and their original filenames as the "source of truth". Each object is given a unique Digital.Grinnell identifier and DART can help maintain those while directing files to proper long-term/preservation storage.

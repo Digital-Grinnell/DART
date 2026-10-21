@@ -3,6 +3,17 @@
 ## Purpose
 Analyze selected digital asset files or scan a folder to generate unique standard DG identifiers for each file. Legacy identifiers follow the format `dg_<epoch_time>`. If `collection-id` is configured in Function 0, new identifiers follow `<collection-id>_dg_<epoch_time>`.
 
+## Managed Linux Browser Analysis
+
+In the [browser workflow](LINUX-WEB-OVERVIEW.md), **Analyze And Save IDs**
+explicitly commits the mapping and persists an analysis result in the job's
+evidence directory. It uses the same compound algorithm and identifier helpers
+as desktop mode, but has no desktop preview/Close dialog or automatic follow-on
+workflow. Source paths must be approved readable server paths, never Mac volume
+paths. Originals are not copied, uploaded, moved, or deleted by analysis.
+Review the persisted job result before exporting; changing hosts does not
+automatically migrate existing mapping keys.
+
 ## Automated Workflow
 **NEW**: Enable `automatic_four` in Function 0 (App Settings) to automatically execute Functions 2, 3, and 4 after this function completes successfully. This creates a seamless workflow:
 

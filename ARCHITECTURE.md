@@ -1,5 +1,41 @@
 # DART Architecture & Key Design Decisions
 
+## Optional Managed Linux Architecture
+
+The native Flet entry point remains `app.py`; managed Linux/browser and
+headless operation use `dart_linux.py`. See
+[Installation](INSTALL-LINUX.md), [Operation](LINUX-WEB-OVERVIEW.md), and
+[Acceptance](LINUX-ACCEPTANCE.md).
+
+- `dart_processing.py` contains the extracted compound algorithm, stable-path
+  helper, display templates, and CSV row construction shared with desktop.
+- `dart_workflows.py` coordinates existing identifier/media/OHM/GEMS helpers
+  without running a desktop page or native picker. Module import no longer
+  creates home-directory logs.
+- `dart_storage.py` requires explicit private roots, markers, permissions,
+  source allowlists and real mount points, with no automatic fallback.
+- `dart_service.py` owns advisory locks on both roots, one operator lease,
+  one non-browser-owned worker, atomic job state, progress, redacted logs,
+  cancellation, and restart-to-interrupted recovery.
+- `dart_web.py` provides server-path controls, action-local errors, history,
+  explicit upload consent, and selective comparison/merge review.
+- `dart_acceptance.py` exercises isolated disposable roots and a separate
+  loopback port, retains evidence, and leaves unverified manual checks pending.
+
+Managed settings retain collection-scoped ID maps. The private environment
+file is authoritative for browser credentials; no encryption format or
+archival-path migration is performed. All local writes stay under DART
+managed storage. Sources are read-only and never automatically retired.
+Desktop operation is refused on these new marked roots to avoid bypassing the
+managed writer protocol; ordinary desktop projects and existing CLIs remain.
+
+Completed writes use atomic replacement. Job success is recorded only after
+the workflow returns successfully. A lost state store cannot reliably record
+a terminal state; the service explicitly blocks further submissions and
+restart converts the last persisted active state to interrupted. Cancellation
+after a final atomic commit may correctly yield success rather than claiming
+that the committed write was cancelled.
+
 ## Compound Object Filename Indexing
 
 ### The Problem

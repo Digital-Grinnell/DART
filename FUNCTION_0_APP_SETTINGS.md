@@ -3,10 +3,29 @@
 ## Purpose
 Open the application settings file in the selected working/outputs folder's `.DART-working-directory` subfolder and edit values using popup text input fields.
 
-## Security Note
-**Sensitive fields are encrypted** (`api_key`, `api_secret`, `password`). You enter and see them as plain text in the editor, but they are automatically encrypted when saved to `dart_settings.json`. This makes it safe to commit your settings file to version control (GitHub, etc.) without exposing credentials.
+## Managed Linux Browser Settings
 
-The encryption key is stored separately in `~/.DART-data/encryption_key` with restricted permissions.
+The [private browser workflow](LINUX-WEB-OVERVIEW.md) uses explicit server-path
+fields rather than native pickers. Load and validate/save each project's own
+settings before submitting work. Only grouping, multiple-object, and OHM
+booleans can become reusable global defaults; collection IDs and paths remain
+project-specific. An established project's collection ID cannot be changed.
+
+Browser credentials come only from the explicitly selected private environment
+file. They are never entered in the UI or saved as job inputs. Existing
+encrypted desktop settings are preserved unchanged but do not authorize
+uploads. Upload/overwrite and merge consent are per-job, never remembered.
+See [Linux Installation](INSTALL-LINUX.md) for the storage and credential
+boundary; the desktop editor behavior below is unchanged.
+
+## Security Note
+The desktop **`azure_connection_string` is encrypted** when saved to
+`dart_settings.json`. Keep settings and credentials outside Git even when
+encrypted; encryption is not permission to publish secrets.
+
+The desktop encryption key is stored separately in `~/DART-data/encryption_key`
+with restricted permissions. The managed browser credential boundary is
+described above and does not change the desktop encryption format.
 
 ## Current Settings
 - **⚠️ Before creating a NEW collection**: The Function 0 settings dialog displays an on-screen reminder to consult `docs/DG-documents/Creating a New Collection (Overlay Model).md` in the `DG-with-CB-and-Pagefind` repository before assigning a new `collection-id`, since that document governs how the identifier is used downstream (overlay slug, `_config.yml`, CSV naming).

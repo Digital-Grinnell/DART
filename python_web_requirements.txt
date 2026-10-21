@@ -1,0 +1,6 @@
+-r python_requirements.txt
+flet-web==0.25.2
+# Flet 0.25.2 imports APIs removed in FastAPI 0.145.
+fastapi<0.145
+python-dotenv>=1.0.0
+websockets>=11

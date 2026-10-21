@@ -3,6 +3,19 @@
 ## Purpose
 Export analyzed digital assets to a CSV file using your configured template structure. This function generates a CollectionBuilder-compatible metadata CSV with automatically populated core fields.
 
+## Managed Linux Browser Export
+
+The [browser workflow](LINUX-WEB-OVERVIEW.md) shares desktop CSV row construction
+but writes a job-ID-named export inside the managed project's hidden working
+directory. It uses saved project settings and explicit server paths.
+
+Uploads are off by default even when credentials exist. Each export requires
+explicit upload consent, plus separate consent for overwriting existing blobs.
+Only existing approved containers are used. Errors fail the job rather than
+silently disabling Azure. ID mappings are saved before network work so retries
+reuse them. OHM transcript copies stay inside the managed project; originals
+remain read-only. See the overview for exact job, log, and output locations.
+
 ## When to Use
 Use this function when you want to:
 - Generate metadata CSV files for CollectionBuilder

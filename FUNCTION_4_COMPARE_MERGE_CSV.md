@@ -3,6 +3,21 @@
 ## Purpose
 Compare two CSV files to identify matching records, new records, changed values, and records missing from the new file. Uses the csvdiff tool for fast, accurate comparison with detailed change tracking. This function automatically uses your core metadata CSV (from settings) as the baseline and auto-selects the newest DART_export CSV from your working directory for comparison.
 
+## Managed Linux Browser Comparison And Merge
+
+The [browser workflow](LINUX-WEB-OVERVIEW.md) makes comparison and merge separate
+persisted jobs. Choose an explicit CSV, compare, then load the successful
+comparison for review. GEMS backfill is an explicit option. Select additions
+and individual metadata changes, then explicitly confirm the core write.
+Titles and empty replacements default unchecked; existing identifiers cannot
+be changed. Ambiguous filename keys fail validation.
+
+Core CSVs and backups must remain inside DART's managed project storage.
+A changed core checksum invalidates the comparison. The reserved
+`collection-template.csv` is never overwritten. Missing-in-new records remain
+in the core, and browser merges never retire or move GEMS source folders.
+Desktop selection and retirement behavior described below is unchanged.
+
 ## When to Use
 Use this function when you want to:
 - Compare a new DART_export CSV against your core/master metadata file

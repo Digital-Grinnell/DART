@@ -3,6 +3,20 @@
 ## Purpose
 Generate small and thumbnail derivative images from your original files and upload them to Azure Blob Storage with automatic URL population in your CSV metadata file.
 
+## Managed Linux Browser Derivatives
+
+The [browser workflow](LINUX-WEB-OVERVIEW.md) requires an explicit managed export
+CSV path. It validates original source paths rather than guessing translated
+archival locations. It supports local-only processing without Azure; local
+derivative paths are not published URLs. Uploads and overwrites require
+per-job consent.
+
+Local images, partial results, and updated CSVs are retained under the project's
+hidden working directory with the job ID. Temporary TIFF normalization also
+stays there. Compound derivative references use an unambiguous descendant
+relationship. The same image/PDF generation helpers and 800/400-pixel maximum
+bounds are used; the desktop requirements below remain unchanged.
+
 ## When to Use
 Use this function after Function 2 (Export Assets to CSV and Azure) when you want to:
 - Create web-optimized derivative images for CollectionBuilder
