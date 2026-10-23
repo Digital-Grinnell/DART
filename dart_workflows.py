@@ -12,7 +12,7 @@ from types import SimpleNamespace
 from typing import Any, Callable
 
 import app as core
-from dart_processing import (analyze_compound_objects, build_export_rows, get_derivative_azure_paths,
+from dart_processing import (analyze_compound_objects, build_export_rows, compare_metadata_rows, get_derivative_azure_paths,
                              get_display_template, get_stable_path, select_compound_derivative_child)
 from dart_storage import Storage, atomic_bytes, atomic_json, private
 
@@ -390,8 +390,6 @@ class Workflow:
                     local_only=client is None)
 
     def compare(self, inputs: dict[str, Any]) -> dict[str, Any]:
-        from csvdiff import diff_files
-
         old = self.storage.managed(self.settings["core_metadata_csv"])
         new = self.storage.managed(inputs["csv_path"])
         if old == new:
@@ -415,7 +413,7 @@ class Workflow:
         write_csv(before, old_columns, old_rows)
         write_csv(after, new_columns, new_rows)
         self.checkpoint()
-        changes = diff_files(str(before), str(after), index_columns=[core.CSV_FILENAME_FIELD])
+        changes = compare_metadata_rows(old_rows, new_rows)
         if digest(old) != old_digest:
             raise ValueError("Core CSV changed during comparison. Compare again before reviewing.")
         plan = dict(core=str(old), core_sha256=old_digest, columns=old_columns, changes=changes,
@@ -452,6 +450,7 @@ class Workflow:
         for index in selected_added:
             if type(index) is not int or not 0 <= index < len(changes.get("added", [])):
                 raise ValueError("Invalid selected addition.")
+        for index in sorted(selected_added):
             record = changes["added"][index]
             if core.get_csv_filename_value(record) in indexed:
                 raise ValueError("Selected record already exists in core.")

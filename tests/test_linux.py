@@ -197,6 +197,62 @@ class ManagedTests(unittest.TestCase):
         self.assertIn("changed since comparison", failed["message"])
         self.assertEqual(before, self.core.read_bytes())
 
+    def test_compare_merge_preserves_newlines_and_export_addition_order(self):
+        columns = self.columns + ["description", "_dcterms:description"]
+        write_csv(self.core, columns, [])
+        new = self.work / "new.csv"
+        write_csv(new, columns, [
+            dict(objectid="parent", original_file_name="_instrument-01.jpg", type="compound",
+                 description="Z first\r\nsecond\rthird\nfourth"),
+            dict(objectid="image", original_file_name="instrument-01.jpg", parentid="parent",
+                 description="Z image\r\ncaption"),
+            dict(objectid="audio", original_file_name="instrument-02.mp3", parentid="parent",
+                 description="A audio\rnotes", **{"_dcterms:description": "one\r\ntwo"}),
+        ])
+        compared = self.success("compare", csv_path=str(new))
+        plan_path = Path(compared["result"]["comparison"])
+        plan = json.loads(plan_path.read_text())
+        expected = read_csv(new)[1]
+        self.assertEqual(expected, plan["changes"]["added"])
+        self.success("merge", comparison=str(plan_path), confirm_merge=True,
+                     selected_added=[2, 0, 1], selected_fields=[])
+        self.assertEqual((columns, expected), read_csv(self.core))
+
+    def test_compare_merge_preserves_newlines_in_selected_changes(self):
+        columns = self.columns + ["description"]
+        original = dict(objectid="existing", original_file_name="one.jpg",
+                        title="Keep\r\nthis", description="old\r\ntext")
+        write_csv(self.core, columns, [original])
+        new = self.work / "new.csv"
+        write_csv(new, columns, [
+            dict(original, description="new\r\ntext\rwith\nbreaks"),
+        ])
+        compared = self.success("compare", csv_path=str(new))
+        plan_path = Path(compared["result"]["comparison"])
+        plan = json.loads(plan_path.read_text())
+        self.assertEqual({"description": {"from": "old\r\ntext", "to": "new\r\ntext\rwith\nbreaks"}},
+                         plan["changes"]["changed"][0]["fields"])
+        self.success("merge", comparison=str(plan_path), confirm_merge=True,
+                     selected_added=[], selected_fields=[[0, "description"]])
+        self.assertEqual(read_csv(new), read_csv(self.core))
+
+    def test_selective_additions_follow_export_order_after_existing_rows(self):
+        write_csv(self.core, self.columns, [
+            dict(objectid="existing", original_file_name="existing.jpg", title="Keep\r\nthis"),
+        ])
+        new = self.work / "new.csv"
+        write_csv(new, self.columns, [
+            dict(objectid="z", original_file_name="z.jpg"),
+            dict(objectid="a", original_file_name="a.jpg"),
+            dict(objectid="b", original_file_name="b.jpg"),
+        ])
+        compared = self.success("compare", csv_path=str(new))
+        self.success("merge", comparison=compared["result"]["comparison"], confirm_merge=True,
+                     selected_added=[2, 0], selected_fields=[])
+        rows = read_csv(self.core)[1]
+        self.assertEqual(["existing", "z", "b"], [row["objectid"] for row in rows])
+        self.assertEqual("Keep\r\nthis", rows[0]["title"])
+
     def test_replaced_core_header_is_revalidated_at_submission(self):
         self.core.write_text("wrong,header\n")
         with self.assertRaisesRegex(ValueError, "Missing required fields"):
@@ -487,6 +543,21 @@ class ManagedTests(unittest.TestCase):
 
 @unittest.skipUnless(os.name == "posix", "Managed Linux/browser storage requires POSIX")
 class PureTests(unittest.TestCase):
+    def test_shared_comparison_preserves_newline_only_changes_and_ignores_filepath(self):
+        old = [dict(objectid="one", original_file_name="one.jpg",
+                    title="line\r\nbreak", filepath="/old/one.jpg")]
+        new = [dict(old[0], title="line\nbreak", filepath="/new/one.jpg")]
+        changes = dart_processing.compare_metadata_rows(old, new)
+        self.assertEqual([], changes["added"])
+        self.assertEqual([], changes["removed"])
+        self.assertEqual([{"key": ["one.jpg"],
+                           "fields": {"title": {"from": "line\r\nbreak", "to": "line\nbreak"}}}],
+                         changes["changed"])
+        self.assertEqual("/old/one.jpg", old[0]["filepath"])
+        self.assertEqual("/new/one.jpg", new[0]["filepath"])
+        new[0]["title"] = old[0]["title"]
+        self.assertEqual([], dart_processing.compare_metadata_rows(old, new)["changed"])
+
     def test_existing_helper_cli_entry_points_still_offer_help(self):
         for name in ("rename_metadata_field.py", "organize_compound_folders.py",
                      "migrate_legacy_working_files.py", "merge_alma_csv_into_destination.py"):

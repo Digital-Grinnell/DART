@@ -2,9 +2,24 @@
 import logging
 import re
 from pathlib import Path
+from typing import Any
 from common_dg_utilities.dg_utils import generate_unique_id, get_mime_type
 
 logger = logging.getLogger(__name__)
+
+
+def compare_metadata_rows(
+    old_rows: list[dict[str, str]], new_rows: list[dict[str, str]],
+) -> dict[str, Any]:
+    """Preserve cell contents and export order instead of csvdiff's file parsing/order."""
+    from csvdiff import diff_records
+
+    before = [{key: value for key, value in row.items() if key != "filepath"} for row in old_rows]
+    after = [{key: value for key, value in row.items() if key != "filepath"} for row in new_rows]
+    changes = diff_records(before, after, index_columns=["original_file_name"])
+    positions = {row["original_file_name"]: index for index, row in enumerate(after)}
+    changes["added"].sort(key=lambda row: positions[row["original_file_name"]])
+    return changes
 
 
 def select_compound_derivative_child(

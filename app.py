@@ -8,7 +8,7 @@ import flet as ft
 from functools import partial
 from dart_processing import (
     analyze_compound_objects as shared_analyze_compound_objects,
-    build_export_rows, get_derivative_azure_paths, get_display_template, get_stable_path,
+    build_export_rows, compare_metadata_rows, get_derivative_azure_paths, get_display_template, get_stable_path,
     select_compound_derivative_child,
 )
 import os
@@ -4393,62 +4393,34 @@ def main(page: ft.Page):
                 add_log_message(f"[INFO] Comparing CSV files...")
                 add_log_message("[INFO] Using csvdiff tool for comparison")
                 
-                # Check if csvdiff is installed
-                try:
-                    from csvdiff import diff_files
-                except ImportError:
-                    update_status("Error: csvdiff not installed. Install with: pip install csvdiff", is_error=True)
-                    add_log_message("[ERROR] csvdiff package not found. Run: pip install csvdiff")
-                    add_log_message("[INFO] To install: pip install csvdiff")
-                    return
-                
                 update_status("Running csvdiff comparison...")
                 
                 try:
                     # Strip 'filepath' column from both CSVs before comparison
                     # (filepath is internal DART data, not CollectionBuilder metadata)
-                    import tempfile
-                    import shutil
-                    
-                    temp_old = None
-                    temp_new = None
-                    
                     # Read and filter old CSV
-                    with open(old_csv, 'r', encoding='utf-8') as f:
+                    with open(old_csv, 'r', encoding='utf-8', newline='') as f:
                         reader = csv.DictReader(f)
                         old_fieldnames = [col for col in reader.fieldnames if col != 'filepath']
                         old_rows = list(reader)
                     old_fieldnames, old_rows = normalize_csv_filename_columns(old_fieldnames, old_rows)
                     
                     # Read and filter new CSV
-                    with open(selected_new_csv, 'r', encoding='utf-8') as f:
+                    with open(selected_new_csv, 'r', encoding='utf-8', newline='') as f:
                         reader = csv.DictReader(f)
                         new_fieldnames = [col for col in reader.fieldnames if col != 'filepath']
                         new_rows = list(reader)
                     new_fieldnames, new_rows = normalize_csv_filename_columns(new_fieldnames, new_rows)
                     
-                    # Create temporary filtered CSV files
-                    temp_old = tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False, encoding='utf-8', newline='')
-                    writer = csv.DictWriter(temp_old, fieldnames=old_fieldnames, extrasaction='ignore')
-                    writer.writeheader()
-                    writer.writerows(old_rows)
-                    temp_old.close()
-                    
-                    temp_new = tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False, encoding='utf-8', newline='')
-                    writer = csv.DictWriter(temp_new, fieldnames=new_fieldnames, extrasaction='ignore')
-                    writer.writeheader()
-                    writer.writerows(new_rows)
-                    temp_new.close()
-                    
                     add_log_message("[DEBUG] Stripped 'filepath' column from both CSVs for comparison")
                     
-                    # Use csvdiff to compare filtered files with original_file_name as key.
-                    diff_result = diff_files(temp_old.name, temp_new.name, index_columns=[CSV_FILENAME_FIELD])
-                    
-                    # Clean up temp files
-                    import os
-                    os.unlink(temp_old.name)
-                    os.unlink(temp_new.name)
+                    try:
+                        diff_result = compare_metadata_rows(old_rows, new_rows)
+                    except ImportError:
+                        update_status("Error: csvdiff not installed. Install with: pip install csvdiff", is_error=True)
+                        add_log_message("[ERROR] csvdiff package not found. Run: pip install csvdiff")
+                        add_log_message("[INFO] To install: pip install csvdiff")
+                        return
                     
                     # Convert csvdiff result to our format
                     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -5196,7 +5168,7 @@ Detailed results: {output_diff.name}
                                             add_log_message(f"[INFO] Created backup: {backup_path.name}")
                                             
                                             # Read core CSV
-                                            with open(old_csv, 'r', encoding='utf-8') as f:
+                                            with open(old_csv, 'r', encoding='utf-8', newline='') as f:
                                                 reader = csv.DictReader(f)
                                                 fieldnames = reader.fieldnames
                                                 core_rows = list(reader)
@@ -5211,7 +5183,7 @@ Detailed results: {output_diff.name}
                                             
                                             # Apply selected additions
                                             added_records = diff_result.get('added', [])
-                                            for idx in selected_added:
+                                            for idx in sorted(selected_added):
                                                 if idx < len(added_records):
                                                     new_record = added_records[idx]
                                                     core_rows.append(new_record)

@@ -3,7 +3,7 @@
 ## Purpose
 Compare two CSV files to identify matching records, new records, changed values, and records missing from the new file. Uses the csvdiff tool for fast, accurate comparison with detailed change tracking. This function automatically uses your core metadata CSV (from settings) as the baseline and auto-selects the newest DART_export CSV from your working directory for comparison.
 
-## Managed Linux Browser Comparison And Merge
+## Managed Linux Browser Comparison and Merge
 
 The [browser workflow](LINUX-WEB-OVERVIEW.md) makes comparison and merge separate
 persisted jobs. Choose an explicit CSV, compare, then load the successful
@@ -17,6 +17,18 @@ A changed core checksum invalidates the comparison. The reserved
 `collection-template.csv` is never overwritten. Missing-in-new records remain
 in the core, and browser merges never retire or move GEMS source folders.
 Desktop selection and retirement behavior described below is unchanged.
+
+## Metadata Preservation and Addition Order
+
+Desktop and managed Linux comparisons preserve embedded line endings in CSV
+cells, including CRLF and lone CR characters. Selected additions are appended
+in the compared export's row order, regardless of checkbox selection order,
+so compound children retain their export sequence. Existing core rows remain
+in their current order, and unselected cells are unchanged.
+
+This applies to newly generated comparisons. Previously saved comparison JSON
+may already contain normalized newlines and sorted additions; create a new
+comparison before merging to obtain the corrected behavior.
 
 ## When to Use
 Use this function when you want to:
