@@ -541,9 +541,11 @@ class PureTests(unittest.TestCase):
         # Compare ASTs to the pre-extraction baseline, not a hand-written approximation.
         after = ast.parse(Path(dart_processing.__file__).read_text()).body
         after = next(node for node in after if isinstance(node, ast.FunctionDef) and node.name == "analyze_compound_objects")
-        fingerprint = hashlib.sha256(ast.dump(ast.Module(body=after.body[1:], type_ignores=[])).encode()).hexdigest()
+        # Python 3.13 omits empty AST fields by default; keep them so the fingerprint is version-independent.
+        options = {"show_empty": True} if sys.version_info >= (3, 13) else {}
+        fingerprint = hashlib.sha256(ast.dump(ast.Module(body=after.body[1:], type_ignores=[]), **options).encode()).hexdigest()
         # Original processing body at 95d07cd, excluding docstring indentation.
-        self.assertEqual("3f5a613e25f7f88ae694c4bf2010d67abc39272c54b8a4b8b19f4c7a56850cc1", fingerprint)
+        self.assertEqual("7db6f8ccce5312ebd99c3bdf08acf1012233e0587607901b9536c08398bf5dd0", fingerprint)
 
     def test_shared_export_rows_preserve_legacy_and_ohm_shapes(self):
         columns, rows = dart_processing.build_export_rows(
