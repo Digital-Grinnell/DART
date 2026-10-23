@@ -7,6 +7,47 @@ from common_dg_utilities.dg_utils import generate_unique_id, get_mime_type
 logger = logging.getLogger(__name__)
 
 
+def select_compound_derivative_child(
+    parent: dict[str, str], rows: list[dict[str, str]],
+) -> dict[str, str] | None:
+    """Choose the first image in this family, retaining a first-child PDF if no image exists."""
+    def filename(row: dict[str, str]) -> str:
+        return (row.get("original_file_name") or row.get("filename") or "").strip()
+
+    parent_id = parent.get("objectid")
+    if not parent_id:
+        return None
+    by_id = {row["objectid"]: row for row in rows if row.get("objectid")}
+    descendants = []
+    for row in rows:
+        name = filename(row)
+        if not name or name.startswith("_"):
+            continue
+        ancestor = row.get("parentid")
+        seen = set()
+        while ancestor and ancestor not in seen:
+            seen.add(ancestor)
+            if ancestor == parent_id:
+                descendants.append(row)
+                break
+            ancestor = by_id.get(ancestor, {}).get("parentid")
+    first_name = filename(parent).removeprefix("_")
+    first = [row for row in descendants if filename(row) == first_name]
+    if len(first) == 1 and get_display_template(Path(first_name).suffix) == "image":
+        return first[0]
+    images = sorted(
+        (row for row in descendants if get_display_template(Path(filename(row)).suffix) == "image"),
+        key=filename,
+    )
+    if not images:
+        if len(first) == 1 and get_display_template(Path(first_name).suffix) == "pdf":
+            return first[0]
+        return None
+    if sum(filename(row) == filename(images[0]) for row in images) != 1:
+        return None
+    return images[0]
+
+
 def get_derivative_azure_paths(azure_path: str) -> tuple[str, str]:
     """Preserve Function 3's container substitution and unchanged blob subpath."""
     parts = azure_path.strip().strip("/").split("/", 1)

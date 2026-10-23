@@ -121,6 +121,53 @@ class ManagedTests(unittest.TestCase):
         self.assertTrue((self.source / "sample.jpg").exists())
         self.assertNotIn("filepath", read_csv(self.core)[0])
 
+    def test_compound_derivatives_choose_first_image_after_audio(self):
+        (self.source / "sample.jpg").unlink()
+        (self.source / "instrument-01.mp3").write_bytes(b"audio")
+        Image.new("RGB", (1200, 600), "blue").save(self.source / "instrument-02.jpg")
+        Image.new("RGB", (1200, 600), "red").save(self.source / "instrument-03.jpg")
+        self.values.update(group_compound_objects=True, create_multiple_objects=False)
+        self.service.configure("operator", str(self.work), self.values)
+        exported = self.export()
+        derived = self.success("derivatives", csv_path=exported["result"]["csv"])
+        _, rows = read_csv(Path(derived["result"]["csv"]))
+        parent = next(row for row in rows if row["type"] == "compound")
+        image = next(row for row in rows if row["original_file_name"] == "instrument-02.jpg")
+        self.assertEqual("_instrument-01.mp3", parent["original_file_name"])
+        for field in ("image_small", "image_thumb"):
+            self.assertTrue(parent[field])
+            self.assertEqual(image[field], parent[field])
+        self.assertEqual(4, derived["result"]["images"])
+
+    def test_compound_derivative_selection_stays_within_family(self):
+        parent = dict(objectid="parent", original_file_name="_01.mp3")
+        other = dict(objectid="other", original_file_name="_01.mp3")
+        rows = [
+            parent, other,
+            dict(objectid="audio", parentid="parent", original_file_name="01.mp3"),
+            dict(objectid="wrong", parentid="other", original_file_name="02.jpg"),
+            dict(objectid="nested", parentid="parent", original_file_name="_02.jpg"),
+            dict(objectid="image", parentid="nested", original_file_name="02.jpg"),
+            dict(objectid="later", parentid="parent", original_file_name="03.jpg"),
+        ]
+        self.assertIs(rows[5], dart_processing.select_compound_derivative_child(parent, rows))
+        rows.pop(5)
+        self.assertIs(rows[-1], dart_processing.select_compound_derivative_child(parent, rows))
+        rows.pop()
+        self.assertIsNone(dart_processing.select_compound_derivative_child(parent, rows))
+        rows[-1]["parentid"] = "nested"
+        self.assertIsNone(dart_processing.select_compound_derivative_child(parent, rows))
+
+    def test_compound_derivatives_prefer_images_and_keep_pdf_only_fallback(self):
+        for suffix in ("jpg", "pdf"):
+            with self.subTest(suffix=suffix):
+                parent = dict(objectid="parent", original_file_name=f"_01.{suffix}")
+                first = dict(objectid="first", parentid="parent", original_file_name=f"01.{suffix}")
+                later = dict(objectid="later", parentid="parent", original_file_name="02.jpg")
+                expected = first if suffix == "jpg" else later
+                self.assertIs(expected, dart_processing.select_compound_derivative_child(parent, [parent, first, later]))
+                self.assertIs(first, dart_processing.select_compound_derivative_child(parent, [parent, first]))
+
     def test_selective_changes_keep_titles_blanks_ids_and_missing_records(self):
         write_csv(self.core, self.columns, [
             dict(objectid="test_dg_1", original_file_name="one.jpg", title="Keep", format="old"),

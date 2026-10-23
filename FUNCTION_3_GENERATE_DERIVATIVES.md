@@ -14,7 +14,10 @@ per-job consent.
 Local images, partial results, and updated CSVs are retained under the project's
 hidden working directory with the job ID. Temporary TIFF normalization also
 stays there. Compound derivative references use an unambiguous descendant
-relationship. The same image/PDF generation helpers and 800/400-pixel maximum
+relationship, including nested children. If the first child is not an image,
+DART uses the first image descendant sorted by filename. If there are no image
+descendants, a first-child PDF keeps its existing derivative behavior.
+Compounds without either are explicitly reported. The same image/PDF generation helpers and 800/400-pixel maximum
 bounds are used; the desktop requirements below remain unchanged.
 
 ## When to Use
@@ -95,7 +98,7 @@ The following file formats are processed:
   - Maintains aspect ratio for derivatives
   - Ideal for document collections, scanned materials, reports
 
-**Note**: Videos and audio files are not supported. Compound parent objects (underscore-prefixed filenames) don't need derivative generation—they automatically inherit their first child's derivative URLs.
+**Note**: Videos and audio files are not supported. Compound parent objects (underscore-prefixed filenames) inherit their first image descendant's derivatives. If there are no images, a first-child PDF's derivatives are retained.
 
 ## Image Processing Details
 
@@ -141,12 +144,14 @@ Examples:
 **Compound parent objects** (those with underscore-prefixed filenames like `_photo_001.jpg`) receive special handling:
 
 1. **No derivative generation**: Compound parents have no physical files, so no derivatives are generated
-2. **Automatic URL population**: After all child files are processed, compound parents automatically inherit their first child's derivative URLs
+2. **Automatic URL population**: After all child files are processed, compound parents inherit their first image descendant's derivatives, sorted by filename. If the first child is not an image, DART searches the rest of that family. If there are no images, a first-child PDF retains its existing behavior.
 3. **URL inheritance logic**: 
    - Compound parent original_file_name: `_photo_001.jpg`
    - First child original_file_name: `photo_001.jpg` (underscore removed)
-   - DART finds the child row and copies its `image_small` and `image_thumb` values to the parent
-4. **Derivatives already exist**: The first child's derivatives were already generated and uploaded to Azure, so the parent simply references the same URLs
+   - DART follows `parentid` relationships, including nested compounds, so it never borrows an unrelated object's image with the same filename.
+   - If the first child were `photo_001.mp3`, DART would select the first image in that family instead. The parent's ID and `original_file_name` are not changed.
+   - The selected child's `image_small` and `image_thumb` values are copied to the parent. A missing or ambiguous image, or incomplete derivatives, is reported explicitly.
+4. **Derivatives already exist**: The selected child's derivatives were already generated and uploaded to Azure (or retained locally in managed local-only mode), so the parent simply references the same URLs or paths.
 5. **No duplicate uploads**: This approach avoids uploading duplicate files to Azure while ensuring compound parents have proper derivative references
 
 **Example**:
@@ -309,7 +314,7 @@ The kill switch is useful when:
 - ✓ Image files with valid extensions (jpg, png, gif, tif, bmp, webp)
 - ✓ Rows with both objectid and original_file_name populated
 - ✓ Files where source can be located
-- ✓ Compound parent objects (automatically inherit first child's derivative URLs)
+- ✓ Compound parent objects (inherit the first image descendant's derivatives, or first-child PDF derivatives if no images exist)
 
 ### What Gets Skipped
 - ⊘ Non-image files (PDF, video, audio, archives)

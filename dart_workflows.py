@@ -13,7 +13,7 @@ from typing import Any, Callable
 
 import app as core
 from dart_processing import (analyze_compound_objects, build_export_rows, get_derivative_azure_paths,
-                             get_display_template, get_stable_path)
+                             get_display_template, get_stable_path, select_compound_derivative_child)
 from dart_storage import Storage, atomic_bytes, atomic_json, private
 
 KINDS = {"analyze", "export", "derivatives", "compare", "merge"}
@@ -371,27 +371,17 @@ class Workflow:
                     row[field] = str(output)
                 generated += 1
             self.report(f"Derivative rows: {index + 1}/{len(rows)}", (index + 1) / max(1, len(rows)))
-        by_id = {row["objectid"]: row for row in rows if row.get("objectid")}
         for row in rows:
             name = core.get_csv_filename_value(row)
             if name.startswith("_"):
-                children = [candidate for candidate in rows
-                            if core.get_csv_filename_value(candidate) == name[1:]]
-                descendants = []
-                for candidate in children:
-                    parent_id = candidate.get("parentid")
-                    seen = set()
-                    while parent_id and parent_id not in seen:
-                        seen.add(parent_id)
-                        if parent_id == row["objectid"]:
-                            descendants.append(candidate)
-                            break
-                        parent_id = by_id.get(parent_id, {}).get("parentid")
-                if len(descendants) == 1:
+                child = select_compound_derivative_child(row, rows)
+                if child is not None:
                     for field in ("image_small", "image_thumb"):
-                        row[field] = descendants[0].get(field, "")
+                        row[field] = child.get(field, "")
+                    if not child.get("image_small") or not child.get("image_thumb"):
+                        self.report(f"Compound {row['objectid']}: selected image/PDF has incomplete derivatives", None)
                 else:
-                    self.report(f"Compound {row['objectid']}: no unambiguous first-child derivative", None)
+                    self.report(f"Compound {row['objectid']}: no unambiguous image child or first-child PDF", None)
         output = self.hidden / f"DART_export_with_derivatives_{self.job_id}.csv"
         self.artifact(csv=str(output))
         self.checkpoint()

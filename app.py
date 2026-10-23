@@ -9,6 +9,7 @@ from functools import partial
 from dart_processing import (
     analyze_compound_objects as shared_analyze_compound_objects,
     build_export_rows, get_derivative_azure_paths, get_display_template, get_stable_path,
+    select_compound_derivative_child,
 )
 import os
 import getpass
@@ -3793,25 +3794,15 @@ def main(page: ft.Page):
                 thumb_fail += 1
                 add_log_message(f"  ✗ Thumb generation failed: {msg_thumb}")
         
-        # Populate derivatives for compound parents
-        # Compound parents use their first child's derivative URLs (based on filename without underscore)
         add_log_message(f"[INFO] Populating compound parent derivatives...")
         compound_derivatives_populated = 0
         
         for row in rows:
             filename = get_csv_filename_value(row)
             if filename.startswith('_'):
-                # Compound parent - find matching first child
-                child_filename = filename[1:]  # Remove leading underscore
-                
-                # Find the child row with this filename
-                child_row = None
-                for potential_child in rows:
-                    if get_csv_filename_value(potential_child) == child_filename:
-                        child_row = potential_child
-                        break
-                
-                if child_row:
+                child_row = select_compound_derivative_child(row, rows)
+                if child_row is not None:
+                    child_filename = get_csv_filename_value(child_row)
                     # Copy derivative URLs from child to parent
                     child_small = child_row.get('image_small', '').strip()
                     child_thumb = child_row.get('image_thumb', '').strip()
@@ -3831,7 +3822,7 @@ def main(page: ft.Page):
                     else:
                         add_log_message(f"  ⚠️ Compound parent {row.get('objectid', 'unknown')}: no derivatives found for child {child_filename}")
                 else:
-                    add_log_message(f"  ⚠️ Compound parent {row.get('objectid', 'unknown')}: child file {child_filename} not found in CSV")
+                    add_log_message(f"  ⚠️ Compound parent {row.get('objectid', 'unknown')}: no unambiguous image child or first-child PDF")
         
         if compound_derivatives_populated > 0:
             add_log_message(f"[SUCCESS] Populated derivatives for {compound_derivatives_populated} compound parent(s)")
