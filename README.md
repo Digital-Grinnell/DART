@@ -20,21 +20,23 @@ This repository now includes project-specific AI guidance files:
 
 If you use AI to work on DART, start with these files before making changes. Keep `AGENTS.md` as the source of truth when repository rules evolve.
 
-## Private Linux Browser Operation
+## Headless Linux Operation
 
-The optional managed workflow runs on `dg-landing`, bound only to loopback,
-and is reached from Firefox on a Mac through an SSH tunnel. Desktop launchers
-and existing helper-script CLIs remain available.
+The optional headless workflow runs on `dg-landing` with no browser or web
+interface. It analyzes approved server sources, assigns IDs, exports CSV
+metadata, optionally generates derivatives and backfills GEMS metadata, and
+leaves a checksummed handoff package. Desktop DART then pulls the package over
+SSH, and a person makes all compare/merge decisions in Function 4 against the
+core metadata CSV, which stays on the desktop. Headless DART never writes a
+core CSV.
 
 - [Installation And Storage Preparation](INSTALL-LINUX.md)
-- [Everyday Operating Overview](LINUX-WEB-OVERVIEW.md)
+- [Everyday Operating Overview](LINUX-HEADLESS-OVERVIEW.md)
 - [Isolated Acceptance Testing](LINUX-ACCEPTANCE.md)
 
-Normal DART uses port **8560**; isolated acceptance uses **8561**, separate
-from GEMS 8550/8551. Intended private roots are `/data/dart/config` and
-`/data/dart/data`; provisioning/deployment require separate approval.
-Browser jobs persist independently of tabs, enforce one managed writer, and
-require explicit consent for uploads and reviewed core merges. No source
+Intended private roots are `/data/dart/config` and `/data/dart/data`;
+provisioning and deployment require separate approval. Headless jobs enforce
+one managed writer and require explicit per-job consent for uploads. No source
 trees are copied wholesale, retired, or silently remapped.
 
 ## Core Mission

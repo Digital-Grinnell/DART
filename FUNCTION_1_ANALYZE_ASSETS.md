@@ -3,16 +3,17 @@
 ## Purpose
 Analyze selected digital asset files or scan a folder to generate unique standard DG identifiers for each file. Legacy identifiers follow the format `dg_<epoch_time>`. If `collection-id` is configured in Function 0, new identifiers follow `<collection-id>_dg_<epoch_time>`.
 
-## Managed Linux Browser Analysis
+## Headless Linux Analysis
 
-In the [browser workflow](LINUX-WEB-OVERVIEW.md), **Analyze And Save IDs**
-explicitly commits the mapping and persists an analysis result in the job's
-evidence directory. It uses the same compound algorithm and identifier helpers
-as desktop mode, but has no desktop preview/Close dialog or automatic follow-on
-workflow. Source paths must be approved readable server paths, never Mac volume
-paths. Originals are not copied, uploaded, moved, or deleted by analysis.
-Review the persisted job result before exporting; changing hosts does not
-automatically migrate existing mapping keys.
+[Headless DART](LINUX-HEADLESS-OVERVIEW.md) runs analysis as the `analyze` job
+(and as part of `prepare`). It commits durable file and compound mappings
+and saves an analysis result in the job's evidence directory, using the same
+compound algorithm and identifier helpers as desktop mode, without a preview
+dialog. Source paths must be approved readable server paths, never Mac volume
+paths. Originals are not copied, uploaded, moved, or deleted. When a file has
+no saved mapping or filename ID, headless DART reuses the `objectid` from the
+pushed core snapshot for a unique matching `original_file_name`. Changing
+hosts does not automatically migrate existing mapping keys.
 
 ## Automated Workflow
 **NEW**: Enable `automatic_four` in Function 0 (App Settings) to automatically execute Functions 2, 3, and 4 after this function completes successfully. This creates a seamless workflow:

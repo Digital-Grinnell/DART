@@ -10,23 +10,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## Unreleased
 
 ### Added
-- Added optional private Linux/browser and managed headless operation with
-  explicit private storage roots, read-only approved source mounts, loopback
-  access, single-writer locks, durable jobs, cancellation, and interrupted-job
-  recovery. Normal DART uses 8560; isolated acceptance uses 8561.
-- Added per-action validation, collection-scoped settings, reusable boolean
-  defaults, explicit upload/overwrite consent, retained local derivatives,
-  and persisted selective comparison/merge with backup/checksum protection.
-- Added an offline regression suite, finite evidence-preserving acceptance
-  runner with real Flet HTTP startup and websocket control/handoff checks, and separate installation, operating,
-  and acceptance guides. Live storage, Firefox/tunnel, Azure, and institutional
-  restore checks remain explicitly manual.
+- Added optional headless Linux operation (`dart_linux.py`) for `dg-landing`
+  with explicit private storage roots, read-only approved source mounts,
+  single-writer locks, durable jobs, cancellation, and interrupted-job
+  recovery. There is no browser or web interface.
+- Added headless `handoff` and `prepare` jobs. `prepare` runs export,
+  optional derivatives, optional server-side GEMS backfill, and writes a
+  checksummed handoff package (`handoff/<job>/export.csv` plus
+  `manifest.json` with core-snapshot hash, ID conflicts, and warnings).
+  Headless DART never compares, merges, or writes a core metadata CSV.
+- Added `headless_host` and `headless_project_dir` Function 0 settings, and
+  **Pull From Headless DART...** and **Push Core Snapshot** buttons in
+  Function 4. Desktop DART pulls verified packages over key-based SSH for
+  human compare/merge review, and pushes a read-only core snapshot so
+  headless jobs reuse the collection schema and existing IDs.
+- Added `dart_handoff.py` (shared package format and SSH helpers), an offline
+  regression suite, a finite evidence-preserving acceptance runner, and
+  separate installation, operating, and acceptance guides. Live storage, SSH,
+  Azure, and institutional restore checks remain explicitly manual.
 
 ### Changed
 - Shared existing compound analysis and CSV row construction between native
   and managed workflows. Importing processing helpers no longer creates
   desktop home-directory logs. Native projects/CLIs remain available; new
   marked managed roots require the managed entry point.
+- Headless export reuses a core snapshot `objectid` for a file with no saved
+  mapping or filename ID, when its `original_file_name` is unique in both the
+  snapshot and the scan.
+- Renamed `python_web_requirements.txt` to `python_linux_requirements.txt`;
+  web dependencies are no longer required.
 
 ## [6.7] - 2026-10-12
 

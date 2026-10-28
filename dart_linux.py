@@ -1,4 +1,8 @@
-"""Explicit Linux/browser and managed headless entry point; desktop stays app.py."""
+"""Headless Linux entry point: prepares handoff packages for desktop DART review/merge.
+
+The desktop entry point stays app.py. Headless DART never compares or merges
+into a core CSV; desktop DART pulls packages over SSH for Function 4.
+"""
 from __future__ import annotations
 
 import argparse
@@ -11,16 +15,29 @@ import threading
 
 from dart_storage import Storage, load_environment, redact
 
+JOB_KINDS = ["analyze", "export", "derivatives", "handoff", "prepare"]
+
+
+def read_private_json(raw: str) -> dict:
+    from dart_storage import absolute, private
+    path = absolute(raw)
+    private(path)
+    value = json.loads(path.read_text())
+    if not isinstance(value, dict):
+        raise ValueError("Inputs must be a JSON object.")
+    return value
+
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--env-file", required=True, help="Existing owner-only private environment file")
     modes = parser.add_mutually_exclusive_group(required=True)
-    modes.add_argument("--web", action="store_true")
     modes.add_argument("--initialize-storage", action="store_true", help="Initialize existing explicitly approved roots")
-    modes.add_argument("--job", choices=["analyze", "export", "derivatives", "compare", "merge"])
-    parser.add_argument("--inputs", help="Private JSON file of explicit job inputs for managed headless mode")
-    parser.add_argument("--port", type=int, default=8560)
+    modes.add_argument("--configure", action="store_true",
+                       help="Save collection settings from --inputs (working_dir plus settings fields)")
+    modes.add_argument("--job", choices=JOB_KINDS, help="Run one headless job from --inputs")
+    modes.add_argument("--list-jobs", action="store_true", help="Print job history as JSON")
+    parser.add_argument("--inputs", help="Private JSON file of explicit inputs for --configure or --job")
     args = parser.parse_args()
     if os.name != "posix":
         parser.error("Managed mode requires POSIX; use app.py for Windows desktop operation.")
@@ -37,20 +54,24 @@ def main() -> int:
         console = logging.StreamHandler()
         console.setFormatter(RedactedFormatter("%(levelname)s %(message)s"))
         logging.basicConfig(level=logging.WARNING, handlers=[console], force=True)
-        if args.web:
-            from dart_web import launch
-            launch(storage, port=args.port)
+        if args.list_jobs:
+            with JobService(storage) as service:
+                print(json.dumps([{key: job.get(key) for key in ("id", "kind", "state", "created_at", "message", "result")}
+                                  for job in service.jobs()], indent=2))
             return 0
         if not args.inputs:
-            parser.error("--job requires --inputs")
-        from dart_storage import absolute, private
-        input_path = absolute(args.inputs)
-        private(input_path)
-        inputs = json.loads(input_path.read_text())
-        if not isinstance(inputs, dict):
-            raise ValueError("Job inputs must be a JSON object.")
+            parser.error("--configure and --job require --inputs")
+        inputs = read_private_json(args.inputs)
         with JobService(storage) as service:
             service.claim("headless")
+            if args.configure:
+                from dart_workflows import FLAGS, FORM_FIELDS
+                unknown = set(inputs) - {"working_dir", *FLAGS, *FORM_FIELDS}
+                if unknown:
+                    raise ValueError(f"Unexpected settings keys: {sorted(unknown)}")
+                service.configure("headless", str(inputs.pop("working_dir", "")), inputs)
+                print("Saved collection settings.")
+                return 0
             interrupted = threading.Event()
 
             def stop(_number, _frame) -> None:

@@ -1,7 +1,7 @@
-# Private Linux Browser Installation
+# Headless Linux Installation
 
 This is **installation and storage preparation**, not everyday operation.
-Next: [Operating Overview](LINUX-WEB-OVERVIEW.md).
+Next: [Operating Overview](LINUX-HEADLESS-OVERVIEW.md).
 Verification: [Acceptance Testing](LINUX-ACCEPTANCE.md).
 The existing desktop launchers and helper-script CLIs remain available.
 
@@ -31,42 +31,45 @@ modify the neighboring GEMS checkout or its service.
 
 ## Architecture And Compatibility
 
-The desktop entry point is still `app.py`. Browser/headless managed operation
-uses `dart_linux.py`, `dart_service.py`, `dart_storage.py`, and
-`dart_workflows.py`. Existing compound grouping and CSV row construction are
+The desktop entry point is still `app.py`. Headless managed operation uses
+`dart_linux.py`, `dart_service.py`, `dart_storage.py`, `dart_workflows.py`,
+and `dart_handoff.py`. Existing compound grouping and CSV row construction are
 shared through `dart_processing.py`; media and OHM helpers remain in `app.py`.
 Importing those helpers no longer creates home-directory logs.
 
-There is one process, one worker thread, and advisory exclusive locks on
-**both** configured roots. Browser disconnect releases the operator lease,
-not the worker. No browser session owns a running job. A stopped process
-does not resume work on restart: queued/running/cancelling records become
-`interrupted`.
+**Headless DART has no browser or web interface and opens no network
+listener.** It prepares data up to the point of merge and leaves a handoff
+package. Desktop DART on the operator's Mac pulls packages over key-based SSH
+and performs every compare/merge decision in Function 4 against the
+authoritative core CSV, which stays on the desktop. Desktop DART also pushes a
+read-only `core-snapshot.csv` into each server project for schema and existing
+IDs.
 
-This is a private trusted-operator application, **not a multiuser web service**.
-It has no Internet-facing authentication layer. Loopback limits network
-exposure but does not exclude other users on the Linux host; administrator
-approval of that trust boundary is required.
+Each CLI invocation is one process with one worker thread and advisory
+exclusive locks on **both** configured roots, so a second concurrent writer is
+refused. A stopped process does not resume work on restart: queued/running/
+cancelling records become `interrupted`.
 
-Managed browser differences are deliberate:
+Managed headless differences are deliberate:
 
-- Only explicit existing server paths are accepted; there are no file pickers
-  or browser file uploads.
-- All local destinations and core CSVs must be under the managed `projects`
-  directory. Source trees are read-only, including GEMS sources.
-- Analyze saves durable mappings when the explicitly named action is clicked.
-  It does not use the desktop preview/Close confirmation.
-- Every job uses saved collection settings. Unsaved form changes are rejected.
+- Only explicit existing server paths are accepted, in owner-only JSON input
+  files; there are no file pickers.
+- All local destinations and the core snapshot must be under the managed
+  `projects` directory. Source trees are read-only, including GEMS sources.
+- Analyze/export save durable mappings without the desktop preview/Close
+  confirmation. A file with no saved mapping or filename ID reuses the core
+  snapshot's `objectid` for a unique matching `original_file_name`.
+- Every job uses saved collection settings (`dart_linux --configure`).
 - Azure uploads and overwrite each require explicit per-job authorization.
   Containers must already exist; the managed workflow does not create them.
   Function 3's existing container-name substitution and blob subpath are
-  preserved; the browser does not reinterpret an approved Azure destination.
+  preserved.
 - Local-only derivatives are supported and retained, unlike desktop Function 3.
-- Comparisons require unambiguous filename keys. Merge requires reviewed
-  selections, a fresh core checksum, explicit confirmation, and a backup.
-  Titles and empty replacements default unchecked; existing IDs are protected.
-- Source retirement is never performed. Neither `automatic_four` nor saved
-  desktop upload flags can silently enable browser side effects.
+  Derivative files are not transferred to the desktop.
+- GEMS backfill runs on the server when the project names a GEMS CSV.
+- Headless DART never compares, merges, or writes a core CSV, and never
+  retires sources. Neither `automatic_four` nor saved desktop upload flags can
+  silently enable side effects.
 - The native application refuses new managed storage roots; use the managed
   entry point there. Ordinary native project locations are unchanged.
 
@@ -125,8 +128,8 @@ python3 --version
 ```
 
 The declared Python packages normally provide Linux wheels for this host.
-No graphical desktop, X server, browser, or Flutter SDK is needed for this
-browser-only launch. Do not install speculative native build dependencies:
+No graphical desktop, X server, browser, or Flutter SDK is needed for
+headless operation. Do not install speculative native build dependencies:
 if pip reports a missing compiler, library, or unsupported wheel, retain the
 error and resolve that specific requirement before continuing.
 
@@ -157,7 +160,7 @@ institution's approved SSH/credential mechanism; never embed a token in a URL
 or command. The hashes above identify the inspected shared-utility revision
 and DART's starting `main` revision for this implementation.
 
-**The browser implementation currently includes uncommitted files on the
+**The headless implementation currently includes uncommitted files on the
 Mac's `linux` branch. Cloning GitHub alone does not install those changes.**
 The next step overlays the reviewed Mac source files without committing or
 pushing them. Do not launch the baseline clone before that transfer.
@@ -226,8 +229,8 @@ are present:
 cd ~/GitHub/DART
 git status --short --branch
 test -f dart_linux.py
-test -f dart_web.py
-test -f python_web_requirements.txt
+test -f dart_handoff.py
+test -f python_linux_requirements.txt
 test -f ../common-DG-utilities/setup.py
 git -C ../common-DG-utilities rev-parse HEAD
 ```
@@ -243,7 +246,7 @@ Create a **new Linux virtual environment**; never copy the Mac's environment:
   umask 077
   test ! -e .venv
   python3 -m venv .venv
-  .venv/bin/python -m pip install -r python_web_requirements.txt
+  .venv/bin/python -m pip install -r python_linux_requirements.txt
   .venv/bin/python -m pip check
 )
 ```
@@ -253,7 +256,7 @@ Always invoke this environment explicitly:
 ```bash
 cd ~/GitHub/DART
 .venv/bin/python --version
-.venv/bin/python -m pip show flet flet-web fastapi common-dg-utilities
+.venv/bin/python -m pip show flet python-dotenv common-dg-utilities
 ```
 
 The existing requirements contain `-e ../common-DG-utilities`. That installs
@@ -262,22 +265,21 @@ Keep that checkout in place and do not update it casually: later edits there
 affect DART's next process. Running installation from the DART directory keeps
 the relative dependency path unambiguous.
 
-### Verify The Actual Web Runtime Before Storage Setup
+### Verify The Headless Runtime Before Storage Setup
 
 Run finite acceptance in isolated disposable roots before normal operation:
 
 ```bash
 cd ~/GitHub/DART
-.venv/bin/python -m dart_acceptance --port 8561 --timeout 180
+.venv/bin/python -m dart_acceptance --timeout 180
 ```
 
 The runner prints its retained evidence directory. Require every automated
-group to report `PASS`; inspect `report.json`, `tests.log`, and `web.log` there
-on failure. The runner starts and stops its own temporary loopback listener
-and does not read the normal DART environment file. Manual checks correctly
-remain `PENDING`. See [Acceptance Testing](LINUX-ACCEPTANCE.md) for the complete
-criteria and evidence layout. No listener on normal port 8560 is started by
-these installation instructions.
+group to report `PASS`; inspect `report.json` and the per-check logs there on
+failure. The runner uses its own temporary roots and does not read the normal
+DART environment file. Manual checks correctly remain `PENDING`. See
+[Acceptance Testing](LINUX-ACCEPTANCE.md) for the complete criteria and
+evidence layout.
 
 For a quick dependency-only recheck later:
 
@@ -289,14 +291,13 @@ cd ~/GitHub/DART
 Do not repeat environment creation over an existing `.venv` or treat a failed
 installation as usable. Resolve its explicit error before proceeding.
 
-The web requirements include the existing desktop requirements, preserving the
-desktop dependency set, plus Flet Web `0.25.2`, `python-dotenv`, `websockets`,
-and `fastapi<0.145`. Flet/Web/Desktop must remain aligned. FastAPI's dependency
-metadata alone did not protect GEMS against an incompatible API removal.
+The Linux requirements include the existing desktop requirements, preserving
+the desktop dependency set used by shared helpers, plus `python-dotenv`. No
+web server, websocket, or Flet Web packages are needed.
 
 **A successful install or `pip check` is not a startup test.** Run the finite
-acceptance runner before approving normal operation. It starts the actual
-Flet application and requires HTTP 200 plus the Flutter bootstrap.
+acceptance runner before approving normal operation. It runs the actual
+headless CLI against disposable roots.
 
 ## Provision Private Storage After Separate Approval
 
@@ -339,10 +340,10 @@ DART_SOURCE_ROOTS='[]'
 DART_AZURE_CONNECTION_STRING=
 ```
 
-Do not put credentials in a shell command, Git, a browser field, job inputs, or
+Do not put credentials in a shell command, Git, job inputs, or
 public evidence. If approved Azure work is needed, populate only the private
 file. Existing encrypted desktop credentials are preserved unchanged in copied
-project settings but are **not used** by browser jobs. No desktop key migration
+project settings but are **not used** by headless jobs. No desktop key migration
 or encryption-format conversion is performed.
 
 Explicitly initialize the already approved existing roots:
@@ -364,10 +365,14 @@ umask 077
 mkdir -m 700 /data/dart/data/projects/REPLACE-COLLECTION
 ```
 
-Place the collection's own core CSV there using an approved transfer. Do not
-bulk-copy source objects. The core needs `objectid` and `original_file_name`
-(legacy `filename` is normalized). Include the desired CollectionBuilder
-columns: the core remains the authoritative schema.
+Do not bulk-copy source objects. Then, from desktop DART on the Mac, set
+`headless_host` and `headless_project_dir` in Function 0 and click **Push Core
+Snapshot** in Function 4. This writes `core-snapshot.csv` (owner-only) into
+the project. The snapshot needs `objectid` and `original_file_name` (legacy
+`filename` is normalized) and the desired CollectionBuilder columns. The
+desktop core remains authoritative; the snapshot is read-only input. Finally,
+save the project's settings with `dart_linux --configure` as described in the
+[Operating Overview](LINUX-HEADLESS-OVERVIEW.md).
 
 ## Approve Linux Source Access Separately
 
@@ -415,14 +420,13 @@ ls -l /data/dart/config/dart.env \
 ```
 
 Expected: correct mounted volume; directories `drwx------`; private regular
-files `-rw-------`; ownership `sysadmin:sysadmin`. Browser startup must show
-these exact roots. Stop on discrepancies.
+files `-rw-------`; ownership `sysadmin:sysadmin`. Stop on discrepancies.
 
 ## Run Acceptance Before Approving Operation
 
 Follow [Acceptance Testing](LINUX-ACCEPTANCE.md), not the everyday startup
-instructions. Acceptance uses a fresh disposable evidence tree and port 8561;
-normal DART uses 8560, and GEMS ports 8550/8551 are never used.
+instructions. Acceptance uses a fresh disposable evidence tree and never
+touches the normal roots or GEMS.
 
 No permanent service is included or started. If a future supervised service is
 desired, separately approve the unit, account, working directory, private

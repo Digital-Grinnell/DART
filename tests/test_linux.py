@@ -5,6 +5,7 @@ import hashlib
 import json
 import logging
 import os
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -17,6 +18,7 @@ from unittest.mock import patch
 from PIL import Image
 
 import app
+import dart_handoff
 import dart_processing
 from dart_service import ACTIVE, JobService, RedactedFormatter
 from dart_storage import MARKER, Storage, atomic_json, load_environment, redact
@@ -25,7 +27,7 @@ from dart_workflows import read_csv, write_csv
 ROOT = Path(__file__).resolve().parents[1]
 
 
-@unittest.skipUnless(os.name == "posix", "Managed Linux/browser storage requires POSIX")
+@unittest.skipUnless(os.name == "posix", "Managed headless Linux storage requires POSIX")
 class ManagedTests(unittest.TestCase):
     def setUp(self):
         self.previous_umask = os.umask(0o077)
@@ -101,7 +103,13 @@ class ManagedTests(unittest.TestCase):
             if path.is_file():
                 self.assertEqual(0, path.stat().st_mode & 0o077, str(path))
 
-    def test_local_derivatives_and_compare_selective_merge(self):
+    def package(self, **values):
+        job = self.success("handoff", **values)
+        manifest = json.loads(Path(job["result"]["manifest"]).read_text())
+        return job, manifest, Path(job["result"]["package"]) / manifest["csv"]
+
+    def test_local_derivatives_and_handoff_package_never_write_core(self):
+        core_before = self.core.read_bytes()
         exported = self.export()
         job = self.success("derivatives", csv_path=exported["result"]["csv"])
         self.assertTrue(job["result"]["local_only"])
@@ -111,15 +119,53 @@ class ManagedTests(unittest.TestCase):
                 self.assertLessEqual(max(image.size), maximum)
                 self.assertEqual(maximum, max(image.size))
                 self.assertEqual("RGB", image.mode)
-        compared = self.success("compare", csv_path=job["result"]["csv"])
-        self.assertEqual(1, compared["result"]["added"])
-        merged = self.success("merge", comparison=compared["result"]["comparison"],
-                              confirm_merge=True, selected_added=[0], selected_fields=[])
-        self.assertTrue(Path(merged["result"]["backup"]).is_file())
-        self.assertEqual(rows[0]["objectid"], read_csv(self.core)[1][0]["objectid"])
-        self.assertFalse(merged["result"]["source_retirement"])
+        packaged, manifest, package_csv = self.package(csv_path=job["result"]["csv"])
+        self.assertEqual(dart_handoff.FORMAT, manifest["format"])
+        self.assertEqual(packaged["id"], manifest["job_id"])
+        self.assertEqual("test", manifest["collection_id"])
+        self.assertEqual(hashlib.sha256(package_csv.read_bytes()).hexdigest(), manifest["csv_sha256"])
+        self.assertEqual(hashlib.sha256(core_before).hexdigest(), manifest["core_snapshot_sha256"])
+        self.assertTrue(manifest["derivatives_local_only"])
+        self.assertIsNone(manifest["gems_backfill"])
+        columns, packaged_rows = read_csv(package_csv)
+        self.assertNotIn("filepath", columns)
+        self.assertEqual(rows[0]["objectid"], packaged_rows[0]["objectid"])
+        self.assertEqual(core_before, self.core.read_bytes())
         self.assertTrue((self.source / "sample.jpg").exists())
-        self.assertNotIn("filepath", read_csv(self.core)[0])
+        self.assertEqual(0o700, Path(packaged["result"]["package"]).stat().st_mode & 0o777)
+
+    def test_prepare_exports_derives_and_packages_in_one_job(self):
+        job = self.success("prepare", input_dir=str(self.source))
+        manifest = json.loads(Path(job["result"]["manifest"]).read_text())
+        self.assertEqual(1, manifest["rows"])
+        self.assertTrue(job["result"]["derivatives"]["images"])
+        rows = read_csv(Path(job["result"]["package"]) / "export.csv")[1]
+        self.assertTrue(rows[0]["image_small"])
+        skipped = self.success("prepare", input_dir=str(self.source), derivatives=False)
+        self.assertIsNone(skipped["result"]["derivatives"])
+
+    def test_removed_compare_and_merge_jobs_are_rejected(self):
+        for kind in ("compare", "merge"):
+            with self.assertRaisesRegex(ValueError, "Unknown workflow"):
+                self.service.submit("operator", kind, dict(working_dir=str(self.work)))
+
+    def test_core_snapshot_ids_are_reused_and_conflicts_reported(self):
+        write_csv(self.core, self.columns, [dict(objectid="test_dg_100", original_file_name="sample.jpg")])
+        exported = self.export()
+        self.assertEqual("test_dg_100", read_csv(Path(exported["result"]["csv"]))[1][0]["objectid"])
+        _, manifest, _ = self.package(csv_path=exported["result"]["csv"])
+        self.assertEqual([], manifest["id_conflicts"])
+        write_csv(self.core, self.columns, [dict(objectid="test_dg_200", original_file_name="sample.jpg")])
+        _, manifest, _ = self.package(csv_path=exported["result"]["csv"])
+        self.assertEqual([dict(original_file_name="sample.jpg", export_objectid="test_dg_100",
+                               core_objectid="test_dg_200")], manifest["id_conflicts"])
+        self.assertIn("conflict", manifest["warnings"][0])
+
+    def test_ambiguous_core_snapshot_names_are_not_reused(self):
+        write_csv(self.core, self.columns, [dict(objectid="test_dg_1", original_file_name="sample.jpg"),
+                                            dict(objectid="test_dg_2", original_file_name="sample.jpg")])
+        rows = read_csv(Path(self.export()["result"]["csv"]))[1]
+        self.assertNotIn(rows[0]["objectid"], {"test_dg_1", "test_dg_2"})
 
     def test_compound_derivatives_choose_first_image_after_audio(self):
         (self.source / "sample.jpg").unlink()
@@ -168,36 +214,7 @@ class ManagedTests(unittest.TestCase):
                 self.assertIs(expected, dart_processing.select_compound_derivative_child(parent, [parent, first, later]))
                 self.assertIs(first, dart_processing.select_compound_derivative_child(parent, [parent, first]))
 
-    def test_selective_changes_keep_titles_blanks_ids_and_missing_records(self):
-        write_csv(self.core, self.columns, [
-            dict(objectid="test_dg_1", original_file_name="one.jpg", title="Keep", format="old"),
-            dict(objectid="test_dg_2", original_file_name="missing.jpg", title="Retained")])
-        new = self.work / "new.csv"
-        write_csv(new, self.columns, [dict(objectid="test_dg_999", original_file_name="one.jpg", title="", format="image/jpeg")])
-        compared = self.success("compare", csv_path=str(new))
-        plan = compared["result"]["comparison"]
-        denied = self.run_job("merge", comparison=plan, confirm_merge=True,
-                              selected_added=[], selected_fields=[[0, "objectid"]])
-        self.assertEqual("failed", denied["state"])
-        merged = self.success("merge", comparison=plan, confirm_merge=True,
-                              selected_added=[], selected_fields=[[0, "format"]])
-        rows = read_csv(self.core)[1]
-        self.assertEqual(2, len(rows))
-        self.assertEqual(("test_dg_1", "Keep", "image/jpeg"), (rows[0]["objectid"], rows[0]["title"], rows[0]["format"]))
-        self.assertEqual("Retained", rows[1]["title"])
-
-    def test_core_change_after_comparison_refuses_merge(self):
-        exported = self.export()
-        compared = self.success("compare", csv_path=exported["result"]["csv"])
-        before = self.core.read_bytes() + b"\n"
-        self.core.write_bytes(before)
-        failed = self.run_job("merge", comparison=compared["result"]["comparison"],
-                              confirm_merge=True, selected_added=[0], selected_fields=[])
-        self.assertEqual("failed", failed["state"])
-        self.assertIn("changed since comparison", failed["message"])
-        self.assertEqual(before, self.core.read_bytes())
-
-    def test_compare_merge_preserves_newlines_and_export_addition_order(self):
+    def test_handoff_preserves_newlines_order_and_metadata(self):
         columns = self.columns + ["description", "_dcterms:description"]
         write_csv(self.core, columns, [])
         new = self.work / "new.csv"
@@ -209,49 +226,9 @@ class ManagedTests(unittest.TestCase):
             dict(objectid="audio", original_file_name="instrument-02.mp3", parentid="parent",
                  description="A audio\rnotes", **{"_dcterms:description": "one\r\ntwo"}),
         ])
-        compared = self.success("compare", csv_path=str(new))
-        plan_path = Path(compared["result"]["comparison"])
-        plan = json.loads(plan_path.read_text())
-        expected = read_csv(new)[1]
-        self.assertEqual(expected, plan["changes"]["added"])
-        self.success("merge", comparison=str(plan_path), confirm_merge=True,
-                     selected_added=[2, 0, 1], selected_fields=[])
-        self.assertEqual((columns, expected), read_csv(self.core))
-
-    def test_compare_merge_preserves_newlines_in_selected_changes(self):
-        columns = self.columns + ["description"]
-        original = dict(objectid="existing", original_file_name="one.jpg",
-                        title="Keep\r\nthis", description="old\r\ntext")
-        write_csv(self.core, columns, [original])
-        new = self.work / "new.csv"
-        write_csv(new, columns, [
-            dict(original, description="new\r\ntext\rwith\nbreaks"),
-        ])
-        compared = self.success("compare", csv_path=str(new))
-        plan_path = Path(compared["result"]["comparison"])
-        plan = json.loads(plan_path.read_text())
-        self.assertEqual({"description": {"from": "old\r\ntext", "to": "new\r\ntext\rwith\nbreaks"}},
-                         plan["changes"]["changed"][0]["fields"])
-        self.success("merge", comparison=str(plan_path), confirm_merge=True,
-                     selected_added=[], selected_fields=[[0, "description"]])
-        self.assertEqual(read_csv(new), read_csv(self.core))
-
-    def test_selective_additions_follow_export_order_after_existing_rows(self):
-        write_csv(self.core, self.columns, [
-            dict(objectid="existing", original_file_name="existing.jpg", title="Keep\r\nthis"),
-        ])
-        new = self.work / "new.csv"
-        write_csv(new, self.columns, [
-            dict(objectid="z", original_file_name="z.jpg"),
-            dict(objectid="a", original_file_name="a.jpg"),
-            dict(objectid="b", original_file_name="b.jpg"),
-        ])
-        compared = self.success("compare", csv_path=str(new))
-        self.success("merge", comparison=compared["result"]["comparison"], confirm_merge=True,
-                     selected_added=[2, 0], selected_fields=[])
-        rows = read_csv(self.core)[1]
-        self.assertEqual(["existing", "z", "b"], [row["objectid"] for row in rows])
-        self.assertEqual("Keep\r\nthis", rows[0]["title"])
+        _, manifest, package_csv = self.package(csv_path=str(new))
+        self.assertEqual(read_csv(new), read_csv(package_csv))
+        self.assertFalse(manifest["derivatives_local_only"])
 
     def test_replaced_core_header_is_revalidated_at_submission(self):
         self.core.write_text("wrong,header\n")
@@ -259,27 +236,24 @@ class ManagedTests(unittest.TestCase):
             self.service.submit("operator", "export", dict(working_dir=str(self.work), input_dir=str(self.source)))
         self.assertEqual([], self.service.jobs())
 
-    def test_reserved_core_can_template_export_but_never_merge(self):
+    def test_reserved_core_template_can_be_the_snapshot_and_stays_unchanged(self):
         template = self.work / "collection-template.csv"
         template.write_bytes(self.core.read_bytes())
         template.chmod(0o600)
         self.values["core_metadata_csv"] = str(template)
         self.service.configure("operator", str(self.work), self.values)
-        exported = self.export()
-        compared = self.success("compare", csv_path=exported["result"]["csv"])
-        failed = self.run_job("merge", comparison=compared["result"]["comparison"],
-                              confirm_merge=True, selected_added=[0], selected_fields=[])
-        self.assertEqual("failed", failed["state"])
-        self.assertIn("reserved", failed["message"])
-        self.assertEqual([], read_csv(template)[1])
+        before = template.read_bytes()
+        self.success("prepare", input_dir=str(self.source))
+        self.assertEqual(before, template.read_bytes())
 
-    def test_duplicate_filename_compare_is_explicit_failure(self):
+    def test_duplicate_filename_handoff_is_explicit_failure(self):
         exported = self.export()
         columns, rows = read_csv(Path(exported["result"]["csv"]))
         write_csv(Path(exported["result"]["csv"]), columns, rows * 2)
-        failed = self.run_job("compare", csv_path=exported["result"]["csv"])
+        failed = self.run_job("handoff", csv_path=exported["result"]["csv"])
         self.assertEqual("failed", failed["state"])
         self.assertIn("duplicate", failed["message"])
+        self.assertFalse((self.work / "handoff" / failed["id"] / "manifest.json").exists())
 
     def test_compounds_flat_and_nested_reuse_existing_maps(self):
         (self.source / "sample.jpg").rename(self.source / "item_01.jpg")
@@ -301,25 +275,31 @@ class ManagedTests(unittest.TestCase):
             self.assertEqual(flat[0]["objectid"], row["parentid"])
             self.assertEqual(child_ids[row["original_file_name"]], row["objectid"])
 
-    def test_gems_backfill_does_not_replace_ids_or_nonempty_metadata(self):
+    def test_server_gems_backfill_defaults_on_and_keeps_ids(self):
         exported = self.export()
         gems = self.source / "metadata.csv"
         write_csv(gems, self.columns, [dict(objectid="gems_id", original_file_name="sample.jpg", title="GEMS title")])
+        with self.assertRaisesRegex(ValueError, "no gems_metadata_csv"):
+            self.service.submit("operator", "handoff", dict(working_dir=str(self.work),
+                                                            csv_path=exported["result"]["csv"], backfill=True))
         self.values["gems_metadata_csv"] = str(gems)
         self.service.configure("operator", str(self.work), self.values)
-        compared = self.success("compare", csv_path=exported["result"]["csv"], backfill=True)
-        plan = json.loads(Path(compared["result"]["comparison"]).read_text())
-        self.assertEqual("GEMS title", plan["changes"]["added"][0]["title"])
-        self.assertTrue(plan["changes"]["added"][0]["objectid"].startswith("test_dg_"))
+        job, manifest, package_csv = self.package(csv_path=exported["result"]["csv"])
+        self.assertTrue(job["inputs"]["backfill"])
+        row = read_csv(package_csv)[1][0]
+        self.assertEqual("GEMS title", row["title"])
+        self.assertTrue(row["objectid"].startswith("test_dg_"))
+        self.assertEqual(1, manifest["gems_backfill"]["matched_rows"])
+        self.assertTrue((package_csv.parent / "gems-backfill.json").is_file())
+        _, manifest, package_csv = self.package(csv_path=exported["result"]["csv"], backfill=False)
+        self.assertIsNone(manifest["gems_backfill"])
+        self.assertEqual("", read_csv(package_csv)[1][0]["title"])
 
-    def test_settings_defaults_do_not_leak_collection_values_or_credentials(self):
-        self.service.configure("operator", str(self.work), self.values, remember_defaults=True)
-        saved = json.loads((self.config / "browser-defaults.json").read_text())
-        self.assertEqual({"group_compound_objects", "create_multiple_objects", "process_OHM_data"}, set(saved))
-        self.assertNotIn("azure_connection_string", self.service.load_form(str(self.work)))
+    def test_collection_id_is_durable_once_ids_exist(self):
         self.export()
         with self.assertRaisesRegex(ValueError, "durable"):
             self.service.configure("operator", str(self.work), dict(self.values, **{"collection-id": "changed"}))
+        self.assertFalse((self.work / ".DART-working-directory" / "web-form.json").exists())
 
     def test_writer_lock_cannot_be_bypassed_by_another_config_root(self):
         other = self.root / "other-config"
@@ -473,48 +453,11 @@ class ManagedTests(unittest.TestCase):
                 self.assertTrue(Path(row["image_small"]).is_relative_to(Path(derived["result"]["derivatives"])))
 
     def test_native_application_refuses_managed_working_roots_only(self):
-        with self.assertRaisesRegex(ValueError, "managed DART browser storage"):
+        with self.assertRaisesRegex(ValueError, "managed headless DART storage"):
             app.get_dart_working_dir(str(self.work))
         native = self.root / "native"
         native.mkdir()
         self.assertEqual(native / ".DART-working-directory", app.get_dart_working_dir(str(native)))
-
-    def test_browser_actions_validate_locally_load_settings_and_submit(self):
-        from dart_web import main
-        import flet as ft
-
-        class Page:
-            session_id = "operator"
-            route = "/"
-            def __init__(self):
-                self.controls = []
-            def add(self, *controls):
-                self.controls.extend(controls)
-            def update(self):
-                pass
-            def run_task(self, function):
-                return SimpleNamespace(cancel=lambda: None)
-            def go(self, route):
-                self.route = route
-                self.on_route_change(None)
-
-        page = Page()
-        main(page, self.service)
-        def control(kind, **attributes):
-            return next(item for item in page.controls if isinstance(item, kind) and
-                        all(getattr(item, key) == value for key, value in attributes.items()))
-        export = control(ft.ElevatedButton, text="Export CSV")
-        export.on_click(None)
-        notice = page.controls[page.controls.index(export) + 1]
-        self.assertIn("absolute", notice.value)
-        control(ft.TextField, label="Working Project (Existing Private Server Directory)").value = str(self.work)
-        control(ft.ElevatedButton, text="Load This Project's Settings").on_click(None)
-        self.assertEqual("test", control(ft.TextField, label="Collection-ID (Collection-Specific; Required)").value)
-        export.on_click(None)
-        self.service._thread.join(timeout=10)
-        self.assertEqual("succeeded", self.service.jobs()[0]["state"])
-        self.assertIn("/jobs/", page.route)
-        self.assertFalse(control(ft.Checkbox, label="Authorize Azure Uploads For This Next Job").value)
 
     def test_job_snapshot_excludes_credentials_and_contains_effective_settings(self):
         job = self.export()
@@ -523,25 +466,150 @@ class ManagedTests(unittest.TestCase):
         self.assertEqual(str(self.core), snapshot["core_metadata_csv"])
         self.assertNotIn("azure_connection_string", snapshot)
 
-    def test_real_managed_headless_entry_point_persists_success(self):
+    def test_real_managed_headless_entry_point_configures_and_prepares(self):
         env_file = self.root / "dart.env"
         env_file.write_text(f"DART_CONFIG_DIR={self.config}\nDART_DATA_DIR={self.data}\n"
                             "DART_SOURCE_ROOTS='[]'\nDART_AZURE_CONNECTION_STRING=\n")
+        settings = self.root / "settings.json"
+        atomic_json(settings, dict(self.values, working_dir=str(self.work), **{"collection-id": "test"}))
         inputs = self.root / "inputs.json"
         atomic_json(inputs, dict(working_dir=str(self.work), input_dir=str(self.source),
                                  allow_uploads=False, overwrite=False))
         self.service.close()
-        result = subprocess.run([sys.executable, "-m", "dart_linux", "--env-file", str(env_file),
-                                 "--job", "export", "--inputs", str(inputs)],
-                                cwd=ROOT, capture_output=True, text=True, timeout=20)
+        command = [sys.executable, "-m", "dart_linux", "--env-file", str(env_file)]
+        def run(*arguments):
+            return subprocess.run([*command, *arguments], cwd=ROOT, capture_output=True, text=True, timeout=30)
+        result = run("--configure", "--inputs", str(settings))
+        self.assertEqual(0, result.returncode, result.stderr)
+        result = run("--job", "prepare", "--inputs", str(inputs))
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertIn("Evidence:", result.stdout)
+        listed = run("--list-jobs")
+        self.assertEqual(0, listed.returncode, listed.stderr)
+        self.assertEqual("prepare", json.loads(listed.stdout)[0]["kind"])
+        removed = run("--list-jobs", "--web")
+        self.assertNotEqual(0, removed.returncode)
+        self.assertIn("unrecognized arguments: --web", removed.stderr)
         self.service = JobService(self.storage)
         self.service.claim("operator")
-        self.assertEqual("succeeded", self.service.jobs()[0]["state"])
+        job = self.service.jobs()[0]
+        self.assertEqual("succeeded", job["state"])
+        self.assertTrue(Path(job["result"]["manifest"]).is_file())
 
 
-@unittest.skipUnless(os.name == "posix", "Managed Linux/browser storage requires POSIX")
+class FakeSSH:
+    """Simulates `ssh host command` against a local directory standing in for the server."""
+    def __init__(self, files=None, returncode=0):
+        self.files, self.calls, self.returncode = dict(files or {}), [], returncode
+
+    def __call__(self, argv, input=None, capture_output=True, timeout=None):
+        self.calls.append((argv, input))
+        command = argv[-1]
+        if self.returncode:
+            return SimpleNamespace(returncode=self.returncode, stdout=b"", stderr=b"Permission denied (publickey)")
+        if command.startswith("for f in "):
+            output = b"".join(content + b"\0" for path, content in sorted(self.files.items())
+                              if path.endswith("/manifest.json"))
+            return SimpleNamespace(returncode=0, stdout=output, stderr=b"")
+        if command.startswith("cat "):
+            path = command[4:].strip("'")
+            if path not in self.files:
+                return SimpleNamespace(returncode=1, stdout=b"", stderr=b"No such file")
+            return SimpleNamespace(returncode=0, stdout=self.files[path], stderr=b"")
+        return SimpleNamespace(returncode=0, stdout=b"", stderr=b"")
+
+
+class HandoffTests(unittest.TestCase):
+    host, project = "sysadmin@dg-landing", "/data/dart/data/projects/test"
+    job_id = "a" * 32
+
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.local = Path(self.temporary.name)
+        self.csv = b"objectid,original_file_name\r\ntest_dg_1,one.jpg\r\n"
+        self.core = self.local / "core.csv"
+        self.core.write_bytes(b"objectid,original_file_name\r\n")
+        self.manifest = dart_handoff.build_manifest(
+            job_id=self.job_id, collection_id="test", csv_sha256=hashlib.sha256(self.csv).hexdigest(), rows=1,
+            core_snapshot="/server/core-snapshot.csv", core_snapshot_sha256=dart_handoff.sha256_file(self.core),
+            gems_backfill=None, id_conflicts=[], derivatives_local_only=False, source="/server/x.csv",
+            dart_version="test", created_at="2026-10-28T00:00:00+00:00")
+        base = f"{self.project}/handoff/{self.job_id}"
+        self.ssh = FakeSSH({f"{base}/manifest.json": json.dumps(self.manifest).encode(), f"{base}/export.csv": self.csv})
+
+    def tearDown(self):
+        self.temporary.cleanup()
+
+    def pull(self, **values):
+        return dart_handoff.pull_package(self.host, self.project, self.job_id, self.local,
+                                         expected_collection_id=values.pop("collection", "test"),
+                                         local_core_csv=str(self.core), runner=self.ssh, **values)
+
+    def test_remote_settings_validation(self):
+        self.assertTrue(dart_handoff.validate_remote_settings("", "")[0])
+        self.assertTrue(dart_handoff.validate_remote_settings(self.host, self.project)[0])
+        self.assertTrue(dart_handoff.validate_remote_settings("dg-landing", self.project)[0])
+        for host, project in ((self.host, ""), ("", self.project), ("-oProxyCommand=x", self.project), ("-o@host", self.project),
+                              (self.host, "relative/path"), (self.host, "/data/../etc"),
+                              (self.host, "/Volumes/share"), ("a b@host", self.project)):
+            with self.subTest(host=host, project=project):
+                self.assertFalse(dart_handoff.validate_remote_settings(host, project)[0])
+
+    def test_list_returns_only_matching_collection_packages(self):
+        other = dict(self.manifest, job_id="b" * 32, collection_id="other")
+        self.ssh.files[f"{self.project}/handoff/{'b' * 32}/manifest.json"] = json.dumps(other).encode()
+        self.ssh.files[f"{self.project}/handoff/{'c' * 32}/manifest.json"] = b"not json"
+        packages = dart_handoff.list_remote_packages(self.host, self.project, expected_collection_id="test",
+                                                     runner=self.ssh)
+        self.assertEqual([self.job_id], [package["job_id"] for package in packages])
+        argv = self.ssh.calls[0][0]
+        self.assertEqual(["ssh", "-o", "BatchMode=yes"], argv[:3])
+        self.assertEqual("--", argv[-3])
+        self.assertEqual(self.host, argv[-2])
+
+    def test_pull_verifies_checksum_and_writes_function_4_export(self):
+        result = self.pull()
+        csv_path = Path(result["csv"])
+        self.assertEqual(f"DART_export_handoff_{self.job_id}.csv", csv_path.name)
+        self.assertTrue(csv_path.name.startswith("DART_export_"))
+        self.assertEqual(self.csv, csv_path.read_bytes())
+        self.assertEqual(self.manifest, json.loads(Path(result["manifest"]).read_text()))
+        self.assertEqual([], result["warnings"])
+        self.core.write_bytes(self.core.read_bytes() + b"test_dg_9,new.jpg\r\n")
+        self.assertIn("core CSV changed", self.pull()["warnings"][0])
+
+    def test_pull_refuses_bad_checksum_wrong_collection_and_local_clobber(self):
+        self.ssh.files[f"{self.project}/handoff/{self.job_id}/export.csv"] = self.csv + b"x"
+        with self.assertRaisesRegex(ValueError, "checksum"):
+            self.pull()
+        self.assertEqual([], list(self.local.glob("DART_export_*")))
+        self.ssh.files[f"{self.project}/handoff/{self.job_id}/export.csv"] = self.csv
+        with self.assertRaisesRegex(ValueError, "collection-id"):
+            self.pull(collection="other")
+        dart_handoff.local_package_paths(self.local, self.job_id)[0].write_bytes(b"edited locally")
+        with self.assertRaisesRegex(ValueError, "already exists"):
+            self.pull()
+        with self.assertRaisesRegex(ValueError, "job ID"):
+            dart_handoff.pull_package(self.host, self.project, "../../etc", self.local,
+                                      expected_collection_id="test", runner=self.ssh)
+
+    def test_ssh_failure_is_reported(self):
+        with self.assertRaisesRegex(RuntimeError, "publickey"):
+            dart_handoff.list_remote_packages(self.host, self.project, expected_collection_id="test",
+                                              runner=FakeSSH(returncode=255))
+
+    def test_push_core_snapshot_streams_bytes_with_quoted_atomic_replace(self):
+        project = "/data/dart/data/projects/it's here"
+        digest = dart_handoff.push_core_snapshot(self.host, project, str(self.core), runner=self.ssh)
+        argv, data = self.ssh.calls[-1]
+        self.assertEqual(self.core.read_bytes(), data)
+        self.assertEqual(dart_handoff.sha256_file(self.core), digest)
+        self.assertIn("umask 077", argv[-1])
+        self.assertIn("mv -f", argv[-1])
+        self.assertIn(shlex.quote(f"{project}/core-snapshot.csv"), argv[-1])
+
+
+@unittest.skipUnless(os.name == "posix", "Managed headless Linux storage requires POSIX")
 class PureTests(unittest.TestCase):
     def test_shared_comparison_preserves_newline_only_changes_and_ignores_filepath(self):
         old = [dict(objectid="one", original_file_name="one.jpg",

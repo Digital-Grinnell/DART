@@ -182,10 +182,10 @@ DART for Windows is distributed as a ZIP archive.
 
 ## Linux Installation (Source)
 
-For private Linux/browser operation on `dg-landing`, use the separate
-[Linux Browser Installation Guide](INSTALL-LINUX.md). It covers explicit
-private storage, source-mount approval, web dependencies, and deployment
-boundaries. Then follow the [Operating Overview](LINUX-WEB-OVERVIEW.md) and
+For headless Linux operation on `dg-landing`, use the separate
+[Headless Linux Installation Guide](INSTALL-LINUX.md). It covers explicit
+private storage, source-mount approval, dependencies, and deployment
+boundaries. Then follow the [Operating Overview](LINUX-HEADLESS-OVERVIEW.md) and
 [Acceptance Testing](LINUX-ACCEPTANCE.md). The source/desktop instructions
 below remain available for native use.
 

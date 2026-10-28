@@ -3,20 +3,26 @@
 ## Purpose
 Open the application settings file in the selected working/outputs folder's `.DART-working-directory` subfolder and edit values using popup text input fields.
 
-## Managed Linux Browser Settings
+## Headless DART Handoff Settings
 
-The [private browser workflow](LINUX-WEB-OVERVIEW.md) uses explicit server-path
-fields rather than native pickers. Load and validate/save each project's own
-settings before submitting work. Only grouping, multiple-object, and OHM
-booleans can become reusable global defaults; collection IDs and paths remain
-project-specific. An established project's collection ID cannot be changed.
+Two optional desktop settings connect this project to
+[headless DART on Linux](LINUX-HEADLESS-OVERVIEW.md). Function 4 uses them to pull
+prepared handoff packages and to push a read-only core snapshot:
 
-Browser credentials come only from the explicitly selected private environment
-file. They are never entered in the UI or saved as job inputs. Existing
-encrypted desktop settings are preserved unchanged but do not authorize
-uploads. Upload/overwrite and merge consent are per-job, never remembered.
+| Setting | Example | Meaning |
+| --- | --- | --- |
+| `headless_host` | `sysadmin@dg-landing` | SSH target (`host` or `user@host`) running headless DART |
+| `headless_project_dir` | `/data/dart/data/projects/REPLACE-COLLECTION` | Absolute managed project directory on that host |
+
+Set both or neither. DART validates them before saving and rejects SSH
+options or relative paths. Desktop DART calls the system `ssh` in batch mode,
+so key-based SSH authentication must already work. The headless project must
+use the same `collection-id` as this desktop project.
+
+Headless DART itself is configured on Linux with `dart_linux --configure`;
+Azure credentials there come only from the server's private environment file.
 See [Linux Installation](INSTALL-LINUX.md) for the storage and credential
-boundary; the desktop editor behavior below is unchanged.
+boundary. The desktop editor behavior below is otherwise unchanged.
 
 ## Security Note
 The desktop **`azure_connection_string` is encrypted** when saved to
@@ -44,6 +50,8 @@ described above and does not change the desktop encryption format.
   - Example: `objs/TDPS_archive` or `mycontainer/objs/photos`
   - **Parallel folders**: Your Azure storage should also contain `/smalls/` and `/thumbs/` folders as siblings to `/objs/` for derivative files
   - Validation ensures `/objs/` is present; `/smalls/` and `/thumbs/` are expected but not verified programmatically
+- **headless_host** (optional): SSH target (`host` or `user@host`) running headless DART on Linux, for example `sysadmin@dg-landing`. Requires key-based SSH. Set together with `headless_project_dir`, or leave both blank. See "Headless DART Handoff Settings" above. **[VALIDATED]**
+- **headless_project_dir** (optional): Absolute Linux path of this collection's managed project on `headless_host`. Function 4 pulls handoff packages from its `handoff/` folder and pushes `core-snapshot.csv` into it. **[VALIDATED]**
 - **azure_connection_string**: Azure Storage account connection string for authentication. Required for uploading files to Azure Blob Storage. **[ENCRYPTED]**
 - **api_key**: Your API key for external services. **[ENCRYPTED]**
 - **api_secret**: Your API secret for external services. **[ENCRYPTED]**

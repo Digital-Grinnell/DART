@@ -7,16 +7,20 @@ import io
 import json
 import os
 import time
+from collections import Counter
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Callable
 
 import app as core
-from dart_processing import (analyze_compound_objects, build_export_rows, compare_metadata_rows, get_derivative_azure_paths,
+from dart_handoff import (HANDOFF_DIR_NAME, MANIFEST_NAME, PACKAGE_CSV_NAME, build_manifest, find_id_conflicts,
+                          has_server_local_derivatives)
+from dart_processing import (analyze_compound_objects, build_export_rows, get_derivative_azure_paths,
                              get_display_template, get_stable_path, select_compound_derivative_child)
 from dart_storage import Storage, atomic_bytes, atomic_json, private
 
-KINDS = {"analyze", "export", "derivatives", "compare", "merge"}
+KINDS = {"analyze", "export", "derivatives", "handoff", "prepare"}
 FLAGS = ("group_compound_objects", "create_multiple_objects", "process_OHM_data")
 FORM_FIELDS = ("input_dir", "core_metadata_csv", "gems_metadata_csv", "collection-id", "azure_blob_storage_path")
 ASSETS = core.GEMS_ASSET_EXTENSIONS
@@ -114,11 +118,10 @@ def save_settings(storage: Storage, working: str, values: dict[str, Any]) -> dic
             raise ValueError("Compound exports require parentid, type, and display_template columns in the core schema.")
     settings.update({"collection-id": collection, "core_metadata_csv": str(csv_path),
                      "gems_metadata_csv": gems, "azure_blob_storage_path": azure})
-    # Preserve any existing encrypted credential unchanged; browser jobs never use it.
+    # Preserve any existing encrypted credential unchanged; headless jobs never use it.
     directory.mkdir(mode=0o700, exist_ok=True)
     storage.check()
     atomic_json(directory / core.APP_SETTINGS_FILENAME, settings)
-    atomic_json(directory / "web-form.json", {"input_dir": str(source)})
     return settings
 
 
@@ -145,9 +148,9 @@ class Workflow:
             return self.assets(kind, inputs)
         if kind == "derivatives":
             return self.derivatives(inputs)
-        if kind == "compare":
-            return self.compare(inputs)
-        return self.merge(inputs)
+        if kind == "handoff":
+            return self.handoff(inputs)
+        return self.prepare(inputs)
 
     def source_files(self, raw: str) -> list[Path]:
         source = self.storage.source(raw, directory=True)
@@ -193,6 +196,12 @@ class Workflow:
         columns, existing = read_csv(core_path, metadata=True)
         page = SimpleNamespace(session=SimpleNamespace(
             generated_ids=set(mappings.values()) | {row["objectid"] for row in existing if row.get("objectid")}))
+        # The core CSV is a desktop-pushed snapshot: reuse its IDs for files it already holds,
+        # but only when the filename is unambiguous in both the snapshot and this scan.
+        core_names = Counter(core.get_csv_filename_value(row) for row in existing)
+        core_ids = {core.get_csv_filename_value(row): row["objectid"] for row in existing
+                    if core_names[core.get_csv_filename_value(row)] == 1}
+        scanned_names = Counter(path.name for path in files)
         objects = []
         auxiliary = []
         for index, path in enumerate(files):
@@ -202,6 +211,8 @@ class Workflow:
                 object_id = core.get_ohm_filename_id(path, collection)
             else:
                 object_id = mappings.get(stable) or core.get_filename_dg_id(path, collection)
+                if not object_id and scanned_names[path.name] == 1:
+                    object_id = core_ids.get(path.name, "")
                 if not object_id:
                     object_id = core.generate_unique_id(page, collection)
             mappings[stable] = object_id
@@ -311,7 +322,7 @@ class Workflow:
         exists = blob_client.exists(timeout=30)
         if exists and not overwrite:
             return blob_client.url.split("?", 1)[0], False
-        # Unlike desktop mode, browser mode requires an existing approved container.
+        # Unlike desktop mode, headless mode requires an existing approved container.
         last_progress = 0.0
         def progress(current: int, total: int) -> None:
             nonlocal last_progress
@@ -389,98 +400,60 @@ class Workflow:
         return dict(csv=str(output), derivatives=str(directory), images=generated, rows=len(rows),
                     local_only=client is None)
 
-    def compare(self, inputs: dict[str, Any]) -> dict[str, Any]:
-        old = self.storage.managed(self.settings["core_metadata_csv"])
-        new = self.storage.managed(inputs["csv_path"])
-        if old == new:
-            raise ValueError("Choose an export different from the core CSV.")
-        old_digest = digest(old)
-        old_columns, old_rows = read_csv(old, metadata=True)
-        new_columns, new_rows = read_csv(new, metadata=True)
-        for label, rows in (("core", old_rows), ("export", new_rows)):
-            names = [core.get_csv_filename_value(row) for row in rows]
-            if not all(names) or len(set(names)) != len(names):
-                raise ValueError(f"The {label} CSV has missing/duplicate original_file_name keys; resolve ambiguity before comparing.")
+    def handoff(self, inputs: dict[str, Any]) -> dict[str, Any]:
+        """Package an export for desktop review; headless DART never writes a core CSV."""
+        source = self.storage.managed(inputs["csv_path"])
+        columns, rows = read_csv(source, metadata=True)
+        names = [core.get_csv_filename_value(row) for row in rows]
+        if not all(names) or len(set(names)) != len(names):
+            raise ValueError("The export has missing/duplicate original_file_name keys; resolve ambiguity first.")
+        if len({row["objectid"] for row in rows}) != len(rows):
+            raise ValueError("The export has duplicate object IDs.")
+        snapshot = self.storage.managed(self.settings["core_metadata_csv"])
+        snapshot_digest = digest(snapshot)
+        _, core_rows = read_csv(snapshot, metadata=True)
+        stats = None
         if inputs.get("backfill"):
-            gems = self.storage.source(self.settings["gems_metadata_csv"])
-            gems_columns, gems_rows = read_csv(gems)
-            new_rows, stats = core.backfill_dart_export_from_gems(new_columns, new_rows, gems_columns, gems_rows)
-            atomic_json(self.job_dir / "gems-backfill.json", stats)
-        before = self.job_dir / "core-snapshot.csv"
-        after = self.job_dir / "export-snapshot.csv"
-        old_columns = [column for column in old_columns if column != "filepath"]
-        new_columns = [column for column in new_columns if column != "filepath"]
-        write_csv(before, old_columns, old_rows)
-        write_csv(after, new_columns, new_rows)
+            if not self.settings["gems_metadata_csv"]:
+                raise ValueError("GEMS backfill requested, but this project has no gems_metadata_csv.")
+            gems_columns, gems_rows = read_csv(self.storage.source(self.settings["gems_metadata_csv"]))
+            rows, stats = core.backfill_dart_export_from_gems(columns, rows, gems_columns, gems_rows)
         self.checkpoint()
-        changes = compare_metadata_rows(old_rows, new_rows)
-        if digest(old) != old_digest:
-            raise ValueError("Core CSV changed during comparison. Compare again before reviewing.")
-        plan = dict(core=str(old), core_sha256=old_digest, columns=old_columns, changes=changes,
-                    source=str(new), warning_missing_metadata=core.should_warn_missing_metadata(changes.get("added", [])))
-        path = self.job_dir / "comparison.json"
-        self.artifact(comparison=str(path))
-        atomic_json(path, plan)
-        return dict(comparison=str(path), added=len(changes.get("added", [])),
-                    changed=len(changes.get("changed", [])), missing=len(changes.get("removed", [])),
-                    warning_missing_metadata=plan["warning_missing_metadata"])
+        conflicts = find_id_conflicts(core_rows, rows)
+        parent = self.work / HANDOFF_DIR_NAME
+        if parent.is_symlink() or (parent.exists() and not parent.is_dir()):
+            raise ValueError(f"Handoff directory must be a real directory: {parent}")
+        parent.mkdir(mode=0o700, exist_ok=True)
+        package = parent / self.job_id
+        package.mkdir(mode=0o700)
+        self.artifact(package=str(package))
+        output = package / PACKAGE_CSV_NAME
+        # Server paths are meaningless on the desktop; Function 4 ignores filepath anyway.
+        write_csv(output, [column for column in columns if column != "filepath"], rows)
+        if stats is not None:
+            atomic_json(package / "gems-backfill.json", stats)
+        manifest = build_manifest(
+            job_id=self.job_id, collection_id=self.settings["collection-id"], csv_sha256=digest(output),
+            rows=len(rows), core_snapshot=str(snapshot), core_snapshot_sha256=snapshot_digest,
+            gems_backfill=stats, id_conflicts=conflicts, derivatives_local_only=has_server_local_derivatives(rows),
+            source=str(source), dart_version=core.APP_VERSION,
+            created_at=datetime.now(timezone.utc).isoformat())
+        self.checkpoint()
+        # The manifest is written last: its presence marks a complete package for desktop pull.
+        atomic_json(package / MANIFEST_NAME, manifest)
+        return dict(package=str(package), manifest=str(package / MANIFEST_NAME), rows=len(rows),
+                    id_conflicts=len(conflicts), warnings=manifest["warnings"])
 
-    def merge(self, inputs: dict[str, Any]) -> dict[str, Any]:
-        if not inputs.get("confirm_merge"):
-            raise ValueError("Review the comparison and explicitly confirm the core CSV write.")
-        plan_path = Path(inputs["comparison"])
-        if plan_path.name != "comparison.json" or plan_path.parent.parent != self.storage.jobs:
-            raise ValueError("Select a persisted DART comparison job.")
-        private(plan_path)
-        plan = json.loads(plan_path.read_text())
-        old = self.storage.managed(plan["core"])
-        if old != self.storage.managed(self.settings["core_metadata_csv"]):
-            raise ValueError("Comparison belongs to another core CSV.")
-        if core.is_protected_core_csv_name(old):
-            raise ValueError("The reserved collection-template.csv must never be overwritten.")
-        if digest(old) != plan["core_sha256"]:
-            raise ValueError("Core CSV changed since comparison. Compare again before merging.")
-        columns, rows = read_csv(old, metadata=True)
-        selected_added = inputs.get("selected_added", [])
-        selected_fields = inputs.get("selected_fields", [])
-        changes = plan["changes"]
-        if not selected_added and not selected_fields:
-            raise ValueError("Select at least one addition or field change.")
-        indexed = {core.get_csv_filename_value(row): row for row in rows}
-        for index in selected_added:
-            if type(index) is not int or not 0 <= index < len(changes.get("added", [])):
-                raise ValueError("Invalid selected addition.")
-        for index in sorted(selected_added):
-            record = changes["added"][index]
-            if core.get_csv_filename_value(record) in indexed:
-                raise ValueError("Selected record already exists in core.")
-            rows.append(record)
-        for selection in selected_fields:
-            if not isinstance(selection, list) or len(selection) != 2:
-                raise ValueError("Invalid selected field.")
-            index, field = selection
-            if type(index) is not int or not 0 <= index < len(changes.get("changed", [])):
-                raise ValueError("Invalid changed-record selection.")
-            change = changes["changed"][index]
-            if field not in columns or field not in change["fields"] or field in core.CSV_FILENAME_FIELDS or field == "objectid":
-                raise ValueError("Only existing metadata fields may be changed; identifiers are protected.")
-            indexed[change["key"][0]][field] = change["fields"][field]["to"]
-        known = set()
-        for row in rows:
-            value = row.get("objectid")
-            if not value or value in known:
-                raise ValueError("Merge would introduce missing/duplicate object IDs.")
-            known.add(value)
-        self.checkpoint()
-        backup = self.hidden / f"{old.name}.backup_{self.job_id}"
-        self.artifact(core=str(old), backup=str(backup))
-        atomic_bytes(backup, old.read_bytes())
-        self.checkpoint()
-        if digest(old) != plan["core_sha256"]:
-            raise ValueError("Core CSV changed before commit; merge refused.")
-        write_csv(old, columns, rows)
-        return dict(core=str(old), backup=str(backup), rows=len(rows), additions=len(selected_added),
-                    fields_updated=len(selected_fields), source_retirement=False)
+    def prepare(self, inputs: dict[str, Any]) -> dict[str, Any]:
+        """Export, optionally generate derivatives, then package for desktop review."""
+        exported = self.assets("export", inputs)
+        csv_path, derived = exported["csv"], None
+        if inputs.get("derivatives", True):
+            derived = self.derivatives(dict(csv_path=csv_path, allow_uploads=inputs.get("allow_uploads", False),
+                                            overwrite=inputs.get("overwrite", False)))
+            csv_path = derived["csv"]
+        packaged = self.handoff(dict(csv_path=csv_path, backfill=inputs.get("backfill", False)))
+        return dict(packaged, export=exported, derivatives=derived)
 
 
 def re_safe_id(value: str) -> bool:

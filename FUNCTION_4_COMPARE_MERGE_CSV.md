@@ -3,20 +3,32 @@
 ## Purpose
 Compare two CSV files to identify matching records, new records, changed values, and records missing from the new file. Uses the csvdiff tool for fast, accurate comparison with detailed change tracking. This function automatically uses your core metadata CSV (from settings) as the baseline and auto-selects the newest DART_export CSV from your working directory for comparison.
 
-## Managed Linux Browser Comparison and Merge
+## Reviewing Headless DART Handoff Packages
 
-The [browser workflow](LINUX-WEB-OVERVIEW.md) makes comparison and merge separate
-persisted jobs. Choose an explicit CSV, compare, then load the successful
-comparison for review. GEMS backfill is an explicit option. Select additions
-and individual metadata changes, then explicitly confirm the core write.
-Titles and empty replacements default unchecked; existing identifiers cannot
-be changed. Ambiguous filename keys fail validation.
+Compare and merge always happen here, on the desktop, against the
+authoritative core CSV. [Headless DART](LINUX-HEADLESS-OVERVIEW.md) on Linux
+only prepares data. When `headless_host` and `headless_project_dir` are set in
+[Function 0](FUNCTION_0_APP_SETTINGS.md), the Function 4 selection dialog adds
+two buttons:
 
-Core CSVs and backups must remain inside DART's managed project storage.
-A changed core checksum invalidates the comparison. The reserved
-`collection-template.csv` is never overwritten. Missing-in-new records remain
-in the core, and browser merges never retire or move GEMS source folders.
-Desktop selection and retirement behavior described below is unchanged.
+- **Pull From Headless DART...** lists complete packages on the server with
+  row counts, GEMS backfill statistics, and warnings. Pulling verifies the
+  package checksum and collection ID, then saves
+  `DART_export_handoff_JOB-ID.csv` and `DART_handoff_JOB-ID_manifest.json`
+  in `.DART-working-directory`. Function 4 then reopens with the pulled CSV
+  as the newest export. An existing local file with different content is
+  never overwritten.
+- **Push Core Snapshot** copies the configured core CSV to the server as
+  `core-snapshot.csv` (owner-only) so headless jobs use the current schema and
+  existing IDs. The local core is not changed.
+
+If no local `DART_export_*.csv` exists and handoff is configured, Function 4
+opens the pull dialog instead of reporting an error. A pull warns when the
+local core changed since the package's snapshot, and repeats any manifest
+warnings such as `id_conflicts` or local-only derivative paths. Review those
+before merging. Headless packages are already GEMS-backfilled on the server
+when configured, and pulling never retires or moves GEMS source folders.
+Selection, merge, and backup behavior described below is unchanged.
 
 ## Metadata Preservation and Addition Order
 

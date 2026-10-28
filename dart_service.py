@@ -31,7 +31,7 @@ class RedactedFormatter(logging.Formatter):
 class JobService:
     def __init__(self, storage: Storage) -> None:
         if os.name != "posix":
-            raise RuntimeError("Managed browser operation requires POSIX. Use desktop mode on Windows.")
+            raise RuntimeError("Managed headless operation requires POSIX. Use desktop mode on Windows.")
         import fcntl
 
         self.storage = storage
@@ -92,7 +92,7 @@ class JobService:
 
     def require_operator(self, session: str) -> None:
         if self._operator != session:
-            raise ValueError("Another browser tab is the active operator. Close it before taking control.")
+            raise ValueError("Another DART operator session is active. Wait for it to finish.")
         if self._closing:
             raise RuntimeError("The service is shutting down.")
         if self.storage_error:
@@ -103,45 +103,17 @@ class JobService:
         with self._mutex:
             return copy.deepcopy(sorted(self._jobs.values(), key=lambda job: job["created_at"], reverse=True))
 
-    def load_form(self, working: str) -> dict[str, Any]:
-        with self._mutex:
-            settings = project_settings(self.storage, working)
-            path = self.storage.working(working) / ".DART-working-directory" / "web-form.json"
-            form = {}
-            if path.exists():
-                private(path)
-                form = json.loads(path.read_text())
-                if not isinstance(form, dict) or set(form) != {"input_dir"}:
-                    raise ValueError(f"Invalid collection form settings: {path}")
-            # Credentials, mappings, and desktop automatic workflow flags never enter the browser.
-            return {key: settings[key] for key in (*FLAGS, "collection-id", "core_metadata_csv",
-                                                   "gems_metadata_csv", "azure_blob_storage_path")} | form
-
-    def defaults(self) -> dict[str, bool]:
-        self.storage.check()
-        path = self.storage.config / "browser-defaults.json"
-        if not path.exists():
-            return dict(group_compound_objects=False, create_multiple_objects=True, process_OHM_data=False)
-        private(path)
-        value = json.loads(path.read_text())
-        if not isinstance(value, dict) or set(value) != set(FLAGS) or any(type(v) is not bool for v in value.values()):
-            raise ValueError("Invalid reusable browser defaults.")
-        return value
-
-    def configure(self, session: str, working: str, values: dict[str, Any], *, remember_defaults: bool = False) -> None:
+    def configure(self, session: str, working: str, values: dict[str, Any]) -> None:
         with self._mutex:
             self.require_operator(session)
             if self._active:
                 raise ValueError("Wait for the active job before changing settings.")
             save_settings(self.storage, working, values)
-            if remember_defaults:
-                atomic_json(self.storage.config / "browser-defaults.json", {key: values[key] for key in FLAGS})
 
     def validate(self, kind: str, inputs: dict[str, Any]) -> dict[str, Any]:
         if kind not in KINDS:
             raise ValueError(f"Unknown workflow: {kind}")
-        allowed = {"working_dir", "input_dir", "csv_path", "allow_uploads", "overwrite", "backfill",
-                   "comparison", "confirm_merge", "selected_added", "selected_fields"}
+        allowed = {"working_dir", "input_dir", "csv_path", "allow_uploads", "overwrite", "backfill", "derivatives"}
         if set(inputs) - allowed:
             raise ValueError("Unexpected job input keys.")
         values = dict(inputs)
@@ -149,47 +121,40 @@ class JobService:
         settings = project_settings(self.storage, values["working_dir"])
         if not settings["collection-id"]:
             raise ValueError("Save this collection's settings before submitting jobs.")
-        if kind in {"analyze", "export", "compare", "merge"}:
+        if kind in {"analyze", "export", "handoff", "prepare"}:
             path = self.storage.managed(str(settings["core_metadata_csv"]))
             valid, error = app.validate_core_metadata_csv(str(path))
             if not valid:
                 raise ValueError(error)
-        for flag in ("allow_uploads", "overwrite", "backfill", "confirm_merge"):
+        # GEMS backfill happens on the server by default whenever the project names a GEMS CSV.
+        values.setdefault("backfill", bool(settings["gems_metadata_csv"]))
+        values.setdefault("derivatives", True)
+        for flag in ("allow_uploads", "overwrite", "backfill", "derivatives"):
             values.setdefault(flag, False)
             if type(values[flag]) is not bool:
                 raise ValueError(f"{flag} must be a boolean.")
         if values["overwrite"] and not values["allow_uploads"]:
             raise ValueError("Overwrite requires explicit per-job upload consent.")
         if values["allow_uploads"]:
-            if kind not in {"export", "derivatives"}:
-                raise ValueError("Uploads are only permitted for export and derivative jobs.")
+            if kind not in {"export", "derivatives", "prepare"}:
+                raise ValueError("Uploads are only permitted for export, derivative, and prepare jobs.")
             if not os.environ.get("DART_AZURE_CONNECTION_STRING") or not settings["azure_blob_storage_path"]:
                 raise ValueError("Uploads require an Azure path and a credential in the private environment file.")
-        if kind in {"analyze", "export"}:
+        if values["backfill"] and kind in {"handoff", "prepare"} and not settings["gems_metadata_csv"]:
+            raise ValueError("GEMS backfill requested, but this project has no gems_metadata_csv.")
+        if kind in {"analyze", "export", "prepare"}:
             values["input_dir"] = str(self.storage.source(str(values.get("input_dir", "")), directory=True))
             if Path(values["working_dir"]).is_relative_to(values["input_dir"]):
                 raise ValueError("The working directory must not be inside the source scan tree.")
-        if kind in {"derivatives", "compare"}:
+        if kind in {"derivatives", "handoff"}:
             values["csv_path"] = str(self.storage.managed(str(values.get("csv_path", ""))))
-        if kind == "merge":
-            if not values["confirm_merge"]:
-                raise ValueError("Explicit merge confirmation is required.")
-            comparison = Path(str(values.get("comparison", "")))
-            if comparison.parent.parent != self.storage.jobs or comparison.name != "comparison.json":
-                raise ValueError("Choose a completed comparison from this service's history.")
-            if not valid_job_id(comparison.parent.name) or self._jobs.get(comparison.parent.name, {}).get("state") != "succeeded":
-                raise ValueError("Comparison job has not succeeded.")
-            private(comparison)
-            for key in ("selected_added", "selected_fields"):
-                if not isinstance(values.get(key), list):
-                    raise ValueError(f"{key} must be a list of reviewed selections.")
         # Do not persist irrelevant fields (including a previous job's write consent).
         keys = {"working_dir"}
-        keys |= {"input_dir"} if kind in {"analyze", "export"} else set()
-        keys |= {"csv_path"} if kind in {"derivatives", "compare"} else set()
-        keys |= {"allow_uploads", "overwrite"} if kind in {"export", "derivatives"} else set()
-        keys |= {"backfill"} if kind == "compare" else set()
-        keys |= {"comparison", "confirm_merge", "selected_added", "selected_fields"} if kind == "merge" else set()
+        keys |= {"input_dir"} if kind in {"analyze", "export", "prepare"} else set()
+        keys |= {"csv_path"} if kind in {"derivatives", "handoff"} else set()
+        keys |= {"allow_uploads", "overwrite"} if kind in {"export", "derivatives", "prepare"} else set()
+        keys |= {"backfill"} if kind in {"handoff", "prepare"} else set()
+        keys |= {"derivatives"} if kind == "prepare" else set()
         return {key: values[key] for key in keys}
 
     def submit(self, session: str, kind: str, inputs: dict[str, Any]) -> str:
@@ -264,7 +229,7 @@ class JobService:
             workflow = Workflow(self.storage, job_dir, job_id, self._checkpoint, report)
             job = self._jobs[job_id]
             result = workflow.run(job["kind"], job["inputs"])
-            # A committed merge/export is successful even if cancellation arrives after its final atomic commit.
+            # A committed export/package is successful even if cancellation arrives after its final atomic commit.
             self._update(job_id, state="succeeded", message="Completed", result=result, progress=1, finished_at=now())
             handler.emit(logging.LogRecord("dart.job", logging.INFO, "", 0, "Completed", (), None))
         except Exception as exc:

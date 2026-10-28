@@ -2,9 +2,11 @@
 
 ## Optional Managed Linux Architecture
 
-The native Flet entry point remains `app.py`; managed Linux/browser and
-headless operation use `dart_linux.py`. See
-[Installation](INSTALL-LINUX.md), [Operation](LINUX-WEB-OVERVIEW.md), and
+The native Flet entry point remains `app.py`; managed headless Linux
+operation uses `dart_linux.py`. Headless DART prepares data up to the point
+of merge; desktop DART pulls handoff packages and performs the human
+compare/merge review in Function 4. See
+[Installation](INSTALL-LINUX.md), [Operation](LINUX-HEADLESS-OVERVIEW.md), and
 [Acceptance](LINUX-ACCEPTANCE.md).
 
 - `dart_processing.py` contains the extracted compound algorithm, stable-path
@@ -15,15 +17,20 @@ headless operation use `dart_linux.py`. See
 - `dart_storage.py` requires explicit private roots, markers, permissions,
   source allowlists and real mount points, with no automatic fallback.
 - `dart_service.py` owns advisory locks on both roots, one operator lease,
-  one non-browser-owned worker, atomic job state, progress, redacted logs,
+  one worker, atomic job state, progress, redacted logs,
   cancellation, and restart-to-interrupted recovery.
-- `dart_web.py` provides server-path controls, action-local errors, history,
-  explicit upload consent, and selective comparison/merge review.
-- `dart_acceptance.py` exercises isolated disposable roots and a separate
-  loopback port, retains evidence, and leaves unverified manual checks pending.
+- `dart_handoff.py` defines the handoff package format (CSV plus a manifest
+  with checksums, core-snapshot hash, ID conflicts, and warnings) and the
+  desktop's SSH pull/push helpers. Packages are written with the manifest
+  last, so incomplete packages are never offered for pull.
+- `dart_linux.py` is the headless CLI: storage initialization, collection
+  configuration, `analyze`/`export`/`derivatives`/`handoff`/`prepare` jobs,
+  and job history. There is no browser UI and no server compare/merge.
+- `dart_acceptance.py` exercises isolated disposable roots and the headless
+  CLI, retains evidence, and leaves unverified manual checks pending.
 
 Managed settings retain collection-scoped ID maps. The private environment
-file is authoritative for browser credentials; no encryption format or
+file is authoritative for headless credentials; no encryption format or
 archival-path migration is performed. All local writes stay under DART
 managed storage. Sources are read-only and never automatically retired.
 Desktop operation is refused on these new marked roots to avoid bypassing the

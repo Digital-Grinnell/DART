@@ -6,6 +6,7 @@ logging, function management, and help documentation based on OHM's proven UI.
 
 import flet as ft
 from functools import partial
+import dart_handoff
 from dart_processing import (
     analyze_compound_objects as shared_analyze_compound_objects,
     build_export_rows, compare_metadata_rows, get_derivative_azure_paths, get_display_template, get_stable_path,
@@ -21,6 +22,7 @@ import re
 import csv
 import shutil
 import tempfile
+import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional, Tuple, Union
@@ -71,7 +73,7 @@ def reject_managed_desktop_write(path: Union[str, Path]) -> None:
     """Managed roots have a separate writer protocol; native projects are unchanged."""
     resolved = Path(path).resolve()
     if any((parent / ".dart-storage").exists() for parent in (resolved, *resolved.parents)):
-        raise ValueError("This is managed DART browser storage. Use dart_linux.py rather than the desktop application.")
+        raise ValueError("This is managed headless DART storage. Use dart_linux.py rather than the desktop application.")
 
 # Configure logging
 DATA_DIR = Path.home() / "DART-data"
@@ -159,6 +161,8 @@ DEFAULT_APP_SETTINGS = {
     "gems_metadata_csv": "",
     "azure_blob_storage_path": "",
     "azure_connection_string": "",
+    "headless_host": "",  # SSH target (user@host) running headless DART, e.g. sysadmin@dg-landing
+    "headless_project_dir": "",  # Absolute managed project path on that host
     "file_to_id_map": {},  # Maps full file paths to assigned dg_<epoch> IDs
 }
 
@@ -2334,6 +2338,19 @@ def main(page: ft.Page):
             selectable=True,
         )
 
+        headless_host_field = ft.TextField(
+            label="headless_host",
+            value=str(settings.get("headless_host", "")),
+            hint_text="Optional SSH target running headless DART, e.g. sysadmin@dg-landing (key-based login required)",
+            width=500,
+        )
+        headless_project_dir_field = ft.TextField(
+            label="headless_project_dir",
+            value=str(settings.get("headless_project_dir", "")),
+            hint_text="Optional absolute server project path, e.g. /data/dart/data/projects/<collection-id>",
+            width=500,
+        )
+
         def close_dialog(evt):
             settings_dialog.open = False
             page.update()
@@ -2432,6 +2449,13 @@ def main(page: ft.Page):
                     update_status(f"Azure path validation failed: {msg}", is_error=True)
                     return
 
+            headless_host_value = (headless_host_field.value or "").strip()
+            headless_project_dir_value = (headless_project_dir_field.value or "").strip()
+            valid, msg = dart_handoff.validate_remote_settings(headless_host_value, headless_project_dir_value)
+            if not valid:
+                update_status(f"Headless DART setting error: {msg}", is_error=True)
+                return
+
             new_settings = dict(settings)
             new_settings.update({
                 "group_compound_objects": parsed_group_compound,
@@ -2445,6 +2469,8 @@ def main(page: ft.Page):
                 "gems_metadata_csv": gems_csv_path,
                 "azure_blob_storage_path": azure_path_value,
                 "azure_connection_string": (azure_connection_field.value or "").strip(),
+                "headless_host": headless_host_value,
+                "headless_project_dir": headless_project_dir_value,
             })
             ok, save_result = save_app_settings(working_dir, new_settings)
             if not ok:
@@ -2541,6 +2567,14 @@ def main(page: ft.Page):
                             weight=ft.FontWeight.BOLD,
                         ),
                         azure_connection_field,
+                        ft.Container(height=8),
+                        ft.Text(
+                            "Headless DART Handoff (optional; used by Function 4):",
+                            size=12,
+                            weight=ft.FontWeight.BOLD,
+                        ),
+                        headless_host_field,
+                        headless_project_dir_field,
                     ],
                     tight=True,
                     scroll=ft.ScrollMode.AUTO,
@@ -3986,6 +4020,128 @@ def main(page: ft.Page):
             add_log_message(f"[ERROR] Refusing to merge into reserved template file: {old_csv.name}")
             return
 
+        headless_host = (settings.get("headless_host", "") or "").strip()
+        headless_project_dir = (settings.get("headless_project_dir", "") or "").strip()
+        headless_configured = bool(headless_host and headless_project_dir)
+        collection_id = settings.get("collection-id", "")
+
+        def run_in_background(work, done):
+            """Keep the UI responsive during SSH; done(result, error) runs on the worker thread."""
+            def target():
+                try:
+                    result = work()
+                except Exception as ex:
+                    done(None, ex)
+                else:
+                    done(result, None)
+            threading.Thread(target=target, daemon=True).start()
+
+        def push_core_snapshot_click(ev):
+            update_status(f"Pushing core snapshot to {headless_host}...")
+            add_log_message(f"[INFO] Pushing {old_csv.name} to {headless_host}:{headless_project_dir}/{dart_handoff.CORE_SNAPSHOT_NAME}")
+
+            def done(result, error):
+                if error:
+                    update_status(f"Core snapshot push failed: {error}", is_error=True)
+                    add_log_message(f"[ERROR] Core snapshot push failed: {error}")
+                else:
+                    update_status("Core snapshot pushed to headless DART")
+                    add_log_message(f"[SUCCESS] Core snapshot pushed (sha256 {result[:12]}...)")
+                page.update()
+
+            run_in_background(
+                lambda: dart_handoff.push_core_snapshot(headless_host, headless_project_dir, str(old_csv)), done)
+
+        def open_headless_handoff_dialog(ev=None):
+            handoff_status = ft.Text(f"Contacting {headless_host}...", size=12, selectable=True)
+            package_list = ft.Column([], spacing=6, scroll=ft.ScrollMode.AUTO, expand=True)
+
+            def close_handoff_dialog(evt):
+                handoff_dialog.open = False
+                page.update()
+
+            handoff_dialog = ft.AlertDialog(
+                modal=True,
+                title=ft.Text("📥 Pull From Headless DART", weight=ft.FontWeight.BOLD),
+                content=ft.Container(
+                    content=ft.Column([
+                        ft.Text(f"Server project: {headless_host}:{headless_project_dir}", size=12, selectable=True),
+                        ft.Text("Packages are checksum-verified, then copied into this project's "
+                                ".DART-working-directory for normal Function 4 review and merge.",
+                                size=11, italic=True, color=ft.Colors.GREY_700),
+                        handoff_status,
+                        ft.Divider(),
+                        package_list,
+                    ], spacing=4),
+                    width=650,
+                    height=450,
+                ),
+                actions=[ft.TextButton("Close", on_click=close_handoff_dialog)],
+            )
+            page.overlay.append(handoff_dialog)
+            handoff_dialog.open = True
+            page.update()
+
+            def pull(job_id):
+                handoff_status.value = f"Pulling package {job_id[:12]}..."
+                handoff_status.color = None
+                page.update()
+
+                def done(result, error):
+                    if error:
+                        handoff_status.value = f"❌ Pull failed: {error}"
+                        handoff_status.color = ft.Colors.RED
+                        add_log_message(f"[ERROR] Handoff pull failed: {error}")
+                        page.update()
+                        return
+                    add_log_message(f"[SUCCESS] Pulled handoff {job_id} -> {Path(result['csv']).name} ({result['rows']} rows)")
+                    for warning in result["warnings"]:
+                        add_log_message(f"[WARN] Handoff: {warning}")
+                    handoff_dialog.open = False
+                    page.update()
+                    # Reopen Function 4 so the pulled export is offered as the newest CSV.
+                    on_function_4_compare_merge(None)
+
+                run_in_background(lambda: dart_handoff.pull_package(
+                    headless_host, headless_project_dir, job_id, dart_working_dir,
+                    expected_collection_id=collection_id, local_core_csv=str(old_csv)), done)
+
+            def listed(packages, error):
+                if error:
+                    handoff_status.value = f"❌ {error}"
+                    handoff_status.color = ft.Colors.RED
+                    add_log_message(f"[ERROR] Could not list headless handoff packages: {error}")
+                elif not packages:
+                    handoff_status.value = ("No complete handoff packages for this collection-id. "
+                                            "Run 'dart_linux.py --job prepare' on the server first.")
+                else:
+                    handoff_status.value = f"{len(packages)} package(s), newest first:"
+                    for manifest in packages:
+                        local_csv, _ = dart_handoff.local_package_paths(dart_working_dir, manifest["job_id"])
+                        backfill = manifest.get("gems_backfill")
+                        lines = [
+                            f"Job {manifest['job_id']}  ·  {str(manifest.get('created_at', ''))[:19]}  ·  {manifest.get('rows')} rows",
+                            ("GEMS backfill: "
+                             + (f"{backfill.get('matched_rows')} matched rows, {backfill.get('fields_filled')} fields filled"
+                                if backfill else "not applied")),
+                        ]
+                        lines.extend(f"⚠️ {warning}" for warning in manifest.get("warnings", []))
+                        package_list.controls.append(ft.Container(
+                            content=ft.Column([
+                                ft.Text("\n".join(lines), size=12, selectable=True),
+                                ft.ElevatedButton(
+                                    "Pulled ✓ (Pull Again)" if local_csv.exists() else "Pull For Review",
+                                    on_click=lambda e, job_id=manifest["job_id"]: pull(job_id),
+                                ),
+                            ], spacing=4),
+                            padding=8,
+                            border=ft.border.all(1, ft.Colors.GREY_300),
+                            border_radius=4,
+                        ))
+                page.update()
+
+            run_in_background(lambda: dart_handoff.list_remote_packages(
+                headless_host, headless_project_dir, expected_collection_id=collection_id), listed)
         # Find DART_export CSVs in the DART working subdirectory, newest first.
         # GEMS-backfilled outputs are intermediate files that Function 4 regenerates, so they aren't offered.
         csv_files = sorted(
@@ -3998,6 +4154,10 @@ def main(page: ft.Page):
         )
         
         if len(csv_files) < 1:
+            if headless_configured:
+                add_log_message("[INFO] No local DART_export CSVs yet; checking headless DART for handoff packages")
+                open_headless_handoff_dialog()
+                return
             update_status("Error: No DART_export CSV files found in DART working directory", is_error=True)
             add_log_message(f"[ERROR] No DART_export CSV files found in {dart_working_dir}")
             add_log_message("[INFO] Run Function 2 first to generate a CSV export")
@@ -5369,6 +5529,27 @@ Detailed results: {output_diff.name}
             page.update()
             add_log_message(f"[INFO] Using default (newest) CSV: {new_csv.name}")
             perform_comparison(new_csv)
+
+        def pull_from_headless_click(ev):
+            select_dialog.open = False
+            page.update()
+            open_headless_handoff_dialog()
+
+        if headless_configured:
+            headless_controls = [
+                ft.Text(f"Headless DART: {headless_host}:{headless_project_dir}", size=11, color=ft.Colors.GREY_700),
+                ft.Row([
+                    ft.ElevatedButton("Pull From Headless DART...", icon=ft.Icons.DOWNLOAD,
+                                      on_click=pull_from_headless_click),
+                    ft.OutlinedButton("Push Core Snapshot", icon=ft.Icons.UPLOAD,
+                                      on_click=push_core_snapshot_click),
+                ]),
+            ]
+        else:
+            headless_controls = [ft.Text(
+                "Headless DART handoff off: set headless_host and headless_project_dir in Function 0.",
+                size=11, italic=True, color=ft.Colors.GREY_700,
+            )]
         
         # Build CSV selection list
         csv_choices = []
@@ -5416,9 +5597,11 @@ Detailed results: {output_diff.name}
                     gems_backfill_note,
                     gems_retire_checkbox,
                     gems_retire_note,
+                    ft.Divider(),
+                    *headless_controls,
                 ], spacing=4),
                 width=600,
-                height=500,
+                height=560,
             ),
             actions=[
                 ft.ElevatedButton("Use Newest", on_click=use_default, icon=ft.Icons.STAR),

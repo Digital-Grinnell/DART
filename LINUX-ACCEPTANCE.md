@@ -1,29 +1,26 @@
-# Linux Browser Acceptance Testing
+# Headless Linux Acceptance Testing
 
 This is **verification**, not installation or everyday operation.
-See [Installation](INSTALL-LINUX.md) and [Operating Overview](LINUX-WEB-OVERVIEW.md).
+See [Installation](INSTALL-LINUX.md) and [Operating Overview](LINUX-HEADLESS-OVERVIEW.md).
 
 ## Safety And Test Boundaries
 
 The finite runner is offline by default and has **no live API/upload mode**.
 It never loads the normal private environment file. It creates a unique
-private disposable tree, initializes only its own roots, and uses port 8561.
-It never mounts/unmounts a share, modifies GEMS, or stops an unrelated process.
+private disposable tree and initializes only its own roots. It opens no
+network listener, never mounts/unmounts a share, modifies GEMS, or stops an
+unrelated process. Only its own temporary subprocesses are stopped.
 
-Normal DART is 8560. GEMS uses 8550/8551. The runner rejects those three ports.
-If the acceptance port is occupied, it fails rather than killing its owner.
-Only its own temporary subprocesses are stopped.
-
-The test suite denies network connections in managed workflow tests.
-Acceptance adds a deliberate loopback-only HTTP startup check. No originals
-from institutional storage, actual collection CSVs, or live credentials are
-needed. Live operations require explicit operator approval and per-job UI
+The test suite denies network connections in managed workflow tests, and SSH
+pull/push tests use a fake runner rather than a real host. No originals from
+institutional storage, actual collection CSVs, or live credentials are
+needed. Live operations require explicit operator approval and per-job
 consent; do not reinterpret an offline PASS as that approval.
 
 ## Run The Finite Automated Checks
 
-From the approved Linux checkout, or a Mac development checkout with the web
-requirements already installed:
+From the approved Linux checkout, or a Mac development checkout with the
+Linux requirements already installed:
 
 ```bash
 cd ~/GitHub/DART
@@ -38,7 +35,7 @@ existing owner-only, approved evidence parent:
 ```bash
 .venv/bin/python -m dart_acceptance \
   --evidence-parent /APPROVED/PRIVATE/EVIDENCE-DIRECTORY \
-  --port 8561 --timeout 90
+  --timeout 90
 ```
 
 The parent is not provisioned by the runner. Each invocation still creates
@@ -61,35 +58,37 @@ something a Python timeout can guarantee to repair.
 | Component | Required Pass Criteria | Evidence |
 | --- | --- | --- |
 | Baseline | `pip check` and offline unit suite exit zero; OS/interpreter/revision captured | `host.json`, `packages.log`, `revision.log`, `worktree.log`, `pip-check.log`, `tests.log` |
-| Offline Workflows | One fixture source produces one export row; derivatives are generated; comparison and selected merge succeed; core has exactly one row; pre/post source SHA-256 matches; backup exists | `offline-results.json`, isolated job records and output CSVs |
+| Offline Workflows | One fixture source produces one export row; derivatives are generated; a handoff package is written with a manifest whose CSV checksum verifies; the core snapshot is byte-for-byte unchanged; pre/post source SHA-256 matches | `offline-results.json`, isolated job records, export CSVs, and `handoff/JOB-ID/` |
 | Lifecycle | Controlled real derivative job becomes `cancelled`; killed child becomes `interrupted` after reopening; neither is `succeeded`; each retains two partial JPEGs | `lifecycle.json`, `cancel.log`, `interrupt.log`, job records |
 | Storage Fail-Closed | Removing only the isolated marker blocks submission; marker is not recreated; restoring the test marker permits checks again | `storage-failure.json` |
-| Web HTTP And Controls | Real Flet application starts on loopback; HTTP 200 includes Flutter bootstrap; second process is rejected; private files are not exposed; real websocket actions validate locally, load settings, export successfully, enforce a read-only second session, and hand off after disconnect | `web.log`, `http.json`, `http-response.html`, `second-writer.log`, `web-controls.json` |
+| Headless CLI | `dart_linux --job prepare` succeeds and writes a package manifest; a second process is refused while the first holds the writer locks; the removed `--web` option is rejected | `cli-prepare.log`, `second-writer.log`, `web-removed.log`, `headless-cli.json` |
 
 Lifecycle checks introduce a controlled pause after real local derivative
 work. They do not claim to reproduce an Azure transaction or actual network
 storage outage. The interruption test kills **only its own child**.
-
-The transport probe uses the pinned Flet runtime's actual websocket protocol,
-not mocked page callbacks. It does not claim to validate Firefox layout,
-clipboard behavior, visual content, or the Mac-to-Linux SSH tunnel.
 
 The focused unit suite also checks:
 
 - Stable ID reuse, nested versus flat compounds, and the original compound
   processing body's extraction fingerprint.
 - Canonical/legacy filename columns and OHM CSV row shape.
-- Exact image bounds, selective merge, protected identifiers, retained missing
-  records, duplicate-key rejection, and stale-comparison refusal.
-- GEMS backfill without identifier replacement.
-- Saved boolean defaults versus collection-specific fields.
+- Exact image bounds, handoff packages that never write the core, duplicate-key
+  rejection, and rejection of the removed compare/merge job kinds.
+- Core-snapshot ID reuse only for unique filenames, with ID conflicts reported
+  in the manifest.
+- Desktop handoff settings validation, package listing by collection,
+  checksum/collection/clobber refusal on pull, SSH failure reporting, and
+  quoted atomic core-snapshot push (with a fake SSH runner).
+- Server GEMS backfill (on by default when configured) without identifier
+  replacement.
 - Single-writer locks across processes, including a changed config root.
-- Cancellation and operator handoff without job ownership by a tab.
+- Cancellation, concurrent-job refusal, and restart-to-interrupted recovery.
 - Missing markers, failed atomic replacement, storage failures during a job,
   private permissions, symlink escapes, and unavailable source mounts.
 - Credential/signed-URL redaction and upload opt-in, with no live Azure calls.
 - Safe module import without creating home-directory application storage.
-- Real managed headless export and existing helper-script CLI help entry points.
+- Real headless `--configure` and `--job prepare` CLI runs, and existing
+  helper-script CLI help entry points.
 
 For a targeted developer run:
 
@@ -129,26 +128,25 @@ approved evidence to institutional retention storage before temporary-area
 cleanup. Removing a disposable test tree is a separate deliberate action,
 never a reason to remove a source tree or active service root.
 
-## Manual Firefox And SSH-Tunnel Checks
+## Manual Desktop Handoff Checks
 
 After administrator-approved installation, use the normal operating guide.
 Use disposable approved collection data, not preservation originals.
 
 | Check | Required Pass Criteria |
 | --- | --- |
-| Listener And Tunnel | Linux reports only `127.0.0.1:8560`; Firefox on Mac reaches it through the documented tunnel |
-| Root Display | Configuration and data match the approved DART roots, not GEMS/pilot/home fallbacks |
-| Local Errors | Invalid source, missing CSV, unsaved settings, and refused merge appear beside their respective actions |
-| Copyability | Copy and paste a full source path, result CSV path, and job URL without truncation |
-| Operator Handoff | Second tab is read-only; closing the owner releases controls without stopping its job |
-| Tab Closure | Close a tab during a job; reopen the job URL/history and observe the same ID and progress |
-| Cancellation | Request cancellation; terminal state is `cancelled`, or correctly `succeeded` if commit already finished; inspect partial output |
-| Settings | Reopen a project and recover its fields; open a new form and see only opted-in boolean defaults, not another collection's ID/paths |
-| Review Safety | Titles and blank replacements default unchecked; IDs cannot be changed; reserved template cannot merge |
+| SSH Key Access | `ssh -o BatchMode=yes HOST true` succeeds from the operator Mac without a prompt |
+| Settings | Function 0 saves valid `headless_host`/`headless_project_dir`, rejects half-set or option-like values, and blank values turn the buttons off |
+| Core Snapshot Push | **Push Core Snapshot** writes `core-snapshot.csv` with mode `0600` in the server project; the local core is unchanged |
+| Headless Prepare | `dart_linux --job prepare` succeeds; `--list-jobs` shows it; the package has `export.csv` and `manifest.json` |
+| Pull | **Pull From Headless DART...** lists only complete packages for this collection; pulling saves `DART_export_handoff_JOB-ID.csv`; Function 4 reopens with it as newest |
+| Pull Safety | A tampered CSV, wrong collection, or differing local file is refused with nothing copied |
+| Snapshot Drift | After changing the local core, a pull warns that the core changed since the snapshot |
+| ID Conflicts | A deliberately conflicting filename/ID appears in manifest warnings and is reviewed, not silently merged |
+| Review Safety | Function 4 review, selection, backup, and reserved-template refusal behave as in ordinary desktop use |
+| Cancellation | Ctrl+C during a headless job yields `cancelled`, or correctly `succeeded` if commit already finished; inspect partial output |
 
-Record browser/version, host, job IDs, screenshots if appropriate, and actual
-outcomes. Integrated Chromium smoke checks on a Mac are not a substitute for
-Firefox on Mac through an SSH tunnel to dg-landing.
+Record desktop DART version, host, job IDs, and actual outcomes.
 
 ## Manual Content And Real Source Review
 
@@ -181,7 +179,8 @@ Not run by the automated suite. Get approval for the exact disposable account,
 existing containers, collection path, source fixtures, expected cost, and
 cleanup procedure. Put credentials only in the private environment file.
 
-Use browser upload consent for export/derivatives and record the job IDs.
+Use per-job `allow_uploads` consent for export/derivatives/prepare and record
+the job IDs.
 Verify expected blob names and byte hashes, URL reachability under the
 approved access policy, expected derivative appearance, no overwrite when
 overwrite is unchecked, and controlled replacement only when separately
@@ -200,7 +199,7 @@ Agree on a disposable target and an outage plan. Observe reads, writes,
 progress, cancellation, and state persistence during the outage. Required:
 no alternate home/local output tree, no false `succeeded`, no source changes,
 explicit storage errors, and safe retention of partial output. If job-state
-storage itself is unavailable, the UI may show `interrupted` only in memory;
+storage itself is unavailable, the job may show `interrupted` only in memory;
 after storage is restored and the service is restarted, the last persisted
 active record must become `interrupted`.
 
@@ -246,14 +245,14 @@ the local development render). If exporting offline, point its Mermaid
 renderer setting at an administrator-approved local copy rather than
 assuming a CDN is reachable.
 
-The overview uses horizontal flow, short plain labels, `htmlLabels: false`,
+The overview uses compact vertical flow, short plain labels, `htmlLabels: false`,
 18-pixel diagram fonts, and print-size bounds. Keep installation, everyday
 operation, and acceptance as linked separate documents. A Mermaid source
 block or HTML rendering alone is not proof of the PDF result.
 
 ## Acceptance Decision
 
-Maintain separate results for automated checks, manual browser checks,
+Maintain separate results for automated checks, manual desktop handoff checks,
 content/source review, approved Azure actions, supervised outages,
 institutional restore, and PDF review. Only the operator/administrator can
 approve deployment. A runner report intentionally retains overall acceptance

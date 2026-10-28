@@ -7,29 +7,26 @@ import json
 import os
 import platform
 import signal
-import socket
 import subprocess
 import sys
 import tempfile
 import time
 import traceback
-from contextlib import ExitStack, contextmanager
+from contextlib import contextmanager
 from pathlib import Path
-from urllib.error import URLError
-from urllib.request import ProxyHandler, build_opener
 
 from dart_storage import MARKER, Storage, atomic_json, private, redact
 
 REPOSITORY = Path(__file__).resolve().parent
 PENDING = [
-    "Firefox-on-Mac SSH tunnel, operator handoff, copy/paste, reconnect, and action-local error usability",
+    "Desktop DART SSH key access, core snapshot push, handoff pull, and Function 4 review on an operator Mac",
     "Native desktop application interaction and existing CLI checks on supported operator machines",
     "Administrator-approved read-only //storage mount and real source-path/identifier review",
     "Real collection content, compound relationships, GEMS backfill, and OHM transcript review",
     "Explicitly authorized Azure uploads and overwrite verification in a disposable approved container/path",
     "Administrator-supervised actual storage outage and recovery",
     "Institutional backup restoration into separate roots",
-    "dg-landing installation, HTTP startup, private root permissions, and operational approval",
+    "dg-landing installation, headless CLI startup, private root permissions, and operational approval",
     "VS Code Markdown PDF rendering and one-printed-page diagram inspection",
 ]
 
@@ -103,8 +100,8 @@ def configure(service, source: Path, work: Path, core: Path) -> None:
 
 
 class Runner:
-    def __init__(self, root: Path, port: int, timeout: float) -> None:
-        self.root, self.port, self.timeout = root, port, timeout
+    def __init__(self, root: Path, timeout: float) -> None:
+        self.root, self.timeout = root, timeout
         atomic_json(root / "acceptance-root.json", {"purpose": "DART isolated acceptance v1"})
         for name in ("config", "data"):
             (root / name).mkdir(mode=0o700)
@@ -114,9 +111,8 @@ class Runner:
         self.env = {key: value for key, value in os.environ.items()
                     if not key.startswith(("DART_", "FLET_")) and not any(
                         word in key.upper() for word in ("SECRET", "TOKEN", "PASSWORD", "CONNECTION_STRING", "API_KEY"))}
-        self.env.update(FLET_SERVER_IP="127.0.0.1", FLET_SERVER_PORT=str(port))
         self.results = [{"check": name, "status": "PENDING"} for name in
-                        ("baseline", "offline_workflows", "lifecycle", "storage_fail_closed", "web_http")]
+                        ("baseline", "offline_workflows", "lifecycle", "storage_fail_closed", "headless_cli")]
 
     def report(self) -> None:
         atomic_json(self.root / "report.json", {
@@ -136,7 +132,7 @@ class Runner:
 
     def baseline(self) -> None:
         atomic_json(self.root / "host.json", dict(platform=platform.platform(), python=sys.version,
-                                                executable=sys.executable, port=self.port))
+                                                executable=sys.executable))
         self.command("revision", ["git", "rev-parse", "HEAD"])
         self.command("worktree", ["git", "--no-pager", "status", "--short"])
         self.command("packages", [sys.executable, "-m", "pip", "freeze"])
@@ -147,7 +143,7 @@ class Runner:
         from dart_service import JobService
         from dart_workflows import digest, read_csv
         source, work, core = fixture(self.storage)
-        before = digest(source / "sample.jpg")
+        before, core_before = digest(source / "sample.jpg"), digest(core)
         with JobService(self.storage) as service:
             configure(service, source, work, core)
             def run(kind: str, **inputs):
@@ -158,17 +154,19 @@ class Runner:
             exported = run("export", input_dir=str(source))
             require(exported["result"]["files"] == 1 and exported["result"]["rows"] == 1, "Wrong export counts.")
             derived = run("derivatives", csv_path=exported["result"]["csv"])
-            compared = run("compare", csv_path=derived["result"]["csv"])
-            merged = run("merge", comparison=compared["result"]["comparison"], confirm_merge=True,
-                         selected_added=[0], selected_fields=[])
-            require(len(read_csv(core)[1]) == 1, "Core must contain exactly one merged row.")
-            require(Path(merged["result"]["backup"]).exists(), "Merge backup missing.")
+            packaged = run("handoff", csv_path=derived["result"]["csv"])
+            manifest = json.loads(Path(packaged["result"]["manifest"]).read_text())
+            package_csv = Path(packaged["result"]["package"]) / manifest["csv"]
+            require(digest(package_csv) == manifest["csv_sha256"], "Package checksum mismatch.")
+            require(len(read_csv(package_csv)[1]) == 1, "Package must contain exactly one row.")
+            require(digest(core) == core_before, "Headless DART must never write the core snapshot.")
             require(digest(source / "sample.jpg") == before, "Source changed.")
             self.exported_csv = exported["result"]["csv"]
-            self.work = work
+            self.work, self.source = work, source
             atomic_json(self.root / "offline-results.json", {
-                "jobs": [job["id"] for job in (exported, derived, compared, merged)],
-                "core": str(core), "source_sha256_before": before, "source_sha256_after": digest(source / "sample.jpg")})
+                "jobs": [job["id"] for job in (exported, derived, packaged)],
+                "package": packaged["result"]["package"], "core_unchanged": True,
+                "source_sha256_before": before, "source_sha256_after": digest(source / "sample.jpg")})
 
     def lifecycle(self) -> None:
         from dart_service import JobService
@@ -221,79 +219,23 @@ class Runner:
             "missing_marker_submission": "blocked", "automatic_recreation": False,
             "actual_mount_outage": "PENDING: administrator supervision required"})
 
-    def web_http(self) -> None:
-        with socket.socket() as probe:
-            probe.bind(("127.0.0.1", self.port))
-        command = [sys.executable, "-m", "dart_linux", "--env-file", str(self.env_file),
-                   "--web", "--port", str(self.port)]
-        opener = build_opener(ProxyHandler({}))
-        with child(command, self.env, self.root / "web.log") as process:
-            def ready():
-                require(process.poll() is None, f"Web startup exited; inspect {self.root / 'web.log'}")
-                try:
-                    with opener.open(f"http://127.0.0.1:{self.port}/", timeout=1) as response:
-                        content = response.read()
-                        if response.status == 200 and b"flutter" in content.lower():
-                            (self.root / "http-response.html").write_bytes(content)
-                            return True
-                except (URLError, TimeoutError, ConnectionError):
-                    return False
-                return False
-            wait_for(ready, self.timeout)
-            second = self.command("second-writer", command, expect_success=False)
+    def headless_cli(self) -> None:
+        from dart_service import JobService
+        inputs = self.root / "prepare-inputs.json"
+        atomic_json(inputs, dict(working_dir=str(self.work), input_dir=str(self.source)))
+        command = [sys.executable, "-m", "dart_linux", "--env-file", str(self.env_file)]
+        self.command("cli-prepare", [*command, "--job", "prepare", "--inputs", str(inputs)])
+        with JobService(self.storage) as service:
+            job = service.jobs()[0]
+            require(job["kind"] == "prepare" and job["state"] == "succeeded", "CLI prepare job did not succeed.")
+            manifest = Path(job["result"]["manifest"])
+            require(manifest.is_file(), "CLI prepare did not write a handoff manifest.")
+            second = self.command("second-writer", [*command, "--list-jobs"], expect_success=False)
             require("Another DART writer" in second.read_text(), "Second writer did not fail for the expected lock reason.")
-            # Ensure application code and private state aren't served as static files.
-            for path in ("app.py", "dart.env", ".git/config"):
-                try:
-                    with opener.open(f"http://127.0.0.1:{self.port}/{path}", timeout=3) as response:
-                        content = response.read()
-                        require(b"DART_CONFIG_DIR=" not in content and b"import flet" not in content,
-                                f"Private resource exposed: {path}")
-                except URLError:
-                    pass
-            self.web_controls()
-            atomic_json(self.root / "http.json", dict(url=f"http://127.0.0.1:{self.port}/",
-                                                    status=200, flutter_bootstrap=True, second_writer="refused"))
-        require(process.poll() is not None, "Temporary web process is still running.")
-
-    def web_controls(self) -> None:
-        """Exercise the actual Flet transport without pretending to review Firefox."""
-        first = FletClient(self.port, self.timeout)
-        second = None
-        try:
-            first.until(lambda: first.find("elevatedbutton", text="Export CSV") is not None)
-            export = first.find("elevatedbutton", text="Export CSV")
-            first.click(export["i"])
-            first.until(lambda: any("absolute Linux server path" in control.get("value", "")
-                                    for control in first.controls.values()))
-            work = first.find("textfield", label="Working Project (Existing Private Server Directory)")
-            first.send("updateControlProps", {"props": [{"i": work["i"], "value": str(self.work)}]})
-            first.click(first.find("elevatedbutton", text="Load This Project's Settings")["i"])
-            first.until(lambda: first.find("textfield", label="Collection-ID (Collection-Specific; Required)").get("value") == "acceptance")
-            old_ids = {path.name for path in self.storage.jobs.iterdir()}
-            first.click(export["i"])
-            first.until(lambda: any("| succeeded: Completed" in control.get("value", "")
-                                    for control in first.controls.values()))
-            new_ids = {path.name for path in self.storage.jobs.iterdir()} - old_ids
-            require(len(new_ids) == 1, "Transport export must submit exactly one job.")
-            job_id = new_ids.pop()
-            job = json.loads((self.storage.jobs / job_id / "job.json").read_text())
-            require(job["state"] == "succeeded" and job["kind"] == "export", "Web transport job did not succeed.")
-            second = FletClient(self.port, self.timeout)
-            second.until(lambda: any("Read-Only: Another Browser" in control.get("value", "")
-                                     for control in second.controls.values()))
-            first.close()
-            second.until(lambda: any(control.get("value") == "Active Operator"
-                                     for control in second.controls.values()))
-            atomic_json(self.root / "web-controls.json", {
-                "transport": "real Flet websocket", "action_local_validation": "PASS",
-                "load_project_settings": "PASS", "export_job": job_id,
-                "second_session_read_only": "PASS", "disconnect_handoff": "PASS",
-                "firefox_visual_usability": "PENDING"})
-        finally:
-            first.close()
-            if second is not None:
-                second.close()
+        web = self.command("web-removed", [*command, "--list-jobs", "--web"], expect_success=False)
+        require("unrecognized arguments: --web" in web.read_text(), "The removed browser mode must be rejected.")
+        atomic_json(self.root / "headless-cli.json", dict(prepare_job=job["id"], manifest=str(manifest),
+                                                          second_writer="refused", browser_mode="removed"))
 
     def run(self) -> int:
         self.report()
@@ -312,61 +254,6 @@ class Runner:
             print("PASS:", result["check"], flush=True)
         print("PENDING: manual checks and deployment approval", flush=True)
         return 0
-
-
-class FletClient:
-    """Small protocol probe for the pinned Flet 0.25.2 runtime."""
-    def __init__(self, port: int, timeout: float) -> None:
-        from websockets.sync.client import connect
-        self._stack = ExitStack()
-        self.connection = self._stack.enter_context(
-            connect(f"ws://127.0.0.1:{port}/ws", open_timeout=10, close_timeout=5))
-        self.controls: dict[str, dict] = {}
-        self.timeout = timeout
-        self.send("registerWebClient", dict(
-            pageName="", pageRoute="/", pageWidth="1200", pageHeight="900", windowWidth="",
-            windowHeight="", windowTop="", windowLeft="", isPWA="false", isWeb="true",
-            isDebug="false", platform="linux", platformBrightness="light", media="{}", sessionId=""))
-
-    def send(self, action: str, payload) -> None:
-        self.connection.send(json.dumps(dict(action=action, payload=payload)))
-
-    def click(self, control_id: str) -> None:
-        self.send("pageEventFromWeb", dict(eventTarget=control_id, eventName="click", eventData=""))
-
-    def find(self, kind: str, **properties):
-        return next((control for control in self.controls.values() if control.get("t") == kind
-                     and all(control.get(key) == value for key, value in properties.items())), None)
-
-    def apply(self, message: dict) -> None:
-        action, payload = message["action"], message["payload"]
-        if action == "pageControlsBatch":
-            for child_message in payload:
-                self.apply(child_message)
-        elif action == "registerWebClient":
-            require(not payload.get("error"), f"Web session error: {payload.get('error')}")
-            self.controls.update(payload["session"]["controls"])
-        elif action == "addPageControls":
-            self.controls.update({control["i"]: control for control in payload["controls"]})
-        elif action == "updateControlProps":
-            for props in payload["props"]:
-                self.controls.setdefault(props["i"], {}).update(props)
-        elif action == "removeControl":
-            for control_id in payload["ids"]:
-                self.controls.pop(control_id, None)
-        elif action == "sessionCrashed":
-            raise RuntimeError(f"Web session crashed: {payload}")
-
-    def until(self, check) -> None:
-        deadline = time.monotonic() + self.timeout
-        while not check():
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                raise TimeoutError("Flet transport did not produce the expected UI state.")
-            self.apply(json.loads(self.connection.recv(timeout=remaining)))
-
-    def close(self) -> None:
-        self._stack.close()
 
 
 def lifecycle_child(args) -> int:
@@ -405,7 +292,6 @@ def lifecycle_child(args) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--evidence-parent", help="Existing private directory; a unique child is retained")
-    parser.add_argument("--port", type=int, default=8561)
     parser.add_argument("--timeout", type=float, default=90)
     parser.add_argument("--lifecycle-child", choices=["cancel", "interrupt"], help=argparse.SUPPRESS)
     parser.add_argument("--root", help=argparse.SUPPRESS)
@@ -415,8 +301,6 @@ def main() -> int:
     os.umask(0o077)
     if args.lifecycle_child:
         return lifecycle_child(args)
-    if args.port in {8550, 8551, 8560} or not 1024 <= args.port <= 65535:
-        parser.error("Acceptance must use its own unprivileged port, not 8550, 8551, or normal DART 8560.")
     if not 1 <= args.timeout <= 600:
         parser.error("--timeout must be between 1 and 600 seconds.")
     parent = None
@@ -426,7 +310,7 @@ def main() -> int:
     # Never read the normal service env file or use its configuration/data roots.
     root = Path(tempfile.mkdtemp(prefix="dart-acceptance-", dir=parent)).resolve()
     print(f"Evidence: {root}", flush=True)
-    return Runner(root, args.port, args.timeout).run()
+    return Runner(root, args.timeout).run()
 
 
 if __name__ == "__main__":

@@ -3,13 +3,15 @@
 ## Purpose
 Generate small and thumbnail derivative images from your original files and upload them to Azure Blob Storage with automatic URL population in your CSV metadata file.
 
-## Managed Linux Browser Derivatives
+## Headless Linux Derivatives
 
-The [browser workflow](LINUX-WEB-OVERVIEW.md) requires an explicit managed export
-CSV path. It validates original source paths rather than guessing translated
-archival locations. It supports local-only processing without Azure; local
-derivative paths are not published URLs. Uploads and overwrites require
-per-job consent.
+[Headless DART](LINUX-HEADLESS-OVERVIEW.md) runs derivatives as the
+`derivatives` job (explicit managed `csv_path`) or inside `prepare`. It
+validates original source paths rather than guessing translated archival
+locations. Without per-job upload consent, derivatives are local only and
+their CSV cells hold local Linux paths, not published URLs; handoff
+manifests flag this with a warning. Derivative files are not transferred to
+the desktop.
 
 Local images, partial results, and updated CSVs are retained under the project's
 hidden working directory with the job ID. Temporary TIFF normalization also

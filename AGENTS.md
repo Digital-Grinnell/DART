@@ -80,6 +80,8 @@ Explain your plan and get confirmation before:
 | `scripts/diagnose_rename_changes.sh` | Troubleshooting legacy field rename fallout |
 | `scripts/migrate_legacy_working_files.py` | One-time migration of legacy DART artifacts into `.DART-working-directory` |
 | `scripts/build_dmg.sh` / `scripts/build_windows_zip.sh` | Distribution packaging |
+| `dart_linux.py` / `dart_workflows.py` / `dart_service.py` / `dart_storage.py` | Headless Linux DART on `dg-landing`: prepares data and handoff packages up to the point of merge; never compares, merges, or writes a core CSV (see `LINUX-HEADLESS-OVERVIEW.md`) |
+| `dart_handoff.py` | Handoff package format plus the desktop's SSH pull/core-snapshot push used by Function 4 |
 | `python_requirements.txt` | Python dependencies |
 
 ## Common Mistakes to Avoid
