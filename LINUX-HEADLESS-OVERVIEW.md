@@ -16,7 +16,7 @@ This is everyday operation **after approved installation and storage setup**.
 For setup, use [Headless Linux Installation](INSTALL-LINUX.md).
 For isolated checks, use [Acceptance Testing](LINUX-ACCEPTANCE.md).
 For a small GEMS-complete collection, use the
-[Social Justice Pilot Runbook](GEMS-HEADLESS-PILOT.md), including copy/paste
+[Collection-Agnostic GEMS-to-DART Runbook](GEMS-HEADLESS-PILOT.md), including copy/paste
 commands for a no-upload rehearsal and a separately approved publishing run.
 
 <style>
