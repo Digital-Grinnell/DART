@@ -107,10 +107,22 @@ export HEADLESS_HOST='sysadmin@dg-landing'
 export LINUX_PROJECT="/data/dart/data/projects/$COLLECTION_ID"
 ```
 
-For Syllabi, for example, use `COLLECTION_ID=syllabi`,
-`JOB_ID=dc70eb8262794ac0aca2a99dbacb89ee`, and
-`CORE_BASENAME=syllabi_metadata`, then rerun the **whole definitions block**
-with those values. Otherwise derived paths can still point to Baumann.
+For Syllabi, paste this **whole replacement definitions block** before the
+launch block. Changing only `COLLECTION_ID` does not recompute existing paths.
+Do not rerun the Baumann block afterward.
+
+```bash
+# MAC. Select Syllabi and recompute EVERY dependent path.
+export COLLECTION_ID='syllabi'
+export JOB_ID='dc70eb8262794ac0aca2a99dbacb89ee'
+export CORE_BASENAME='syllabi_metadata'
+export MAC_DART="$HOME/GitHub/DART"
+export SHOW_REPO="$HOME/GitHub/SHOW"
+export MAC_WORK="$HOME/DART-projects/$COLLECTION_ID"
+export MAC_CORE="$SHOW_REPO/collections/$COLLECTION_ID/_data/$CORE_BASENAME.csv"
+export HEADLESS_HOST='sysadmin@dg-landing'
+export LINUX_PROJECT="/data/dart/data/projects/$COLLECTION_ID"
+```
 
 Use the collection's established Mac Working/Outputs directory if it differs
 from this convention. Never replace an existing core or create a new Linux
@@ -123,17 +135,38 @@ Confirm its schema matches the Linux snapshot.
 # MAC. Launch desktop DART; this terminal remains occupied.
 (
 set -eu
-test -r "$MAC_CORE"
-test "$(basename "$MAC_CORE")" != 'collection-template.csv'
-ssh -o BatchMode=yes "$HEADLESS_HOST" true
-mkdir -p "$MAC_WORK"
+: "${COLLECTION_ID:?Run the collection definitions block first}"
+: "${JOB_ID:?Run the collection definitions block first}"
+: "${MAC_CORE:?Run the collection definitions block first}"
+: "${MAC_WORK:?Run the collection definitions block first}"
+: "${HEADLESS_HOST:?Run the collection definitions block first}"
+: "${LINUX_PROJECT:?Run the collection definitions block first}"
+: "${MAC_DART:?Run the collection definitions block first}"
 printf 'Collection: %s\nJob: %s\nCore: %s\n' "$COLLECTION_ID" "$JOB_ID" "$MAC_CORE"
 printf 'Working/Outputs: %s\nServer: %s:%s\n' "$MAC_WORK" "$HEADLESS_HOST" "$LINUX_PROJECT"
 printf '\nSTOP: These values are NOT applied automatically.\n'
 printf '1. In DART, select Working/Outputs FIRST: %s\n' "$MAC_WORK"
 printf '2. ONLY THEN open Function 0, enter/verify this collection settings, and SAVE.\n'
 printf '3. Keep that folder selected; then open Function 4.\n\n'
-cd "$MAC_DART"
+if [ ! -r "$MAC_CORE" ]; then
+  printf 'ERROR: Core CSV is missing or unreadable: %s\nRerun the complete definitions block for this collection.\n' "$MAC_CORE" >&2
+  exit 1
+fi
+if [ "$(basename "$MAC_CORE")" = 'collection-template.csv' ]; then
+  printf 'ERROR: Select a collection core, not collection-template.csv.\n' >&2
+  exit 1
+fi
+printf 'Checking SSH connectivity to %s...\n' "$HEADLESS_HOST"
+if ! ssh -o BatchMode=yes -o ConnectTimeout=10 "$HEADLESS_HOST" true; then
+  printf 'ERROR: SSH check failed; resolve connectivity before launching.\n' >&2
+  exit 1
+fi
+mkdir -p "$MAC_WORK"
+cd "$MAC_DART" || { printf 'ERROR: Cannot enter DART checkout: %s\n' "$MAC_DART" >&2; exit 1; }
+if [ ! -x .venv/bin/python ] || [ ! -r app.py ]; then
+  printf 'ERROR: This checkout needs a readable app.py and executable .venv/bin/python.\n' >&2
+  exit 1
+fi
 .venv/bin/python app.py
 )
 ```
@@ -141,6 +174,11 @@ cd "$MAC_DART"
 Use a checkout containing desktop headless handoff support, not an older
 packaged application. If the SSH test fails, resolve connectivity first;
 do not rerun publishing to fix a connection problem.
+
+If an older launch block returns immediately with no output, its initial
+`test -r "$MAC_CORE"` may have failed under `set -e`. The revised block above
+prints the selected paths before checking them and reports the failure.
+Syllabi's core is `syllabi_metadata.csv`, **not** `syllabi.csv`.
 
 ### Function 0 Settings
 
