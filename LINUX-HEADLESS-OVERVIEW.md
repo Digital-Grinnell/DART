@@ -292,6 +292,11 @@ individual prepare jobs.
   batch instead of claiming success.
 - Exit `0` / batch `succeeded` means every entry succeeded. Exit `1` / batch
   `failed` means at least one failed. Successful packages remain available.
+- Exit `75` / batch `blocked`, with `stop_reason=low_space`, means disk reserve
+  or conversion headroom was insufficient. The batch stops instead of
+  continuing through collection failures. Unstarted entries remain `pending`;
+  a job stopped at a checkpoint is `failed` with the same stop reason.
+  Inspect partial outputs and reclaim only verified files before retrying.
 - To stop, use `sudo systemctl stop dart-overnight-20261029`. SIGTERM requests
   cooperative cancellation and prevents subsequent submissions; exit `130`
   / batch `cancelled` leaves unstarted entries `pending`. Stopping can take
@@ -401,8 +406,9 @@ Let `WORK` be the project directory and `JOB-ID` the job ID.
 | `WORK/handoff/JOB-ID/gems-backfill.json` | GEMS backfill statistics, when backfill ran |
 
 `manifest.json` is written last, so a package without it is incomplete and is
-never listed for pull. Packages are retained until an operator removes them;
-no automatic cleanup runs.
+never listed for pull. Packages are retained until an operator archives/removes
+them; no automatic cleanup runs. Verified derivative cleanup below retains
+the handoff package and all CSVs.
 
 **Derivatives are not transferred.** Without upload consent, derivative cells
 contain local Linux paths. The manifest flags this as
@@ -429,6 +435,123 @@ Authorize uploads for publishing-ready derivative URLs.
 
 Headless DART never moves GEMS objects into `.complete`, never deletes
 sources, and never publishes a CollectionBuilder site.
+
+## Disk-Space Guards and Verified Cleanup
+
+### Reserve Space Before and During Processing
+
+Headless jobs default to a **50 GiB free-space reserve** on both the configured
+data and configuration filesystems. This is free space, not a 50 GiB allocation
+or a promise that a whole batch will fit. The reserve is checked before job
+submission, before each batch collection's setup, and at processing checkpoints
+(including upload progress). Job records and batch summaries record the
+selected reserve in bytes. Evidence writes are deliberately allowed below the
+reserve so a low-space stop can still save its state.
+
+To select another approved reserve, add `--min-free-gib NUMBER` to the normal
+`--job` or `--batch` command, including a systemd launch:
+
+```bash
+# LINUX PROMPT. Example: require 75 GiB free, with additional conversion headroom.
+.venv/bin/python -m dart_linux --env-file /data/dart/config/dart.env \
+  --batch --inputs /data/dart/config/overnight.json --min-free-gib 75
+```
+
+The value must be finite and at least 1 GiB. Keep a meaningful reserve;
+lowering it is not a substitute for reclaiming storage. Before every derivative
+conversion, DART additionally requires **16 MiB** of operation headroom; for
+TIFFs it adds `width * height * 4` bytes for full-resolution normalization.
+This is a conservative operation allowance, not a complete collection-size
+estimate. Checks are cooperative, not a filesystem quota: another writer or a
+large operation can still consume disk space between checkpoints. Monitor
+`df -h /data` and size limited batches accordingly.
+
+A low-space stop exits `75`. Batches persist `state=blocked` and
+`stop_reason=low_space`; successful collections stay successful, unstarted
+collections stay pending, and any active job's partial outputs remain for
+inspection. Reclaim space, then submit a new queue containing only unfinished
+entries. There is no automatic resume or deletion, and no restart loop should
+be configured for exit `75`.
+
+### Preview and Apply Verified Derivative Cleanup
+
+After a **publishing `prepare` job succeeds**, local copies of its generated
+derivatives can be reclaimed independently of next-day desktop review. The
+complete handoff must contain remote URLs, not rehearsal-only paths. Use the
+exact publishing job ID:
+
+```bash
+# LINUX PROMPT. Preview: verifies Azure contents, removes nothing.
+cd /home/sysadmin/GitHub/DART
+.venv/bin/python -m dart_linux --env-file /data/dart/config/dart.env \
+  --cleanup-derivatives REPLACE_JOB_ID
+
+# After reviewing the exact paths and byte count; verifies Azure again.
+.venv/bin/python -m dart_linux --env-file /data/dart/config/dart.env \
+  --cleanup-derivatives REPLACE_JOB_ID --apply
+```
+
+Both operations acquire the existing writer locks; they cannot run alongside
+a batch or another managed writer. They work below the configured disk reserve
+provided enough space remains to persist receipts. Azure credentials come
+only from the selected private environment file. Verification performs
+**read-only Azure downloads**, streaming bytes through SHA-256 without saving
+extra local copies. This consumes network bandwidth and Azure read operations,
+even for a preview; it does not upload, overwrite, or delete remote blobs.
+
+Cleanup checks the handoff checksum and saved job settings, accepts only the
+job's expected `_SMALL.jpg`/`_TN.jpg` files, matches their URLs to the configured
+Azure account/path, and verifies **size and full SHA-256**, not just existence.
+Downloads are conditional on the blob ETag, and apply rechecks blob versions
+and local files before removal. All candidates must pass verification before
+the first deletion. Missing/changed blobs, altered local files, unknown entries,
+symlinks, rehearsal jobs, failed jobs, or invalid handoffs cause an explicit
+error. Temporary/unknown files from interrupted conversions are retained for
+manual inspection rather than guessed safe.
+
+Each attempt that reaches Azure verification writes a private
+`jobs/JOB-ID/cleanup-<id>.json` receipt listing candidate paths, byte counts,
+SHA-256 values, Azure URLs/ETags, and per-file states. Preview retains every
+candidate; apply removes only the named verified files, leaving the empty
+directory. A repeated apply has no remaining candidates. Cancellation or an
+I/O failure during deletion may leave a partially reclaimed directory; inspect
+the receipt and rerun. A `removing` receipt entry means deletion was about to
+occur and must be reconciled with the actual file after a crash. Never modify
+the project or corresponding Azure blobs while verification/cleanup runs.
+
+This command deliberately retains **original sources, ID maps, settings, core
+snapshots, GEMS metadata/manifests, CSV exports, handoffs, transcripts, job
+records, and batch summaries**. Upload success alone is not proof of content
+identity: normal uploads may skip an existing blob without comparing bytes.
+Cleanup's stronger verification applies only to the selected local
+derivatives, not to originals or whole-collection completeness.
+
+### Reclaim Originals Only After Collection Acceptance
+
+Originals require a separate acceptance gate: verify Azure originals and
+derivatives, finish desktop review/merge, push a fresh core snapshot, and
+verify an independent archival copy before offloading server originals.
+Keep durable ID maps and provenance even after archival offload. Restore
+sources to their original canonical paths if later work requires them; do
+not casually rewrite mappings to follow an archive move.
+
+GEMS's `scripts/offload_migrated.sh` can move already-completed
+`objects/.complete/` contents **beneath `/data/gems/data/migrated/` only** to
+DGIngest, with checksum-based transfer and source removal after successful
+transfer. It runs on the Mac with the network share mounted. It does **not**
+cover ordinary newly processed GEMS run directories, verify Azure, or mark a
+headless DART collection accepted. Review that helper's preview and GEMS
+offload instructions separately; do not broaden its scope or move active
+sources merely because a DART job succeeded.
+
+Batch mode never performs automatic cleanup or original offload between
+collections. For overnight operation, reclaim previously accepted data first,
+then select a queue that fits available headroom. Once a publishing batch
+finishes, preview/apply derivative cleanup for its successful job IDs before
+starting the next batch; local derivative cleanup need not wait for merge.
+Rehearsal batches must retain their local-only derivatives. Superseded metadata
+exports or handoffs may be archived deliberately after review, but this cleanup
+command does not remove them and they usually offer little space savings.
 
 ## Concurrency, Cancellation, and Recovery
 
@@ -457,3 +580,5 @@ before submitting a replacement.
 | Missing storage marker or changed identity | Stop; ask the administrator to verify storage; never initialize a fallback |
 | Mac/UNC source path rejected | Use the approved Linux mount path; DART does not translate paths |
 | Azure error | Review the redacted job log and private configuration; do not paste secrets |
+| Exit `75` or batch `blocked` / `low_space` | Inspect the summary, reclaim verified files, then requeue only unfinished collections; do not delete sources or IDs |
+| Cleanup refuses a blob or unknown local file | Keep local copies; resolve the mismatch/partial output explicitly before retrying |

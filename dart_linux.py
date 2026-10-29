@@ -8,12 +8,13 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import math
 import os
 import signal
 import sys
 import threading
 
-from dart_storage import Storage, load_environment, redact
+from dart_storage import LowDiskSpace, Storage, load_environment, redact
 
 JOB_KINDS = ["analyze", "export", "derivatives", "handoff", "prepare"]
 
@@ -38,14 +39,24 @@ def main() -> int:
     modes.add_argument("--job", choices=JOB_KINDS, help="Run one headless job from --inputs")
     modes.add_argument("--batch", action="store_true", help="Prepare a sequential collection queue from --inputs")
     modes.add_argument("--list-jobs", action="store_true", help="Print job history as JSON")
+    modes.add_argument("--cleanup-derivatives", metavar="JOB_ID",
+                       help="Preview Azure-verified derivative cleanup for one publishing prepare job")
+    parser.add_argument("--apply", action="store_true", help="Apply --cleanup-derivatives after re-verifying Azure")
+    parser.add_argument("--min-free-gib", type=float, default=50,
+                        help="Free-space reserve on config/data filesystems (GiB, minimum 1; default 50)")
     parser.add_argument("--inputs", help="Private JSON file of explicit inputs for --configure, --job, or --batch")
     args = parser.parse_args()
+    if not math.isfinite(args.min_free_gib * 1024**3) or args.min_free_gib < 1:
+        parser.error("--min-free-gib must be finite and at least 1")
+    if args.apply and not args.cleanup_derivatives:
+        parser.error("--apply requires --cleanup-derivatives")
     if os.name != "posix":
         parser.error("Managed mode requires POSIX; use app.py for Windows desktop operation.")
     os.umask(0o077)
     try:
         load_environment(args.env_file)
         storage = Storage.from_environment()
+        storage.min_free_bytes = math.ceil(args.min_free_gib * 1024**3)
         if args.initialize_storage:
             storage.initialize()
             print(f"Initialized DART storage: {storage.config} | {storage.data}")
@@ -60,9 +71,9 @@ def main() -> int:
                 print(json.dumps([{key: job.get(key) for key in ("id", "kind", "state", "created_at", "message", "result")}
                                   for job in service.jobs()], indent=2))
             return 0
-        if not args.inputs:
+        if not args.inputs and not args.cleanup_derivatives:
             parser.error("--configure, --job, and --batch require --inputs")
-        inputs = read_private_json(args.inputs)
+        inputs = read_private_json(args.inputs) if args.inputs else {}
         with JobService(storage) as service:
             service.claim("headless")
             if args.configure:
@@ -81,6 +92,10 @@ def main() -> int:
 
             signal.signal(signal.SIGINT, stop)
             signal.signal(signal.SIGTERM, stop)
+            if args.cleanup_derivatives:
+                from dart_cleanup import cleanup_derivatives
+                print(json.dumps(cleanup_derivatives(service, args.cleanup_derivatives, apply=args.apply), indent=2))
+                return 0
             if args.batch:
                 from dart_batch import run_batch
                 return run_batch(service, inputs, interrupted)
@@ -91,7 +106,12 @@ def main() -> int:
             service._thread.join()
             job = next(job for job in service.jobs() if job["id"] == job_id)
             print(json.dumps(job, indent=2))
+            if job.get("stop_reason") == "low_space":
+                return 75
             return 0 if job["state"] == "succeeded" else (130 if interrupted.is_set() else 1)
+    except LowDiskSpace as exc:
+        print(f"DART low-space stop: {redact(exc)}", file=sys.stderr)
+        return 75
     except (OSError, ValueError, RuntimeError, ImportError) as exc:
         print(f"DART startup/job error: {redact(exc)}", file=sys.stderr)
         return 1

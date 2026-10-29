@@ -22,6 +22,16 @@ descendants, a first-child PDF keeps its existing derivative behavior.
 Compounds without either are explicitly reported. The same image/PDF generation helpers and 800/400-pixel maximum
 bounds are used; the desktop requirements below remain unchanged.
 
+Headless jobs enforce a default 50 GiB disk reserve at checkpoints and require
+additional headroom before conversions (including full-resolution TIFF
+normalization). Low-space stops preserve partial output and halt a batch with
+unstarted collections pending. After a successful publishing `prepare` job,
+`dart_linux --cleanup-derivatives JOB-ID` previews local derivative reclamation;
+`--apply` removes only files whose Azure contents match by size and SHA-256.
+Rehearsal derivatives and all sources, CSVs, handoffs, and ID maps are retained.
+See [Disk-Space Guards and Verified Cleanup](LINUX-HEADLESS-OVERVIEW.md#disk-space-guards-and-verified-cleanup)
+for reserve configuration, exact commands, and receipt/retry behavior.
+
 ## When to Use
 Use this function after Function 2 (Export Assets to CSV and Azure) when you want to:
 - Create web-optimized derivative images for CollectionBuilder

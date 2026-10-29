@@ -16,7 +16,7 @@ from PIL import Image
 
 import dart_batch
 from dart_service import JobService
-from dart_storage import Storage
+from dart_storage import LowDiskSpace, Storage
 from dart_workflows import Cancelled, Workflow, project_settings, read_csv, write_csv
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -221,6 +221,84 @@ class BatchTests(unittest.TestCase):
         self.assertEqual(["cancelled", "pending"], [row["state"] for row in summary["collections"]])
         self.assertFalse((self.storage.projects / "second").exists())
 
+    def test_low_space_before_setup_leaves_all_collections_pending(self):
+        self.storage.min_free_bytes = 10**30
+        self.assertEqual(75, self.run_batch(self.entry("first"), self.entry("second")))
+        summary = self.summary()
+        self.assertEqual("blocked", summary["state"])
+        self.assertEqual("low_space", summary["stop_reason"])
+        self.assertEqual(["pending", "pending"], [row["state"] for row in summary["collections"]])
+        self.assertFalse((self.storage.projects / "first").exists())
+        self.assertEqual([], self.service.jobs())
+
+    def test_single_job_submission_refuses_low_space_before_creating_evidence(self):
+        work = dart_batch.prepare_project(self.service, self.entry("first"))
+        self.storage.min_free_bytes = 10**30
+        with self.assertRaises(LowDiskSpace):
+            self.service.submit("headless", "prepare", dict(working_dir=str(work), input_dir=str(self.source)))
+        self.assertEqual([], self.service.jobs())
+        self.assertEqual([], list(self.storage.jobs.iterdir()))
+
+    def test_low_space_mid_job_persists_failure_and_stops_batch(self):
+        def run(workflow, _kind, _inputs):
+            workflow.storage.min_free_bytes = 10**30
+            workflow.checkpoint()
+
+        with patch.object(Workflow, "run", run):
+            self.assertEqual(75, self.run_batch(self.entry("first"), self.entry("second")))
+        records = self.summary()["collections"]
+        self.assertEqual(["failed", "pending"], [row["state"] for row in records])
+        self.assertEqual("low_space", records[0]["stop_reason"])
+        self.assertEqual("low_space", self.service.jobs()[0]["stop_reason"])
+        self.assertFalse(self.service.storage_error)
+        persisted = json.loads((self.storage.jobs / records[0]["job_id"] / "job.json").read_text())
+        self.assertEqual("failed", persisted["state"])
+        self.assertIn("Low disk space", persisted["message"])
+
+    def test_low_space_between_collections_keeps_success_and_remaining_pending(self):
+        original = Workflow.run
+
+        def run(workflow, kind, inputs):
+            result = original(workflow, kind, inputs)
+            workflow.storage.min_free_bytes = 10**30
+            return result
+
+        with patch.object(Workflow, "run", run):
+            self.assertEqual(75, self.run_batch(self.entry("first"), self.entry("second")))
+        self.assertEqual(["succeeded", "pending"], [row["state"] for row in self.summary()["collections"]])
+
+    def test_reserve_threshold_is_inclusive_and_checked_on_both_filesystems(self):
+        from types import SimpleNamespace
+        self.storage.min_free_bytes = 100
+        with patch("dart_storage.shutil.disk_usage", return_value=SimpleNamespace(free=120)) as usage:
+            self.storage.require_space(additional_bytes=20)
+            self.assertEqual([self.config, self.data], [call.args[0] for call in usage.call_args_list])
+        with patch("dart_storage.shutil.disk_usage", return_value=SimpleNamespace(free=119)):
+            with self.assertRaises(LowDiskSpace):
+                self.storage.require_space(additional_bytes=20)
+        with patch("dart_storage.shutil.disk_usage",
+                   side_effect=[SimpleNamespace(free=500), SimpleNamespace(free=99)]):
+            with self.assertRaises(LowDiskSpace):
+                self.storage.require_space()
+
+    def test_tiff_conversion_requires_extra_headroom_before_generation(self):
+        (self.source / "sample.jpg").unlink()
+        Image.new("RGB", (40, 20), "red").save(self.source / "sample.tiff")
+        requested = []
+        original = self.storage.require_space
+
+        def space(*, additional_bytes=0):
+            requested.append(additional_bytes)
+            if additional_bytes:
+                raise LowDiskSpace("Insufficient conversion headroom")
+            return original()
+
+        with patch.object(self.storage, "require_space", space), patch("app.generate_derivative") as generate:
+            self.assertEqual(75, self.run_batch(self.entry("first"), self.entry("second")))
+        self.assertIn(16 * 1024**2 + 40 * 20 * 4, requested)
+        generate.assert_not_called()
+        self.assertEqual(["failed", "pending"], [row["state"] for row in self.summary()["collections"]])
+
     def test_real_cli_creates_projects_and_reports_batch_exit_status(self):
         self.service.close()
         env = self.config / "dart.env"
@@ -232,6 +310,10 @@ class BatchTests(unittest.TestCase):
         self.assertEqual(0, completed.returncode, completed.stderr + completed.stdout)
         self.assertIn("Batch succeeded.", completed.stdout)
         self.assertEqual(2, len(self.summary()["collections"]))
+        stopped = subprocess.run([*command, "--min-free-gib", "1000000000"], cwd=ROOT,
+                                 capture_output=True, text=True, timeout=30)
+        self.assertEqual(75, stopped.returncode, stopped.stderr + stopped.stdout)
+        self.assertEqual("blocked", self.summary()["state"])
         invalid = self.entry("missing")
         invalid["input_dir"] = str(self.root / "unavailable")
         queue.write_text(json.dumps({"collections": [invalid, self.entry("third")]}))

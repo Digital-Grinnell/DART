@@ -9,7 +9,7 @@ from typing import Any
 
 import app
 from dart_service import JobService, now
-from dart_storage import absolute, atomic_bytes, atomic_json, private, redact
+from dart_storage import LowDiskSpace, absolute, atomic_bytes, atomic_json, private, redact
 from dart_workflows import FLAGS, project_settings, read_csv
 
 ENTRY_KEYS = {"collection_id", "input_dir", "setup", "allow_uploads", "overwrite", "backfill", "derivatives"}
@@ -127,6 +127,7 @@ def run_batch(service: JobService, inputs: dict[str, Any], interrupted: threadin
     summary_path = directory / "summary.json"
     summary: dict[str, Any] = {
         "id": directory.name, "state": "running", "created_at": now(),
+        "min_free_bytes": storage.min_free_bytes,
         "collections": [dict(collection_id=entry["collection_id"],
                              working_dir=str(storage.projects / entry["collection_id"]),
                              state="pending") for entry in entries],
@@ -140,8 +141,15 @@ def run_batch(service: JobService, inputs: dict[str, Any], interrupted: threadin
 
     persist()
     print(f"Batch: {directory.name}\nSummary: {summary_path}", flush=True)
+    low_space = False
     for entry, record in zip(entries, summary["collections"]):
         if interrupted.is_set():
+            break
+        try:
+            storage.require_space()
+        except LowDiskSpace as exc:
+            summary["message"] = redact(exc)
+            low_space = True
             break
         record.update(state="running", started_at=now())
         persist()
@@ -155,6 +163,9 @@ def run_batch(service: JobService, inputs: dict[str, Any], interrupted: threadin
             else:
                 job_id = service.submit("headless", "prepare", job_inputs)
                 record["job_id"] = job_id
+        except LowDiskSpace as exc:
+            record.update(state="pending", message=redact(exc), stop_reason="low_space")
+            low_space = True
         except (OSError, ValueError, RuntimeError) as exc:
             record.update(state="failed", message=redact(exc))
         if job_id is not None:
@@ -167,14 +178,24 @@ def run_batch(service: JobService, inputs: dict[str, Any], interrupted: threadin
             worker.join()
             job = next(job for job in service.jobs() if job["id"] == job_id)
             record.update({key: job[key] for key in ("state", "message", "result", "log")})
+            if job.get("stop_reason") == "low_space":
+                record["stop_reason"] = "low_space"
+                low_space = True
         record["finished_at"] = now()
         persist()
         print(json.dumps(record), flush=True)
         if service.storage_error:
             raise RuntimeError(service.storage_error)
-    summary["state"] = ("cancelled" if interrupted.is_set() else
+        if low_space:
+            summary["message"] = record["message"]
+            break
+    summary["state"] = ("blocked" if low_space else "cancelled" if interrupted.is_set() else
                         "succeeded" if all(row["state"] == "succeeded" for row in summary["collections"]) else "failed")
+    if low_space:
+        summary["stop_reason"] = "low_space"
     summary["finished_at"] = now()
     persist()
+    if low_space:
+        print(summary["message"], flush=True)
     print(f"Batch {summary['state']}. Summary: {summary_path}", flush=True)
-    return 130 if interrupted.is_set() else (0 if summary["state"] == "succeeded" else 1)
+    return 75 if low_space else 130 if interrupted.is_set() else (0 if summary["state"] == "succeeded" else 1)

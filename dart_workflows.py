@@ -367,6 +367,11 @@ class Workflow:
             for field, suffix, size, target in (("image_small", "_SMALL", 800, "smalls"),
                                                 ("image_thumb", "_TN", 400, "thumbs")):
                 self.checkpoint()
+                headroom = 16 * 1024**2
+                if source.suffix.lower() in {".tif", ".tiff"}:
+                    with core.Image.open(source) as image:
+                        headroom += image.width * image.height * 4
+                self.storage.require_space(additional_bytes=headroom)
                 output = directory / f"{row['objectid']}{suffix}.jpg"
                 if source.suffix.lower() == ".pdf":
                     ok, message = core.generate_pdf_derivative(str(source), str(output), size, size, quality=85)

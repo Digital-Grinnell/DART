@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import stat
 import tempfile
 from dataclasses import dataclass, field
@@ -12,6 +13,11 @@ from typing import Any
 
 MARKER = ".dart-storage"
 MARKER_VALUE = "DART managed storage v1\n"
+DEFAULT_MIN_FREE_BYTES = 50 * 1024**3
+
+
+class LowDiskSpace(RuntimeError):
+    """Work must stop, but reserved space remains available for evidence."""
 
 
 def private(path: Path, *, directory: bool = False) -> None:
@@ -89,6 +95,7 @@ class Storage:
     config: Path
     data: Path
     sources: tuple[tuple[Path, Path], ...] = ()
+    min_free_bytes: int = DEFAULT_MIN_FREE_BYTES
     _identities: dict[Path, tuple[int, int]] = field(default_factory=dict, init=False)
 
     @classmethod
@@ -167,6 +174,16 @@ class Storage:
             identity = (info.st_dev, info.st_ino)
             if self._identities.setdefault(path, identity) != identity:
                 raise OSError(f"Approved source root identity changed: {path}")
+
+    def require_space(self, *, additional_bytes: int = 0) -> None:
+        for root in (self.config, self.data):
+            free = shutil.disk_usage(root).free
+            required = self.min_free_bytes + additional_bytes
+            if free < required:
+                raise LowDiskSpace(
+                    f"Low disk space at {root}: {free} bytes free; require {required} bytes "
+                    f"({self.min_free_bytes} reserve + {additional_bytes} operation headroom). "
+                    "Work stopped; retain partial outputs and reclaim verified files before retrying.")
 
     def managed(self, raw: str, *, directory: bool = False) -> Path:
         self.check()

@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import app
-from dart_storage import Storage, atomic_json, private, redact
+from dart_storage import LowDiskSpace, Storage, atomic_json, private, redact
 from dart_workflows import FLAGS, KINDS, Cancelled, Workflow, project_settings, save_settings
 
 ACTIVE = {"queued", "running", "cancelling"}
@@ -162,6 +162,7 @@ class JobService:
             self.require_operator(session)
             if self._active is not None:
                 raise ValueError("A job is already running; wait for it to stop.")
+            self.storage.require_space()
             values = self.validate(kind, inputs)
             job_id = uuid.uuid4().hex
             directory = self.storage.jobs / job_id
@@ -173,6 +174,7 @@ class JobService:
                                     "azure_blob_storage_path", "file_to_id_map")})
             job = dict(id=job_id, kind=kind, state="queued", inputs=values, created_at=now(),
                        updated_at=now(), message="Queued", progress=0, result={},
+                       min_free_bytes=self.storage.min_free_bytes,
                        directory=str(directory), log=str(directory / "job.log"),
                        settings_snapshot=str(snapshot))
             atomic_json(directory / "job.json", job)
@@ -198,9 +200,13 @@ class JobService:
             self._jobs[job_id] = updated
 
     def _checkpoint(self) -> None:
+        self._checkpoint_cancel_only()
+        self.storage.check()
+        self.storage.require_space()
+
+    def _checkpoint_cancel_only(self) -> None:
         if self._cancel.is_set():
             raise Cancelled("Cancellation requested. Partial outputs are retained for review.")
-        self.storage.check()
 
     def _run(self, job_id: str) -> None:
         job_dir = self.storage.jobs / job_id
@@ -240,7 +246,8 @@ class JobService:
                                               redact(traceback.format_exc()), (), None))
             try:
                 self._update(job_id, state=state, message=message, finished_at=now(),
-                             result=dict(workflow.results) if "workflow" in locals() else {})
+                             result=dict(workflow.results) if "workflow" in locals() else {},
+                             stop_reason="low_space" if isinstance(exc, LowDiskSpace) else "")
             except (OSError, ValueError) as storage_exc:
                 with self._mutex:
                     self.storage_error = redact(f"Job state could not be persisted; stop and inspect storage: {storage_exc}")

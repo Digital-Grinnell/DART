@@ -1178,6 +1178,14 @@ Retain the Linux project and ID map for retries and future batches. Do not
 scan the same run under a fresh project or point DART directly into `.complete`.
 Publishing the CollectionBuilder site is a separate workflow.
 
+For disk-space planning and local derivative reclamation, follow
+[Disk-Space Guards and Verified Cleanup](LINUX-HEADLESS-OVERVIEW.md#disk-space-guards-and-verified-cleanup).
+Headless jobs now default to a 50 GiB reserve and exit `75` on insufficient
+space. Preview/apply cleanup can reclaim only the selected successful
+publishing job's Azure-verified derivatives; it never deletes originals or
+ID maps. Original offload requires separate acceptance and verified archival
+storage, not merely a successful publishing job.
+
 ## Validation Status
 
 All shell blocks and embedded Python snippets passed syntax checks;
