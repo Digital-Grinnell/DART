@@ -72,7 +72,13 @@ prompts fail instead of hanging. Confirm from a Mac terminal:
 ssh -o BatchMode=yes sysadmin@dg-landing true
 ```
 
-In desktop **Function 0**, under **Headless DART Handoff**, set:
+**FIRST select the collection's Working/Outputs Folder in the main DART window.
+ONLY THEN open Function 0.** Settings belong to the selected folder; changing
+folders loads a different project's settings rather than transferring entries.
+Launch commands and printed shell values do not configure DART automatically.
+Repeat this order for every collection.
+
+In **Function 0**, under **Headless DART Handoff**, set and save:
 
 | Setting | Example | Meaning |
 | --- | --- | --- |
@@ -339,7 +345,9 @@ See [Establish the Authoritative Mac Core](GEMS-HEADLESS-PILOT.md#2-establish-th
 for safeguards and existing-collection handling. Verify that SHOW's template
 header matches the staged Linux schema before proceeding.
 
-Then configure Function 0 with the same collection ID and Linux project path.
+Then **select the collection's Mac Working/Outputs Folder FIRST; ONLY THEN
+open Function 0**, configure the same collection ID and Linux project path,
+and save. Do not switch working folders after configuring this collection.
 Pull the **exact job ID** from the summary.
 Local-only rehearsal packages are for review, not final publishing;
 after approval, run the publishing queue and pull its packages for merge.
@@ -348,6 +356,9 @@ push a fresh core snapshot before preparing more updates to that collection.
 All authoritative core writes and merge decisions remain on the Mac.
 
 ### 2. Pull and Review on the Mac
+
+For detailed post-batch instructions and a four-collection worked example,
+use [Following Up on a Headless DART Batch](BATCH-DART-FOLLOW-UP.md).
 
 1. Open desktop DART on the matching project and click **Function 4**.
 2. Click **Pull From Headless DART...**. The dialog lists complete packages

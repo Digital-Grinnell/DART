@@ -3,6 +3,21 @@
 ## Purpose
 Open the application settings file in the selected working/outputs folder's `.DART-working-directory` subfolder and edit values using popup text input fields.
 
+## Required Order: Working Folder First, Function 0 Second
+
+> **FIRST select the collection's Working/Outputs Folder in the main window.
+> ONLY THEN open Function 0, enter/verify its settings, and save.**
+
+Settings are **per working folder**, not global. Changing the Working/Outputs
+folder loads the newly selected folder's settings; it does not transfer the
+values you just entered. Repeat this order for every collection, and leave the
+folder unchanged while using that collection's workflow functions.
+
+Runbook shell variables and printed settings **do not configure the application**.
+If you configured Function 0 before selecting the intended folder, select it
+now, reopen Function 0, and enter/verify and save the correct settings there.
+Previously saved settings remain in the folder selected when they were saved.
+
 ## Headless DART Handoff Settings
 
 Two optional desktop settings connect this project to

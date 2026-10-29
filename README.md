@@ -32,6 +32,7 @@ core CSV.
 
 - [Installation And Storage Preparation](INSTALL-LINUX.md)
 - [Everyday Operating Overview](LINUX-HEADLESS-OVERVIEW.md)
+- [Post-Batch Review, Merge, and SHOW Follow-Up](BATCH-DART-FOLLOW-UP.md)
 - [Isolated Acceptance Testing](LINUX-ACCEPTANCE.md)
 
 Intended private roots are `/data/dart/config` and `/data/dart/data`;

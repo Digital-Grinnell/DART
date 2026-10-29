@@ -294,6 +294,13 @@ configure the external GEMS source allowlist.
 
 ### 3.2 Configure Mac DART
 
+> **STOP: WORKING/OUTPUTS FOLDER FIRST, FUNCTION 0 SECOND.**
+> The launch block only prints guidance; it does **not** configure DART.
+> After launch, select the printed Working/Outputs folder in the main window
+> **before opening Function 0**. Settings are per folder. Switching folders
+> loads that folder's settings instead of transferring what you just entered.
+> Repeat this order every time you change collections.
+
 **Terminal A - Mac; executes locally, then holds the terminal while DART is
 open.** Create the dedicated output folder and print the actual
 values to enter in Function 0; no collection values need retyping in code.
@@ -304,6 +311,7 @@ values to enter in Function 0; no collection values need retyping in code.
 set -eu
 mkdir -p "$MAC_WORK"
 printf 'Working/Outputs folder: %s\n' "$MAC_WORK"
+printf 'STOP: Printed values do NOT configure DART.\nFIRST select the Working/Outputs folder above; ONLY THEN open Function 0 and save settings.\n'
 printf 'collection-id: %s\ncore_metadata_csv: %s\n' "$COLLECTION_ID" "$MAC_CORE"
 printf 'headless_host: %s\nheadless_project_dir: %s\n' "$HEADLESS_HOST" "$LINUX_PROJECT"
 printf 'azure_blob_storage_path: %s\n' "$AZURE_PATH"
@@ -320,8 +328,9 @@ switching to the approved revision. Do not launch `dart_linux` on the Mac.
 **No shell prompt while DART is open is normal.** Do not paste Step 3.3 yet.
 Leave Terminal A and its Python process running while configuring DART.
 
-In **desktop Function 0**, select the printed Working/Outputs folder and save
-the printed settings, plus:
+In the **main DART window**, select the printed **Working/Outputs Folder
+FIRST**. **ONLY THEN open Function 0**, enter/verify and save the printed
+settings, plus:
 
 | Setting | Value |
 | --- | --- |
@@ -660,6 +669,7 @@ occupied terminal:**
 (
 set -eu
 printf 'Working/Outputs folder: %s\n' "$MAC_WORK"
+printf 'STOP: Printed values do NOT configure DART.\nFIRST select the Working/Outputs folder above; ONLY THEN open Function 0 and save settings.\n'
 printf 'collection-id: %s\ncore_metadata_csv: %s\n' "$COLLECTION_ID" "$MAC_CORE"
 printf 'headless_host: %s\nheadless_project_dir: %s\n' "$HEADLESS_HOST" "$LINUX_PROJECT"
 cd "$MAC_DART"
@@ -670,8 +680,8 @@ test "$(git branch --show-current)" = "$DART_BRANCH"
 
 **Mac desktop:**
 
-1. Select the same `MAC_WORK` Working/Outputs folder.
-2. Verify Function 0 matches the values printed by the launch block above:
+1. **FIRST select** the same `MAC_WORK` **Working/Outputs Folder** in the main window.
+2. **ONLY THEN open Function 0** and verify it matches the printed values:
    `collection-id=COLLECTION_ID`, `core_metadata_csv=MAC_CORE`,
    `headless_host=HEADLESS_HOST`, and `headless_project_dir=LINUX_PROJECT`.
    Keep `gems_metadata_csv` blank, `group_compound_objects=true`,
@@ -732,6 +742,7 @@ leave it running while using the desktop window:
 (
 set -eu
 printf 'Working/Outputs folder: %s\n' "$MAC_WORK"
+printf 'STOP: Printed values do NOT configure DART.\nFIRST select the Working/Outputs folder above; ONLY THEN open Function 0 and save settings.\n'
 printf 'collection-id: %s\ncore_metadata_csv: %s\n' "$COLLECTION_ID" "$MAC_CORE"
 printf 'headless_host: %s\nheadless_project_dir: %s\n' "$HEADLESS_HOST" "$LINUX_PROJECT"
 cd "$MAC_DART"
@@ -991,6 +1002,12 @@ publishing Job ID for Step 8.
 
 ## 8. Pull the Publishing Job, Merge, and Close the Loop
 
+For a completed multi-collection batch, use the standalone
+[Following Up on a Headless DART Batch](BATCH-DART-FOLLOW-UP.md) runbook.
+It covers the per-collection desktop loop, coverage reconciliation, SHOW
+validation/publication milestones, and optional verified cleanup, including
+the October 29 four-collection worked example.
+
 ### 8.1 Launch Mac DART
 
 **After the publishing job succeeds and Terminal A's local Mac prompt
@@ -1004,6 +1021,7 @@ terminal.
 (
 set -eu
 printf 'Working/Outputs folder: %s\n' "$MAC_WORK"
+printf 'STOP: Printed values do NOT configure DART.\nFIRST select the Working/Outputs folder above; ONLY THEN open Function 0 and save settings.\n'
 printf 'collection-id: %s\ncore_metadata_csv: %s\n' "$COLLECTION_ID" "$MAC_CORE"
 printf 'headless_host: %s\nheadless_project_dir: %s\n' "$HEADLESS_HOST" "$LINUX_PROJECT"
 cd "$MAC_DART"
@@ -1014,8 +1032,8 @@ test "$(git branch --show-current)" = "$DART_BRANCH"
 
 **In the Mac DART window:**
 
-1. Select the printed `MAC_WORK` Working/Outputs folder.
-2. In Function 0, verify the printed collection ID, core CSV, headless host,
+1. **FIRST select** the printed `MAC_WORK` **Working/Outputs Folder** in the main window.
+2. **ONLY THEN open Function 0** and verify the printed collection ID, core CSV, headless host,
    and Linux project. Keep `gems_metadata_csv` blank,
    `group_compound_objects=true`, `create_multiple_objects=false`, and
    `process_OHM_data=false`. Save settings if needed.
@@ -1053,6 +1071,7 @@ activity, quit DART normally, and wait for Terminal A's local prompt.
 set -eu
 ssh -o BatchMode=yes "$HEADLESS_HOST" true
 printf 'Working/Outputs folder: %s\n' "$MAC_WORK"
+printf 'STOP: Printed values do NOT configure DART.\nFIRST select the Working/Outputs folder above; ONLY THEN open Function 0 and save settings.\n'
 printf 'collection-id: %s\ncore_metadata_csv: %s\n' "$COLLECTION_ID" "$MAC_CORE"
 printf 'headless_host: %s\nheadless_project_dir: %s\n' "$HEADLESS_HOST" "$LINUX_PROJECT"
 cd "$MAC_DART"
