@@ -13,7 +13,7 @@ import threading
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from PIL import Image
 
@@ -432,6 +432,93 @@ class ManagedTests(unittest.TestCase):
         self.assertEqual(0o600, copied.stat().st_mode & 0o777)
         self.assertEqual(0o644, transcript.stat().st_mode & 0o777)
         self.assertEqual("test_dg_123.csv", rows[0]["object_transcript"])
+
+    def test_startup_uses_canonical_pymupdf_without_legacy_import(self):
+        result = subprocess.run(
+            [sys.executable, "-B", "-W", "error::FutureWarning", "-c",
+             "import sys; import app; import pymupdf; "
+             "assert app.fitz is pymupdf; assert 'fitz' not in sys.modules"],
+            cwd=ROOT, capture_output=True, text=True, timeout=30,
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+
+    def test_input_folder_guidance_tracks_headless_settings_without_changing_path(self):
+        field = app.ft.TextField(label="Inputs Folder", value="/local/assets", read_only=True)
+        headless = {"headless_host": "sysadmin@dg-landing",
+                    "headless_project_dir": "/data/dart/data/projects/collection"}
+        app.update_input_folder_guidance(field, headless)
+        self.assertIn("Not necessary for headless DART handoff", field.label)
+        self.assertIn("server package", field.helper_text)
+        self.assertTrue(field.disabled)
+        self.assertEqual("/local/assets", field.value)
+        self.assertTrue(field.read_only)
+        for settings in ({}, {"headless_host": "sysadmin@dg-landing"},
+                         {**headless, "headless_project_dir": "/Volumes/collection"}):
+            app.update_input_folder_guidance(field, settings)
+            self.assertEqual("Inputs Folder", field.label)
+            self.assertFalse(field.helper_text)
+            self.assertFalse(field.disabled)
+            self.assertEqual("/local/assets", field.value)
+        app.update_input_folder_guidance(field, headless)
+        self.assertIn("Not necessary", field.label)
+
+    def test_input_folder_guidance_refreshes_on_startup_project_switch_and_load_error(self):
+        page = MagicMock()
+        page.overlay = []
+        preferences = MagicMock()
+        preferences.get_ui_state.side_effect = lambda key: {
+            "last_output_dir": str(self.work), "last_input_dir": str(self.source),
+        }.get(key, "")
+        preferences.get_last_executed_function.return_value = ""
+        settings = dict(app.DEFAULT_APP_SETTINGS, headless_host="sysadmin@dg-landing",
+                        headless_project_dir="/data/dart/data/projects/collection")
+        with patch.object(app, "PersistentStorage", return_value=preferences), \
+                patch.object(app, "setup_desktop_logging"), \
+                patch.object(app, "setup_working_dir_logging"), \
+                patch.object(app, "load_app_settings", return_value=(settings, "")) as load, \
+                patch.object(app, "save_app_settings", return_value=(True, "saved")), \
+                patch.object(app, "get_app_settings_path", return_value=self.work / "dart_settings.json"):
+            app.main(page)
+            layout = page.add.call_args.args[0]
+            fields = []
+            rows = []
+            def visit(control):
+                if isinstance(control, app.ft.TextField):
+                    fields.append(control)
+                if isinstance(control, app.ft.Row):
+                    rows.append(control)
+                for child in getattr(control, "controls", []) or []:
+                    visit(child)
+                content = getattr(control, "content", None)
+                if isinstance(content, app.ft.Control):
+                    visit(content)
+            visit(layout)
+            field = next(field for field in fields if field.label.startswith("Inputs Folder"))
+            files = next(field for field in fields if field.label.startswith("Select Files"))
+            output = next(field for field in fields if field.label == "Working/Outputs Folder")
+            input_row = next(row for row in rows if field in row.controls)
+            files_row = next(row for row in rows if files in row.controls)
+            self.assertIn("Not necessary", field.label)
+            self.assertTrue(field.disabled and files.disabled)
+            self.assertTrue(input_row.disabled and files_row.disabled)
+            self.assertFalse(output.disabled)
+            output_picker = page.overlay[1]
+            load.return_value = (dict(app.DEFAULT_APP_SETTINGS), "")
+            output_picker.on_result(SimpleNamespace(path=str(self.work)))
+            self.assertEqual("Inputs Folder", field.label)
+            self.assertFalse(field.disabled or files.disabled)
+            self.assertFalse(input_row.disabled or files_row.disabled)
+            load.return_value = (settings, "")
+            output_picker.on_result(SimpleNamespace(path=str(self.work)))
+            self.assertIn("Not necessary", field.label)
+            self.assertTrue(field.disabled and files.disabled)
+            self.assertTrue(input_row.disabled and files_row.disabled)
+            load.return_value = (dict(app.DEFAULT_APP_SETTINGS), "Cannot load project")
+            output_picker.on_result(SimpleNamespace(path=str(self.work)))
+            self.assertEqual("Inputs Folder", field.label)
+            self.assertFalse(field.disabled or files.disabled)
+            self.assertFalse(input_row.disabled or files_row.disabled)
+            self.assertEqual(str(self.source), field.value)
 
     def test_pdf_tiff_and_nonimage_derivative_paths(self):
         (self.source / "sample.jpg").unlink()

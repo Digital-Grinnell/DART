@@ -30,7 +30,7 @@ from cryptography.fernet import Fernet, InvalidToken
 from azure.storage.blob import BlobServiceClient, ContentSettings
 from PIL import Image, ImageOps, ImageCms
 import io
-import fitz  # PyMuPDF for PDF processing
+import pymupdf as fitz
 
 # Import common DG utilities
 from common_dg_utilities.dg_utils import generate_unique_id, get_mime_type
@@ -1825,6 +1825,19 @@ def prepare_ohm_parent_derivatives(
                 parent["image_small" if suffix == "_SMALL" else "image_thumb"] = url
 
 
+def update_input_folder_guidance(field: ft.TextField, settings: dict) -> None:
+    host = str(settings.get("headless_host", "") or "").strip()
+    project = str(settings.get("headless_project_dir", "") or "").strip()
+    valid, _ = dart_handoff.validate_remote_settings(host, project)
+    field.disabled = bool(host and project and valid)
+    if field.disabled:
+        field.label = "Inputs Folder (Not necessary for headless DART handoff)"
+        field.helper_text = "Function 4 uses the server package, not this local folder."
+    else:
+        field.label = "Inputs Folder"
+        field.helper_text = None
+
+
 def main(page: ft.Page):
     setup_desktop_logging()
     page.title = f"DART v{APP_VERSION} - Digital Asset Routing and Transformation"
@@ -2037,11 +2050,29 @@ def main(page: ft.Page):
             output_dir_field.value = e.path
             storage.set_ui_state("last_output_dir", e.path)
             update_status(f"Outputs folder set: {path.name}")
+            refresh_input_folder_guidance()
             
             # Reconfigure logging to use the working directory
             setup_working_dir_logging(e.path)
             
             page.update()
+
+    def refresh_input_folder_guidance():
+        settings = {}
+        working = output_dir_field.value
+        if working:
+            settings, error = load_app_settings(working)
+            if error:
+                update_input_folder_guidance(input_dir_field, {})
+                file_field.disabled = False
+                input_folder_row.disabled = False
+                file_selection_row.disabled = False
+                update_status(error, is_error=True)
+                return
+        update_input_folder_guidance(input_dir_field, settings)
+        file_field.disabled = input_dir_field.disabled
+        input_folder_row.disabled = input_dir_field.disabled
+        file_selection_row.disabled = input_dir_field.disabled
 
     def on_file_result(e: ft.FilePickerResultEvent):
         if e.files and len(e.files) > 0:
@@ -2477,6 +2508,7 @@ def main(page: ft.Page):
                 update_status(save_result, is_error=True)
                 return
 
+            refresh_input_folder_guidance()
             add_log_message(f"Settings saved: {save_result}")
             update_status("Application settings updated")
             settings_dialog.open = False
@@ -5890,7 +5922,7 @@ Detailed results: {output_diff.name}
 
     inputs_inner_column = ft.Column(
         controls=[
-            ft.Row(
+            input_folder_row := ft.Row(
                 controls=[
                     input_dir_field,
                     ft.ElevatedButton(
@@ -5973,7 +6005,7 @@ Detailed results: {output_diff.name}
                                 size=18,
                                 weight=ft.FontWeight.BOLD,
                             ),
-                            ft.Row(
+                            file_selection_row := ft.Row(
                                 controls=[
                                     file_field,
                                     ft.ElevatedButton(
@@ -6135,6 +6167,7 @@ Detailed results: {output_diff.name}
 
     logger.info("UI initialised successfully")
     add_log_message("DART application ready. Select a function to begin.")
+    refresh_input_folder_guidance()
     
     # Validate directories on startup
     validate_directories()

@@ -23,21 +23,65 @@ automatically adopt GEMS URLs or derivatives.
 
 ## Execution Map
 
-**Run every shell block in the same Mac terminal.** Blocks marked **Linux via
-SSH** execute remotely through the helper defined below; do not paste them
-into a separate Linux terminal. Desktop actions take place in Mac DART.
+**Yes: one local Mac terminal and one SSH terminal are enough. In fact, this
+runbook requires only the local Mac terminal, plus the DART desktop window.**
+Use these names throughout:
 
-| Step | Where | Effect |
+- **Terminal A - Mac:** a local shell on the Mac, **not** a shell logged into
+  Linux. Paste **every `bash` block in this document here**, including blocks
+  beginning with `dart_remote`. Keep this terminal open to preserve Step 0's
+  variables and helper.
+- **Terminal B - SSH (optional):** a separate terminal logged into Linux.
+  You may use it for independent, approved inspection, but **none of this
+  runbook's blocks belongs here**. It does not inherit Terminal A's variables
+  or helper. It need not stay connected for Terminal A's jobs to run.
+- **Mac DART window:** the graphical application launched from Terminal A.
+  Perform instructions labeled **Mac desktop** in that window, not in a shell.
+
+**Before Step 0, at Terminal A's local Mac prompt, run `bash` once.** Use that
+same Bash shell for the entire runbook. This makes the shell-block comments
+and helper behavior consistent even if your normal Mac shell is Zsh. Do not
+start a new shell or run `exit` between steps; leaving this Bash shell loses
+its helper and variable definitions.
+
+**"Linux via SSH" describes where commands execute, not where you paste them.**
+`dart_remote <<'LINUX'` starts a temporary SSH connection from Terminal A;
+the helper runs the lines through the closing `LINUX` on Linux. Paste the
+**whole block**, including both delimiter lines, into Terminal A. Do not copy
+only the middle lines or add an interactive `ssh` session in Terminal A.
+
+| Step | Paste Shell Blocks Into | Actual Execution | Effect |
+| --- | --- | --- | --- |
+| 0 | Terminal A - Mac | Mac | Define reusable variables and an SSH helper; no server changes |
+| 1 | Terminal A - Mac | Linux via SSH | Inspect readiness and sources; no changes |
+| 2 | Terminal A - Mac | Mac | Create a header-only core for a genuinely new collection |
+| 3 | Terminal A - Mac | Linux via SSH, then Mac | Create a private Linux project, configure Mac DART, push snapshot |
+| 4 | Terminal A - Mac | Linux via SSH | Create private JSON inputs and configure Linux DART |
+| 5 | Terminal A - Mac | Linux via SSH | Prepare without uploads; **persists durable IDs** |
+| 6 | Terminal A - Mac for launch only | Mac desktop | Pull, compare, inspect, and cancel; **do not merge** |
+| 7 | Terminal A - Mac | Linux via SSH | After separate approval, prepare with **Azure uploads** |
+| 8 | Terminal A - Mac if relaunch/push needed | Mac desktop | Pull the publishing job, selectively merge, push updated snapshot |
+
+### Process Lifetimes and Prompt Rules
+
+| Command or Activity | Must It Remain Running? | When to Continue |
 | --- | --- | --- |
-| 0 | Mac terminal | Define reusable variables and an SSH helper; no server changes |
-| 1 | Linux via SSH | Inspect readiness and sources; no changes |
-| 2 | Mac terminal | Create a header-only core for a genuinely new collection |
-| 3 | Mac terminal and desktop | Create a private Linux project, configure Mac DART, push snapshot |
-| 4 | Linux via SSH | Create private JSON inputs and configure Linux DART |
-| 5 | Linux via SSH | Prepare without uploads; **persists durable IDs** |
-| 6 | Mac desktop | Pull, compare, inspect, and cancel; **do not merge** |
-| 7 | Linux via SSH | After separate approval, prepare with **Azure uploads** |
-| 8 | Mac desktop | Pull the publishing job, selectively merge, push updated snapshot |
+| Step 0 variables and helper definition | No background process starts. Keep Terminal A's shell open to retain them. | The local Mac prompt returns immediately. |
+| Step 1 inspection, Step 2 core creation, Step 3.1 `mkdir`, Step 3.3 snapshot push, Step 4 configuration | No. Each is a one-shot command and should exit. | Wait for the local Mac prompt and require success before the next step. |
+| `.venv/bin/python app.py` in Steps 3.2 and 6.1 | **Yes, while using the Mac DART window.** It occupies Terminal A in the foreground. | Save/finish the specified desktop work, quit DART normally, and wait for the local Mac prompt before pasting another shell block. |
+| `--job prepare` in Steps 5 and 7 | **Yes, until the Linux job finishes.** Leave Terminal A, its foreground SSH connection, the Mac, and network available; prevent sleep/disconnection. | Wait for the final job result, state `succeeded`, exit status `0`, and the local Mac prompt. Silence alone is not completion. |
+| Optional Terminal B SSH session | No. It is not the SSH connection used by `dart_remote`. | Closing it does not finish or cancel Terminal A's command. |
+
+**Never paste the next block while Terminal A is occupied by DART or a job.**
+Do not use Ctrl-C to reclaim it during a job, pull, snapshot push, or merge.
+Do not close Terminal A or background a command to skip a wait. This runbook
+does not use a persistent Linux daemon, web server, or SSH tunnel that you
+must leave running between steps.
+
+After each one-shot shell block, inspect errors. If the exit status is unclear,
+run `echo $?` in **Terminal A immediately after the block**, before another
+command; `0` means the shell command succeeded, not that review gates passed.
+Stop on a nonzero result.
 
 Never delete or recreate a project or ID map to retry. Once IDs have been
 assigned, reuse the same project, collection ID, source paths, and grouping.
@@ -52,6 +96,7 @@ installation paths and the SSH account must also match your approved setup.
 Use absolute paths; do not put credentials in any variable.
 
 ```bash
+# PASTE INTO TERMINAL A - MAC. One-shot setup; wait for the Mac prompt.
 export COLLECTION_ID='REPLACE_WITH_COLLECTION_SLUG'
 export GEMS_RUN='/REPLACE_WITH_ABSOLUTE_GEMS_RUN_DIRECTORY'
 export HEADLESS_HOST='sysadmin@dg-landing'
@@ -92,6 +137,7 @@ for another collection.
 Run once in the **same Mac terminal**, after the variables above:
 
 ```bash
+# PASTE INTO TERMINAL A - MAC. Defines a helper; no SSH session stays running.
 dart_remote() {
   (
     set -eu
@@ -121,11 +167,13 @@ repeat Step 0 before continuing, not the creation steps.
 
 ## 1. Inspect Linux Readiness and Sources
 
-**Linux via SSH; inspection only.** Missing paths or an incomplete installation
-can make this block fail. Retain the output and stop rather than repairing
-anything implicitly.
+**Paste into Terminal A - Mac; executes on Linux via SSH; inspection only.**
+Wait for the local Mac prompt before Step 2. Missing paths or an incomplete
+installation can make this block fail. Retain the output and stop rather
+than repairing anything implicitly.
 
 ```bash
+# PASTE INTO TERMINAL A - MAC, including the dart_remote and LINUX lines.
 dart_remote <<'LINUX'
 id
 findmnt -T "$GEMS_RUN/objects"
@@ -167,8 +215,9 @@ mounts, or service configuration to make DART work.
 
 ## 2. Establish the Authoritative Mac Core
 
-**Mac terminal.** For a genuinely new collection, this creates only the core's
-parent directories and a header-only CSV, not a fully scaffolded SHOW site.
+**Terminal A - Mac; executes locally; one-shot.** For a genuinely new
+collection, this creates only the core's parent directories and a header-only
+CSV, not a fully scaffolded SHOW site.
 Confirm `MAC_CORE` and `CORE_TEMPLATE` before running.
 
 **Existing collection:** do not run this creation block. Inspect the established
@@ -177,6 +226,7 @@ and snapshot compatibility before proceeding. Never replace a populated core
 with an empty one.
 
 ```bash
+# PASTE INTO TERMINAL A - MAC. Wait for successful creation and the Mac prompt.
 (
 set -eu
 cd "$MAC_DART"
@@ -215,9 +265,12 @@ into `collection-template.csv`. Preserve all established identifiers.
 
 ### 3.1 Create a New Linux Project
 
-**Linux via SSH**, only after readiness approval:
+**Paste into Terminal A - Mac; executes on Linux via SSH**, only after
+readiness approval. This is a one-shot directory creation, **not** a running
+service. It should return to the local Mac prompt immediately:
 
 ```bash
+# PASTE INTO TERMINAL A - MAC, including the dart_remote and LINUX lines.
 dart_remote <<'LINUX'
 umask 077
 mkdir -m 700 "$WORK"
@@ -226,13 +279,17 @@ LINUX
 
 This deliberately fails if the project exists. For a retry or existing project,
 inspect its settings and mappings, then reuse it; do not remove or recreate it.
+Running this **whole block on the Mac is correct**, not a mistake. It does not
+configure the external GEMS source allowlist.
 
 ### 3.2 Configure Mac DART
 
-**Mac terminal.** Create the dedicated output folder and print the actual
+**Terminal A - Mac; executes locally, then holds the terminal while DART is
+open.** Create the dedicated output folder and print the actual
 values to enter in Function 0; no collection values need retyping in code.
 
 ```bash
+# PASTE INTO TERMINAL A - MAC. Leave this process running during desktop setup.
 (
 set -eu
 mkdir -p "$MAC_WORK"
@@ -250,8 +307,8 @@ test "$(git branch --show-current)" = "$DART_BRANCH"
 The branch check stops an unintended launch. If it fails, inspect
 `git status --short` and resolve conflicting changes before deliberately
 switching to the approved revision. Do not launch `dart_linux` on the Mac.
-Leave the application terminal open; close DART when finished configuring
-if you need that terminal for the next command.
+**No shell prompt while DART is open is normal.** Do not paste Step 3.3 yet.
+Leave Terminal A and its Python process running while configuring DART.
 
 In **desktop Function 0**, select the printed Working/Outputs folder and save
 the printed settings, plus:
@@ -267,13 +324,22 @@ The Mac does not need the Linux objects mounted. Do not run desktop Functions
 1-3 against unrelated local inputs. Selecting another Working/Outputs folder
 can load another collection's settings.
 
+**Before Step 3.3:** save Function 0 settings, then quit the Mac DART
+application normally. Wait for Terminal A's local Mac prompt. Closing DART
+here is intentional: it frees the same terminal for the snapshot command.
+Do **not** close the terminal itself. No Linux process from Step 3.1 needs
+to remain running. DART will be relaunched in Step 6.1.
+
 ### 3.3 Push the Core Snapshot
 
 With no local export yet, Function 4 opens the pull dialog directly; that
-dialog currently has no snapshot-push button. Bootstrap from the **Mac
-terminal**, using the same definitions:
+dialog currently has no snapshot-push button. Bootstrap from **Terminal A -
+Mac**, using the same definitions. DART must be closed and the
+local shell prompt visible. This one-shot command connects to Linux, pushes
+the snapshot, and exits:
 
 ```bash
+# PASTE INTO TERMINAL A - MAC after quitting DART normally.
 (
 set -eu
 cd "$MAC_DART"
@@ -297,11 +363,14 @@ it never writes the authoritative Mac core.
 
 ## 4. Configure Linux DART
 
-**Linux via SSH.** This creates private JSON inputs, not credentials. Python
+**Paste into Terminal A - Mac; executes on Linux via SSH; one-shot.**
+Wait for successful configuration and the local Mac prompt before Step 5.
+This creates private JSON inputs, not credentials. Python
 serializes the variables as JSON, including paths containing spaces or quotes.
 Existing JSON files are not overwritten.
 
 ```bash
+# PASTE INTO TERMINAL A - MAC, including the dart_remote and LINUX lines.
 dart_remote <<'LINUX'
 umask 077
 cd "$DART_REPO"
@@ -358,17 +427,194 @@ assets to bypass validation. For a retry, inspect existing JSON files and use
 the final `--configure` command with those verified inputs rather than rerunning
 their creation.
 
+**Retry configuration with existing, verified JSON:** paste this complete
+block into **Terminal A - Mac**, with Mac DART closed and the local prompt
+visible. It runs on Linux and exits; it does not start a job:
+
+```bash
+# PASTE INTO TERMINAL A - MAC. Configure existing inputs only; no job.
+dart_remote <<'LINUX'
+cd "$DART_REPO"
+test -r "$CONFIG/settings-$COLLECTION_ID.json"
+.venv/bin/python -m dart_linux --env-file "$CONFIG/dart.env" \
+  --configure --inputs "$CONFIG/settings-$COLLECTION_ID.json"
+LINUX
+```
+
+### Source Allowlist Error and Interrupted-Session Recovery
+
+If configuration or a job reports:
+
+```text
+DART startup/job error: Source must be inside a DART project or an explicitly approved source mount.
+```
+
+**Stop before submitting/retrying a job.** The rejected source path is outside
+the managed projects tree and every configured `DART_SOURCE_ROOTS` entry.
+This can be the objects directory, the GEMS metadata CSV, or another source
+used by the job. The message does **not** mean the Step 3.1 `mkdir` process
+needed to stay alive or that its `dart_remote` block belonged in Terminal B.
+
+**Paste this diagnostic block into Terminal A - Mac; it executes on Linux
+via SSH and exits.** If DART is open, finish/save desktop work and quit it
+normally first. It displays only source paths and allowlist entries, not
+credentials. Storage validation performs temporary write probes inside
+DART's managed roots; it does not change sources, settings, or mappings.
+
+```bash
+# PASTE INTO TERMINAL A - MAC. Diagnostic only; do not edit the allowlist here.
+dart_remote <<'LINUX'
+cd "$DART_REPO"
+findmnt -T "$GEMS_RUN/objects"
+findmnt -T "$GEMS_CSV"
+.venv/bin/python - <<'PY'
+import os
+from pathlib import Path
+from dart_storage import Storage, load_environment
+
+load_environment(str(Path(os.environ["CONFIG"]) / "dart.env"))
+storage = Storage.from_environment()
+print("Approved source roots:", flush=True)
+for path, mount in storage.sources:
+    print(f"  path={path} mount={mount}", flush=True)
+for label, path, directory in (
+    ("GEMS objects", str(Path(os.environ["GEMS_RUN"]) / "objects"), True),
+    ("GEMS metadata CSV", os.environ["GEMS_CSV"], False),
+):
+    print(f"Checking {label}: {path}", flush=True)
+    print(f"  Accepted: {storage.source(path, directory=directory)}", flush=True)
+PY
+LINUX
+```
+
+- The final `Checking ...` line before an exception identifies which of these
+  two paths failed. An empty approved-root list does not authorize an external
+  GEMS run. If both pass but the job still fails, inspect the existing job
+  inputs, saved project settings, and job evidence for a different source
+  path; do not assume the failing path or broaden access blindly.
+- Ask the administrator to verify the **selected** private environment file,
+  `LINUX_CONFIG/dart.env`. Its `DART_SOURCE_ROOTS` must cover both canonical
+  Linux paths and use the actual mount from `findmnt`; see
+  [Approve Linux Source Access Separately](INSTALL-LINUX.md#approve-linux-source-access-separately).
+  An `export DART_SOURCE_ROOTS=...` in either terminal does not override this
+  file: DART treats the selected environment file as authoritative.
+- Do not move GEMS assets, grant a blanket filesystem allowlist, change
+  permissions/mounts, recreate the project, or regenerate IDs to bypass this
+  check. After approved correction, rerun the diagnostic. Then paste this
+  complete configuration block into **Terminal A - Mac**; do not recreate
+  JSON inputs or start a job:
+
+```bash
+# PASTE INTO TERMINAL A - MAC after approved source-access correction.
+dart_remote <<'LINUX'
+cd "$DART_REPO"
+test -r "$CONFIG/settings-$COLLECTION_ID.json"
+.venv/bin/python -m dart_linux --env-file "$CONFIG/dart.env" \
+  --configure --inputs "$CONFIG/settings-$COLLECTION_ID.json"
+LINUX
+```
+
+**If you closed something prematurely:**
+
+1. If only the Mac DART window closed after settings were saved, continue
+   from the next shell step. No continuously running desktop is required
+   during Linux configuration or preparation.
+2. If Terminal A closed, open a **local Mac shell** and repeat Steps 0.1 and
+   0.2 with the same collection and paths. Variables and the helper were
+   shell-local; files, settings, and IDs persist. Do not rerun creation blocks.
+3. If a Linux job or its SSH connection was interrupted, do not assume either
+   success or a clean rollback. Inspect the recorded job's evidence under
+   `LINUX_DATA/jobs/JOB-ID/` and confirm no earlier job is still running
+   before retrying with the same project and verified existing JSON inputs.
+
 Keep the leading slash in `AZURE_PATH`: the current validator requires
 `/objs/`. The uploader strips surrounding slashes and targets container
 `objs`, subdirectory `COLLECTION_ID`, with parallel derivatives in
 `smalls/COLLECTION_ID` and `thumbs/COLLECTION_ID`. This is not a Linux path.
 
-## 5. Prepare Without Uploads
+### Preview-First Setup Recovery
 
-**Linux via SSH; foreground job.** Keep the Mac terminal and SSH connection
-open until it finishes.
+If you do not know how far an attempt progressed, **do not delete anything
+or restart at Step 2**. Use
+[`scripts/recover_headless_project.py`](scripts/recover_headless_project.py)
+to inspect early Linux setup and preview the narrow source-approval repair.
+It is a recovery helper, **not a factory reset**.
+
+**Terminal A - Mac:** quit Mac DART normally, wait for the local prompt, and
+restore the same Step 0 definitions if needed. The Mac checkout must contain
+the helper; the Linux checkout needs the existing headless workflow, but
+the helper itself is streamed over SSH without installing a server file.
+No separate Terminal B is needed. The local `python3` uses only the standard
+library and existing DART SSH helpers; remote execution uses Linux DART's
+virtual environment.
+
+**Verify `--source-mount` against Step 1's `findmnt` output.** `/data` below
+was verified for the student-scholarship run; it is not a universal default.
+`GEMS_RUN` must identify the specific approved collection run, not the entire
+mount or a shared parent containing other collections.
 
 ```bash
+# PASTE INTO TERMINAL A - MAC. PREVIEW ONLY; wait for the Mac prompt.
+python3 "$MAC_DART/scripts/recover_headless_project.py" "$COLLECTION_ID" \
+  --host "$HEADLESS_HOST" --repo "$LINUX_DART" \
+  --env-file "$LINUX_CONFIG/dart.env" \
+  --inputs "$LINUX_CONFIG/settings-$COLLECTION_ID.json" \
+  --source-root "$GEMS_RUN" --source-mount /data
+```
+
+The preview reports snapshot row count/checksum, saved settings, ID-map count,
+recorded collection jobs, and the proposed allowlist action. It reads files
+and temporarily takes shared locks on existing service-lock files; it does
+not start DART's job service or change interrupted job states. An active
+writer prevents inspection. **This Linux report alone does not establish
+whether a Mac merge or Azure upload happened:** check the Mac core, pulled
+files, and existing job evidence too.
+
+**Apply only after the preview has no blockers and an administrator has
+approved the exact source run and mount.** This refuses projects with IDs,
+job history, or handoff evidence, and refuses any active/stale-active job
+record in the shared job store. Those need case-specific recovery instead
+of a generic reset. Existing collection/grouping settings cannot be changed
+by this helper.
+
+```bash
+# PASTE INTO TERMINAL A - MAC ONLY AFTER APPROVAL. Configure only; no job.
+python3 "$MAC_DART/scripts/recover_headless_project.py" "$COLLECTION_ID" \
+  --host "$HEADLESS_HOST" --repo "$LINUX_DART" \
+  --env-file "$LINUX_CONFIG/dart.env" \
+  --inputs "$LINUX_CONFIG/settings-$COLLECTION_ID.json" \
+  --source-root "$GEMS_RUN" --source-mount /data --apply
+```
+
+Apply preserves existing allowlist entries, appends the approved run only if
+needed, and invokes `--configure` with the **existing settings JSON**. It does
+not recreate JSON inputs, assign IDs, run `prepare`, upload, merge, delete
+files, or move sources. It never writes the Mac core or Linux snapshot.
+
+Before changing the environment file, it saves a private, timestamped copy
+under the Linux project's `.DART-working-directory/recovery/`.
+**That backup contains secrets. Keep it private; do not share, commit, or
+include its contents in a report.** Other private environment values are
+preserved. If configuration fails, the new approval and backup remain in
+place; inspect the explicit error rather than assuming a rollback.
+
+Wait for `RECOVERED`, exit status `0`, and the local Mac prompt. Configuration
+should now be saved, with the ID map unchanged. **Resume at Step 5**, not the
+creation blocks in Steps 2-4. Step 5 still assigns permanent IDs, and Step 7
+still requires separate Azure approval. Keep the same collection, project,
+source paths, and grouping. On later processing failures, preserve evidence
+and seek job-specific recovery; do not use this helper to wipe the project.
+
+## 5. Prepare Without Uploads
+
+**Paste into Terminal A - Mac; executes on Linux via SSH; foreground job.**
+Mac DART should be closed so Terminal A is available. **Keep Terminal A and
+its SSH connection running until the job finishes.** Do not type the next
+block, press Ctrl-C, close the terminal, or let the Mac sleep during this job.
+Terminal B is not required and cannot keep this job's connection alive.
+
+```bash
+# PASTE INTO TERMINAL A - MAC. WAIT for the final result and Mac prompt.
 dart_remote <<'LINUX'
 cd "$DART_REPO"
 .venv/bin/python -m dart_linux --env-file "$CONFIG/dart.env" \
@@ -394,11 +640,18 @@ resolution: Function 4 requires unique `original_file_name` keys.
 
 ### 6.1 Open the Correct Desktop Project
 
-**Mac terminal**, if DART is not already open:
+**Terminal A - Mac; executes locally**, after Step 5 has finished successfully.
+Launch DART if it is not already open. **Keep this foreground process and
+Terminal A open throughout Steps 6.1-6.5; use the Mac DART window, not the
+occupied terminal:**
 
 ```bash
+# PASTE INTO TERMINAL A - MAC. KEEP RUNNING while reviewing in the DART window.
 (
 set -eu
+printf 'Working/Outputs folder: %s\n' "$MAC_WORK"
+printf 'collection-id: %s\ncore_metadata_csv: %s\n' "$COLLECTION_ID" "$MAC_CORE"
+printf 'headless_host: %s\nheadless_project_dir: %s\n' "$HEADLESS_HOST" "$LINUX_PROJECT"
 cd "$MAC_DART"
 test "$(git branch --show-current)" = "$DART_BRANCH"
 .venv/bin/python app.py
@@ -408,8 +661,11 @@ test "$(git branch --show-current)" = "$DART_BRANCH"
 **Mac desktop:**
 
 1. Select the same `MAC_WORK` Working/Outputs folder.
-2. Verify Function 0 matches the values printed in Step 3.2, especially
-   collection ID, core, host, and Linux project. Keep `gems_metadata_csv` blank.
+2. Verify Function 0 matches the values printed by the launch block above:
+   `collection-id=COLLECTION_ID`, `core_metadata_csv=MAC_CORE`,
+   `headless_host=HEADLESS_HOST`, and `headless_project_dir=LINUX_PROJECT`.
+   Keep `gems_metadata_csv` blank, `group_compound_objects=true`,
+   `create_multiple_objects=false`, and `process_OHM_data=false`.
 3. Ensure **Help Mode** is unchecked.
 4. In **Select Function to Execute**, choose **4: Compare and Merge CSV Files**.
    Selecting it starts the function immediately; there is no separate execute
@@ -449,11 +705,38 @@ DART verifies the CSV checksum and collection ID, then saves under `MAC_WORK`:
 Pulling does not copy assets/derivatives, upload anything, or change the core.
 On success, Function 4 reopens with the pulled export available for comparison.
 
-If SSH fails, test from the **Mac terminal** after closing DART if needed:
+If SSH fails, finish/cancel desktop activity and quit DART normally.
+At the returned **Terminal A - Mac** prompt, run this one-shot connection
+test; do not recreate inputs:
 
 ```bash
+# PASTE INTO TERMINAL A - MAC after quitting DART normally.
 ssh -o BatchMode=yes "$HEADLESS_HOST" true
 ```
+
+If that succeeds, **paste this launch block into Terminal A - Mac** and
+leave it running while using the desktop window:
+
+```bash
+# PASTE INTO TERMINAL A - MAC. KEEP RUNNING while using the DART window.
+(
+set -eu
+printf 'Working/Outputs folder: %s\n' "$MAC_WORK"
+printf 'collection-id: %s\ncore_metadata_csv: %s\n' "$COLLECTION_ID" "$MAC_CORE"
+printf 'headless_host: %s\nheadless_project_dir: %s\n' "$HEADLESS_HOST" "$LINUX_PROJECT"
+cd "$MAC_DART"
+test "$(git branch --show-current)" = "$DART_BRANCH"
+.venv/bin/python app.py
+)
+```
+
+In the **Mac DART window**, select the printed Working/Outputs folder,
+verify the printed Function 0 settings and blank `gems_metadata_csv`, uncheck
+**Help Mode**, and choose **4: Compare and Merge CSV Files**. In the file
+selection dialog click **Pull From Headless DART...**; if there is no local
+export, the pull dialog opens automatically. Choose the recorded successful
+rehearsal Job ID, verify row count and warnings, and click **Pull For Review**.
+Continue with the comparison instructions immediately below.
 
 If no package appears, verify job success, project directory, and collection
 ID. Do not create another project or regenerate IDs.
@@ -539,6 +822,10 @@ backfill statistics, and the core schema rather than dismissing the warning.
    If a confirmation opens accidentally, cancel it.
 4. Retain pulled files, comparison outputs, and Linux job evidence.
 
+**Before Step 7:** after canceling review, quit Mac DART normally and wait
+for Terminal A's local Mac prompt. Keep Terminal A itself open. No DART
+desktop process needs to remain running during the publishing job.
+
 Proceed only when the intended job was pulled, counts agree, metadata and
 relationships make sense, and all warnings are explained. The core must be
 unchanged: for a new collection, still header-only.
@@ -560,9 +847,14 @@ explicitly approved. Confirm:
 - Project, collection ID, source paths, grouping, and ID map are unchanged.
 - A fresh core snapshot has been pushed if the Mac core changed.
 
-**Linux via SSH. This is the first block authorizing Azure writes.**
+**Paste into Terminal A - Mac; executes on Linux via SSH; foreground job.**
+DART must be closed and the local Mac prompt visible before pasting.
+**This is the first block authorizing Azure writes. Keep Terminal A and its
+SSH connection running until the final job result and Mac prompt return.**
+Do not press Ctrl-C, close the terminal, or let the Mac sleep.
 
 ```bash
+# PASTE INTO TERMINAL A - MAC. WAIT for the final result and Mac prompt.
 dart_remote <<'LINUX'
 umask 077
 cd "$DART_REPO"
@@ -593,25 +885,282 @@ LINUX
 Require exit status 0 and state `succeeded`; record the **new publishing Job ID
 and row count**. Existing blobs are skipped, not replaced. Skipping is not a
 content-integrity check; investigate unexpected blobs rather than enabling
-overwrite automatically. For a retry with an existing publishing JSON file,
-inspect it and run only the final job command through `dart_remote`.
+overwrite automatically.
+
+### Retry With an Existing Publishing JSON
+
+**Do not run the `.venv/bin/python -m dart_linux ...` lines by themselves
+on the Mac.** `CONFIG`, `DART_REPO`, and `WORK` are Linux-side names supplied
+by `dart_remote`, not local Mac variables. Running the inner command on the
+Mac with an unset `CONFIG` produces a `/dart.env` not-found error; that
+invocation fails before starting a job.
+
+If Terminal A lost its definitions, repeat Steps 0.1 and 0.2 with the same
+collection and paths first. Do not rerun project/core creation or recovery.
+Quit Mac DART normally and wait for the local Mac prompt.
+
+**First, paste this whole inspection block into Terminal A - Mac.** It runs
+on Linux, prints the existing publishing inputs, and exits without a job:
+
+```bash
+# PASTE INTO TERMINAL A - MAC. Inspect only; no job or uploads.
+dart_remote <<'LINUX'
+test -r "$CONFIG/prepare-$COLLECTION_ID-publish.json"
+printf 'Expected project: %s\nExpected source: %s/objects\n' "$WORK" "$GEMS_RUN"
+cat "$CONFIG/prepare-$COLLECTION_ID-publish.json"
+printf '\n'
+LINUX
+```
+
+Verify that `working_dir` and `input_dir` match the printed project/source,
+`derivatives` and `backfill` are `true`, `allow_uploads` is `true`, and
+`overwrite` is `false`. If values differ, stop and review them rather than
+overwriting the file.
+
+**If inspection reports the publishing JSON is absent:** after confirming
+no publishing job has already succeeded or is still running, paste this
+complete block into **Terminal A - Mac**. It creates the missing publishing
+JSON exclusively and **starts the upload job**; do not also run the retry
+block below:
+
+```bash
+# PASTE INTO TERMINAL A - MAC ONLY IF PUBLISHING JSON IS ABSENT. Starts uploads.
+dart_remote <<'LINUX'
+umask 077
+cd "$DART_REPO"
+.venv/bin/python - <<'PY'
+import json
+import os
+from pathlib import Path
+
+path = Path(os.environ["CONFIG"]) / f"prepare-{os.environ['COLLECTION_ID']}-publish.json"
+inputs = {
+    "working_dir": os.environ["WORK"],
+    "input_dir": str(Path(os.environ["GEMS_RUN"]) / "objects"),
+    "derivatives": True,
+    "backfill": True,
+    "allow_uploads": True,
+    "overwrite": False,
+}
+with path.open("x", encoding="utf-8") as handle:
+    json.dump(inputs, handle, indent=2)
+    handle.write("\n")
+print(f"Created {path}")
+PY
+.venv/bin/python -m dart_linux --env-file "$CONFIG/dart.env" \
+  --job prepare --inputs "$CONFIG/prepare-$COLLECTION_ID-publish.json"
+LINUX
+```
+
+Keep Terminal A, VPN, and the Mac awake until `succeeded` and the local prompt
+return. Record the publishing Job ID, then continue forward to the publishing
+pull and merge instructions. Do not submit a second publishing job.
+
+**Do not retry while a previous publishing job might still be running.**
+If its connection dropped, inspect its job evidence and confirm it has
+stopped first. A completed successful publishing job should proceed to
+Step 8, not be submitted again.
+
+**After inspection and the Step 7 approval gate, paste this entire retry
+block into Terminal A - Mac, including `dart_remote` and the final `LINUX`:**
+
+```bash
+# PASTE INTO TERMINAL A - MAC. STARTS AZURE UPLOADS; wait for completion.
+dart_remote <<'LINUX'
+cd "$DART_REPO"
+test -r "$CONFIG/prepare-$COLLECTION_ID-publish.json"
+.venv/bin/python -m dart_linux --env-file "$CONFIG/dart.env" \
+  --job prepare --inputs "$CONFIG/prepare-$COLLECTION_ID-publish.json"
+LINUX
+```
+
+This reuses the JSON; it does not recreate it. **Keep Terminal A, VPN, and
+its SSH connection running, and keep the Mac awake, until the final result
+reports `succeeded` and the local Mac prompt returns.** Record the new
+publishing Job ID for Step 8.
 
 ## 8. Pull the Publishing Job, Merge, and Close the Loop
 
-**Mac desktop:**
+### 8.1 Launch Mac DART
 
-1. Repeat Step 6's pull and comparison workflow using the **successful
-   publishing Job ID from Step 7**, not the rehearsal job.
-2. Verify approved HTTPS `object_location`, `image_small`, and `image_thumb`
-   values where applicable. Review asset types without derivatives individually.
-3. Review all metadata and complete families together. Select only approved
-   additions and field changes in Function 4.
-4. Click **Merge Selected Changes**, review the confirmation, and confirm
-   **Merge Changes** only for the intended core and selections.
-5. Verify the merged core. Function 4 creates a backup before writing it.
-   Existing rows retain their order; selected additions follow export order.
-6. **Push Core Snapshot** again, using the Function 4 file-selection dialog
-   or the terminal command in Step 3.3 after closing DART if needed.
+**After the publishing job succeeds and Terminal A's local Mac prompt
+returns, paste this complete block into Terminal A - Mac.** It runs locally.
+Keep this process running throughout the desktop pull, comparison, merge,
+and any UI snapshot push. Do not paste shell commands into the occupied
+terminal.
+
+```bash
+# PASTE INTO TERMINAL A - MAC. KEEP RUNNING while using the DART window.
+(
+set -eu
+printf 'Working/Outputs folder: %s\n' "$MAC_WORK"
+printf 'collection-id: %s\ncore_metadata_csv: %s\n' "$COLLECTION_ID" "$MAC_CORE"
+printf 'headless_host: %s\nheadless_project_dir: %s\n' "$HEADLESS_HOST" "$LINUX_PROJECT"
+cd "$MAC_DART"
+test "$(git branch --show-current)" = "$DART_BRANCH"
+.venv/bin/python app.py
+)
+```
+
+**In the Mac DART window:**
+
+1. Select the printed `MAC_WORK` Working/Outputs folder.
+2. In Function 0, verify the printed collection ID, core CSV, headless host,
+   and Linux project. Keep `gems_metadata_csv` blank,
+   `group_compound_objects=true`, `create_multiple_objects=false`, and
+   `process_OHM_data=false`. Save settings if needed.
+3. Uncheck **Help Mode**.
+4. Choose **4: Compare and Merge CSV Files** in **Select Function to
+   Execute**. Selection starts the function immediately; there is no
+   separate execute button.
+
+### 8.2 Pull the Publishing Package
+
+**Mac DART window; leave Terminal A's launch process running:**
+
+1. In **Select New CSV to Compare**, click **Pull From Headless DART...**.
+   If there is no local export, the pull dialog opens automatically.
+2. Verify **Server project** matches the printed
+   `HEADLESS_HOST:LINUX_PROJECT`.
+3. Select the **full successful publishing Job ID recorded at the end of
+   the upload job**, not the rehearsal job and not just the newest entry.
+4. Verify its row count matches the publishing job's result. Rows include
+   generated compound parents; they need not equal the source-folder count.
+5. Inspect GEMS backfill counts and warnings. Stop for ID conflicts,
+   unexplained unmatched metadata, or a stale snapshot warning. Uploaded
+   image/PDF derivatives should no longer have server-local-only references.
+6. Click **Pull For Review** (or **Pulled (Pull Again)** for that same job).
+   DART verifies checksum and collection ID, saves the handoff CSV and
+   manifest under `MAC_WORK/.DART-working-directory`, and reopens Function 4.
+
+If SSH fails, do not start another publishing job. Cancel/finish desktop
+activity, quit DART normally, and wait for Terminal A's local prompt.
+**Paste this connection test and relaunch block into Terminal A - Mac:**
+
+```bash
+# PASTE INTO TERMINAL A - MAC after quitting DART normally.
+(
+set -eu
+ssh -o BatchMode=yes "$HEADLESS_HOST" true
+printf 'Working/Outputs folder: %s\n' "$MAC_WORK"
+printf 'collection-id: %s\ncore_metadata_csv: %s\n' "$COLLECTION_ID" "$MAC_CORE"
+printf 'headless_host: %s\nheadless_project_dir: %s\n' "$HEADLESS_HOST" "$LINUX_PROJECT"
+cd "$MAC_DART"
+test "$(git branch --show-current)" = "$DART_BRANCH"
+.venv/bin/python app.py
+)
+```
+
+If the test fails, stop and resolve VPN/SSH connectivity; DART will not
+launch. If it succeeds, keep the launch process running. In the DART window,
+select the printed Working/Outputs folder, verify Function 0's printed
+settings and blank GEMS CSV, uncheck Help Mode, choose **4: Compare and Merge
+CSV Files**, click **Pull From Headless DART...**, and select the same
+successful publishing Job ID. Verify project, row count, and warnings, then
+click **Pull For Review**. Do not recreate the project, inputs, or IDs.
+
+### 8.3 Compare and Inspect the Publishing Records
+
+**Mac DART window:**
+
+1. In **Select New CSV to Compare**, verify the displayed core matches
+   `MAC_CORE`.
+2. Leave **Backfill empty fields from GEMS metadata CSV** off. Linux already
+   performed backfill.
+3. Leave **After a successful merge, move completed object folders to
+   objects/.complete** off. Headless handoff does not retire GEMS sources.
+4. Choose `DART_export_handoff_JOB-ID.csv` for the recorded **publishing**
+   Job ID. **Use Newest** is safe only if it selects that exact file.
+   Choosing the file starts comparison immediately.
+5. For a still-header-only core, expect new records equal to the publishing
+   package's row count, changed records `0`, and missing in new `0`. For a
+   populated core, review additions, changes, and missing records against
+   that established core instead; absence from a batch is not a deletion
+   instruction.
+6. Click **Review & Merge Changes** to open **Interactive Comparison &
+   Merge**. This viewer is not a complete CSV-field viewer.
+
+In Finder, open `MAC_WORK`, press **Command-Shift-.** to show hidden files,
+and open the exact publishing CSV and
+`DART_handoff_JOB-ID_manifest.json` under `.DART-working-directory` in VS Code
+or a CSV viewer. Treat them as read-only; do not save spreadsheet conversions
+over them.
+
+Verify all of the following before authorizing a merge:
+
+- `objectid` is nonempty and unique; established IDs remain unchanged.
+- Physical records have the exact source `original_file_name`, extension,
+  and case, with no duplicate keys. Generated parent names start with `_`.
+- GEMS descriptive fields are present where expected; required metadata is
+  not unexpectedly blank. Inspect unmatched rows and ignored schema fields.
+- Standalone records have no `parentid`; each compound's physical children
+  point directly to its intended generated parent, without an unwanted
+  intermediate `multiple` layer. Review complete families together.
+- Row order follows the intended collection/child sequence.
+- `object_location`, `image_small`, and `image_thumb` contain the approved
+  HTTPS Azure URLs where applicable, not blank rehearsal locations or Linux
+  paths. Review asset types without derivatives individually. Parents
+  should inherit appropriate derivative references from a child.
+- Manifest `collection_id`, `job_id`, and `rows` match this collection and
+  publishing job. Investigate `id_conflicts`, stale snapshot warnings,
+  `derivatives_local_only`, and every unexplained warning. Check GEMS
+  backfill matched rows, fields filled, unmatched rows, duplicate names,
+  and ignored columns; a successful job alone does not prove completeness.
+
+If anything is wrong, **Cancel**; do not merge or regenerate IDs.
+
+### 8.4 Merge Only Approved Changes
+
+**Mac DART window; keep Terminal A's process running:**
+
+1. In **Interactive Comparison & Merge**, select only approved additions
+   and field changes. New records begin checked; uncheck anything not
+   approved. Keep complete parent/child families together.
+2. Click **Merge Selected Changes**.
+3. Review the confirmation's core and selections. Confirm **Merge Changes**
+   only if they are correct; otherwise cancel.
+4. Wait for successful completion. Do not quit DART during the merge.
+5. Verify the merged authoritative `MAC_CORE` CSV. Function 4 makes a backup
+   before writing. Existing rows retain their order; selected additions
+   follow export order. Verify intended rows, IDs, relationships, and URLs.
+
+### 8.5 Push the Updated Core Snapshot
+
+After verifying the merged core, use **one** of these methods:
+
+- **Mac DART window:** open Function 4's **Select New CSV to Compare**
+  dialog and click **Push Core Snapshot**. Verify the intended server/project
+  and wait for success. Keep DART and Terminal A running during the transfer.
+- **Terminal A - Mac:** if using the terminal instead, finish desktop
+  activity and quit DART normally. Wait for the local Mac prompt, then
+  paste this **complete** block:
+
+```bash
+# PASTE INTO TERMINAL A - MAC after quitting DART normally. Snapshot push only.
+(
+set -eu
+cd "$MAC_DART"
+.venv/bin/python - <<'PY'
+import os
+from dart_handoff import push_core_snapshot
+
+checksum = push_core_snapshot(
+    os.environ["HEADLESS_HOST"],
+    os.environ["LINUX_PROJECT"],
+    os.environ["MAC_CORE"],
+)
+print(f"Core snapshot pushed; SHA-256: {checksum}")
+PY
+)
+```
+
+Keep Terminal A and VPN connected until the snapshot push succeeds and the
+local prompt returns. The push updates Linux's read-only input snapshot,
+not the authoritative Mac core. Do not quit during any merge or transfer.
+
+**Finished:** require a successful snapshot push. Once all desktop operations
+and transfers are complete, quit DART normally. After Terminal A's local Mac
+prompt returns, it may be closed; optional Terminal B may also be closed.
 
 Headless processing and handoff do **not** move GEMS folders into `.complete`.
 Leave sources intact and track completed job IDs and merged batches yourself.
@@ -621,10 +1170,23 @@ Publishing the CollectionBuilder site is a separate workflow.
 
 ## Validation Status
 
-All 12 shell blocks and four embedded Python snippets passed syntax checks.
-Isolated temporary-file tests verified header-only core creation, JSON contents,
-overwrite refusal, and collection-ID checks. A local SSH stand-in verified
-variable forwarding with spaces and quotes; it made no network connection.
+All shell blocks and embedded Python snippets passed syntax checks;
+local document links, the installation anchor, and table headers were checked.
+Isolated temporary-storage tests verified that the source diagnostic accepts
+approved objects and metadata, identifies a rejected path, and rejects an empty
+allowlist even when the parent shell exports a different one.
+
+The recovery helper's nine focused tests cover a non-mutating preview,
+configuration-only recovery, repeat runs, environment/backup preservation,
+SSH quoting, and refusals for IDs, job evidence, active writers, stale-active
+records, and sources outside the approved run. Configuration-only recovery
+was also verified over SSH: existing approvals/private values were preserved,
+the core and snapshot stayed unchanged, and no job or IDs were created.
+
+Earlier isolated temporary-file tests verified header-only core creation,
+JSON contents, overwrite refusal, and collection-ID checks. A local SSH
+stand-in verified variable forwarding with spaces and quotes; it made no
+network connection.
 
 No server deployment, source scan, Azure upload, real collection core creation,
 or merge was performed while restructuring this runbook. Actual paths,

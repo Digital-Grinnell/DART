@@ -30,6 +30,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Azure, and institutional restore checks remain explicitly manual.
 
 ### Changed
+- The desktop Inputs Folder label now notes that a local input folder is
+  unnecessary for configured headless DART handoff. The guidance refreshes
+  on startup, project selection, and settings save. Inputs Folder and Files
+  Selection, including Browse/Clear buttons, are disabled for headless
+  handoff projects and re-enabled for local projects; saved selections are
+  preserved.
 - Shared existing compound analysis and CSV row construction between native
   and managed workflows. Importing processing helpers no longer creates
   desktop home-directory logs. Native projects/CLIs remain available; new
@@ -39,6 +45,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   snapshot and the scan.
 - Renamed `python_web_requirements.txt` to `python_linux_requirements.txt`;
   web dependencies are no longer required.
+
+### Fixed
+- Import PyMuPDF through its canonical `pymupdf` module instead of the
+  deprecated `fitz` entry point, removing the startup warning on desktop
+  and headless DART without suppressing warnings or changing PDF rendering.
 
 ## [6.7] - 2026-10-12
 

@@ -8,8 +8,20 @@ Compare two CSV files to identify matching records, new records, changed values,
 Compare and merge always happen here, on the desktop, against the
 authoritative core CSV. [Headless DART](LINUX-HEADLESS-OVERVIEW.md) on Linux
 only prepares data. When `headless_host` and `headless_project_dir` are set in
-[Function 0](FUNCTION_0_APP_SETTINGS.md), the Function 4 selection dialog adds
-two buttons:
+[Function 0](FUNCTION_0_APP_SETTINGS.md), desktop DART recognizes the project
+as configured for headless handoff.
+
+The main window also labels **Inputs Folder** as **Not necessary for headless
+DART handoff**, with a note that Function 4 uses the server package rather
+than that local folder. The note updates at startup, when selecting another
+Working/Outputs folder, and after saving Function 0 settings. DART detects
+configured headless handoff, not a special GEMS launch mode. **Inputs Folder**
+and **Files Selection**, including their Browse/Clear buttons, are disabled
+and grayed out for these projects. Saved local paths and file selections are
+preserved. These controls re-enable for local projects; Working/Outputs
+Folder remains enabled so you can switch projects.
+
+The Function 4 selection dialog adds two buttons:
 
 - **Pull From Headless DART...** lists complete packages on the server with
   row counts, GEMS backfill statistics, and warnings. Pulling verifies the
