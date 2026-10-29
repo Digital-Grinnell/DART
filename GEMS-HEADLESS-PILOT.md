@@ -21,6 +21,14 @@ constructs compound rows, routes assets, and generates derivatives. GEMS
 backfill protects DART identity, structure, and URL fields; it does not
 automatically adopt GEMS URLs or derivatives.
 
+For multiple collections, use
+[Overnight Collection Batches](LINUX-HEADLESS-OVERVIEW.md#overnight-collection-batches).
+That mode can set up new Linux projects from a staged header-only schema,
+prepare collections sequentially in a disconnect-safe system service, and
+leave per-collection packages and a durable summary for next-day desktop
+review. It does not automate the rehearsal approval, publishing approval,
+Mac core creation, or merge gates below.
+
 ## Execution Map
 
 **Yes: one local Mac terminal and one SSH terminal are enough. In fact, this
@@ -111,7 +119,6 @@ export DART_BRANCH='linux'
 # Derived values: change only if your verified layout uses different names.
 export GEMS_CSV="$GEMS_RUN/collection_metadata.csv"
 export MAC_CORE="$SHOW_REPO/collections/$COLLECTION_ID/_data/${COLLECTION_ID}_metadata.csv"
-export CORE_TEMPLATE="$SHOW_REPO/collections/_collection-template/_data/collection-template.csv"
 export MAC_WORK="$HOME/DART-projects/$COLLECTION_ID"
 export LINUX_PROJECT="$LINUX_DATA/projects/$COLLECTION_ID"
 export AZURE_PATH="/objs/$COLLECTION_ID"
@@ -216,50 +223,53 @@ mounts, or service configuration to make DART work.
 ## 2. Establish the Authoritative Mac Core
 
 **Terminal A - Mac; executes locally; one-shot.** For a genuinely new
-collection, this creates only the core's parent directories and a header-only
-CSV, not a fully scaffolded SHOW site.
-Confirm `MAC_CORE` and `CORE_TEMPLATE` before running.
+collection, initialize the SHOW overlay **together**: a header-only core CSV,
+a populated `_config.yml`, and populated `Collection_Notes.md`, using
+`SHOW/collections/_collection-template/`. The helper also updates the matching
+row in `SHOW/_data/digital_collections.csv`. It uses that row's title, preserves
+description/audit fields and existing progress text, and updates the progress
+date/status to **SHOW initialized; DART review/merge pending**. It does not mark
+the collection complete or published.
 
-**Existing collection:** do not run this creation block. Inspect the established
-core and ID mapping, set `MAC_CORE` to that core in Step 0, and review migration
-and snapshot compatibility before proceeding. Never replace a populated core
-with an empty one.
+The helper lives in SHOW's `scripts/initialize_collection.rb`; update the SHOW
+checkout to a revision containing it before using this step. Preview first:
 
 ```bash
-# PASTE INTO TERMINAL A - MAC. Wait for successful creation and the Mac prompt.
+# PASTE INTO TERMINAL A - MAC. Preview only; no files are changed.
 (
 set -eu
-cd "$MAC_DART"
-.venv/bin/python - <<'PY'
-import csv
-import os
-import re
-from pathlib import Path
-
-collection = os.environ["COLLECTION_ID"]
-if not re.fullmatch(r"[a-z0-9_-]+", collection) or collection == "collection-template":
-    raise SystemExit("Stop: supply a valid, non-reserved collection ID in Step 0.")
-template = Path(os.environ["CORE_TEMPLATE"])
-target = Path(os.environ["MAC_CORE"])
-if not target.is_absolute() or target.name == "collection-template.csv":
-    raise SystemExit("Stop: core must be an absolute, non-template path.")
-with template.open(newline="", encoding="utf-8-sig") as handle:
-    columns = next(csv.reader(handle))
-required = {"objectid", "original_file_name", "parentid", "type", "display_template",
-            "object_location", "image_small", "image_thumb"}
-if len(columns) != len(set(columns)) or not required.issubset(columns):
-    raise SystemExit("Stop: template header is duplicate or missing required DART columns.")
-target.parent.mkdir(parents=True, exist_ok=True)
-with target.open("x", newline="", encoding="utf-8") as handle:
-    csv.writer(handle).writerow(columns)
-print(f"Created header-only core: {target}")
-PY
+ruby "$SHOW_REPO/scripts/initialize_collection.rb" \
+  --slug "$COLLECTION_ID" --metadata-name "${COLLECTION_ID}_metadata"
 )
 ```
 
-Exclusive creation (`"x"`) refuses to overwrite an existing core. If it already
-exists, inspect it; do not delete it to make this block succeed. Never merge
-into `collection-template.csv`. Preserve all established identifiers.
+Confirm the planned CSV path equals `MAC_CORE`, then apply the same plan:
+
+```bash
+# PASTE INTO TERMINAL A - MAC ONLY AFTER REVIEWING THE PREVIEW.
+(
+set -eu
+test "$MAC_CORE" = "$SHOW_REPO/collections/$COLLECTION_ID/_data/${COLLECTION_ID}_metadata.csv"
+ruby "$SHOW_REPO/scripts/initialize_collection.rb" \
+  --slug "$COLLECTION_ID" --metadata-name "${COLLECTION_ID}_metadata" --apply
+)
+```
+
+If the catalog row is missing (or its title is blank), add `--title 'Actual
+Collection Title'` to **both** commands. A new row is created as `draft` with
+`search_index=FALSE`; collection description, images, migration classification,
+and coverage claims are not invented. Existing catalog publication/search
+settings are preserved. Published collections' progress is not downgraded.
+
+**Existing collection:** inspect the established core and ID mapping, set
+`MAC_CORE` to that core, and review migration/snapshot compatibility. The helper
+can fill in missing companion files without changing an existing CSV, config,
+or notes, but use the core's **actual base name** with `--metadata-name`.
+Conflicting config identity, duplicate catalog matches, symlinked paths, or a
+different existing metadata CSV cause an error rather than silent replacement.
+Once initialized, reruns are no-ops; subsequent review progress is not reset.
+Never delete a populated core or ID map to make initialization succeed.
+Never merge into `collection-template.csv`.
 
 ## 3. Connect the Desktop Project and Push a Snapshot
 

@@ -1,4 +1,4 @@
-# DART On Linux: Headless Operating Overview
+# DART on Linux: Headless Operating Overview
 
 **Headless DART prepares data on dg-landing. Desktop DART reviews and merges.**
 
@@ -39,7 +39,7 @@ commands for a no-upload rehearsal and a separately approved publishing run.
 
 <div class="dart-diagram">
 
-## Division Of Work
+## Division of Work
 
 ```mermaid
 %%{init: {"themeVariables": {"fontSize": "18px"}, "htmlLabels": false, "flowchart": {"htmlLabels": false, "wrappingWidth": 420, "rankSpacing": 28, "nodeSpacing": 22}}}%%
@@ -132,7 +132,7 @@ especially after a merge, so new jobs reuse the latest IDs.
 
 ## Everyday Flow
 
-### 1. Prepare A Package On Linux
+### 1. Prepare a Package on Linux
 
 Put job inputs in an owner-only JSON file:
 
@@ -170,7 +170,179 @@ the package path, row count, ID-conflict count, and warnings. Exit 0 means
 `succeeded`; nonzero means failure, cancellation, or startup rejection.
 Ctrl+C or SIGTERM requests cooperative cancellation.
 
-### 2. Pull And Review On The Mac
+### Overnight Collection Batches
+
+Use `--batch` instead of `--job prepare` to process multiple collections
+**sequentially**, then review/merge their packages individually the next day.
+The batch holds the existing single-writer locks for its entire lifetime;
+do not run configuration or other headless jobs concurrently.
+
+Create an owner-only queue JSON on Linux, for example
+`/data/dart/config/overnight.json`:
+
+```json
+{
+  "collections": [
+    {
+      "collection_id": "new-collection",
+      "input_dir": "/APPROVED/GEMS/new-collection/objects",
+      "setup": {
+        "core_template": "/data/dart/config/new-collection-template.csv",
+        "gems_metadata_csv": "/APPROVED/GEMS/new-collection/collection_metadata.csv",
+        "azure_blob_storage_path": "/objs/new-collection",
+        "group_compound_objects": true,
+        "create_multiple_objects": false,
+        "process_OHM_data": false
+      },
+      "allow_uploads": false,
+      "overwrite": false
+    },
+    {
+      "collection_id": "configured-collection",
+      "input_dir": "/APPROVED/GEMS/configured-collection/objects",
+      "allow_uploads": false
+    }
+  ]
+}
+```
+
+Replace all example collection IDs and paths. The queue's `input_dir` is the
+GEMS run's **`objects/` directory**, not the run directory. Each ID must occur
+only once per queue and must not be the reserved `collection-template` slug.
+Unknown keys and non-boolean flags are rejected before any project setup.
+No credentials belong in the queue.
+
+**Automatic setup is only for genuinely new collections.** Stage an approved
+**header-only** CollectionBuilder CSV under the private configuration root
+(or managed `projects` root) and `chmod 600` it. The batch creates
+`/data/dart/data/projects/<collection_id>`, copies that template to
+`core-snapshot.csv`, and saves settings using the existing configuration
+validator. It does not create an authoritative Mac core or a CollectionBuilder
+site. A template containing data rows is rejected. For existing collections,
+configure the project and push the real snapshot normally, then omit `setup`.
+
+Setup defaults to flat compounds (`group_compound_objects=true`,
+`create_multiple_objects=false`, `process_OHM_data=false`); GEMS and Azure
+paths default to blank. The same setup entry can be retried: matching saved
+settings are reused, **not rewritten**, and even a subsequently refreshed
+snapshot is left unchanged. Differing saved settings cause that collection to
+fail; inspect the project rather than deleting it or its ID map. Partial setup
+without settings reuses a snapshot only if its bytes match the template.
+Never use automatic setup to migrate an existing desktop project's mappings.
+
+Each entry accepts the normal prepare options: `derivatives`, `backfill`,
+`allow_uploads`, and `overwrite`, with the same defaults and validation.
+Uploads default to **off for each collection independently**. Set
+`allow_uploads=true` only after that collection has passed the existing
+no-upload rehearsal and desktop review gate and publishing has been approved.
+`overwrite=true` additionally requires upload approval. Batch mode does not
+bypass those gates or create Azure containers. A new collection's first
+overnight run should therefore be a no-upload rehearsal; a later approved
+publishing queue can reuse the same projects and IDs.
+
+For a foreground test **at a Linux shell prompt**:
+
+```bash
+chmod 600 /data/dart/config/overnight.json
+cd ~/GitHub/DART
+.venv/bin/python -m dart_linux --env-file /data/dart/config/dart.env \
+  --batch --inputs /data/dart/config/overnight.json
+```
+
+Unlike the foreground single-collection runbook, an overnight launch must
+survive SSH disconnects. On `dg-landing`, use an approved **system service**,
+running as the DART storage owner, not a foreground SSH command. For example,
+an administrator can launch this transient systemd service **on Linux**
+(adjust the account and checkout paths to the installed values):
+
+```bash
+sudo systemd-run --unit=dart-overnight-20261029 \
+  --uid=sysadmin --gid=sysadmin \
+  --working-directory=/home/sysadmin/GitHub/DART \
+  --property=UMask=0077 \
+  --property=TimeoutStopSec=infinity \
+  /home/sysadmin/GitHub/DART/.venv/bin/python -m dart_linux \
+  --env-file /data/dart/config/dart.env \
+  --batch --inputs /data/dart/config/overnight.json
+
+sudo systemctl status dart-overnight-20261029 --no-pager
+sudo journalctl -u dart-overnight-20261029 -n 40 --no-pager
+```
+
+Use a unique unit name per launch. Service creation requires the administrator's
+approval; these commands do not install a recurring schedule. `systemd-run`
+returning successfully means **launched**, not **completed**: confirm status
+and a `Batch:`/`Summary:` line in the journal before disconnecting. A fast run
+may already have finished; check its exit status and summary instead. Once
+launched and verified, the system service continues with the Mac disconnected
+or asleep. Do not edit the selected environment file, queue, templates,
+sources, or settings during a run. The queue is read once and an evidence copy
+is saved, but source/template files are read as each collection starts.
+
+The batch prints and atomically updates a private
+`/data/dart/data/batches/<batch-id>/summary.json`, with a copy of the input
+queue alongside it. Each collection record includes its state, project path,
+job ID, log path, and normal prepare result (package path, row count,
+ID conflicts, and warnings). Normal per-job evidence remains under `jobs`.
+Read the summary at the exact printed path; `--list-jobs` also lists the
+individual prepare jobs.
+
+- A collection setup/submission/processing failure is recorded and later
+  collections still run. Storage or evidence-persistence failure stops the
+  batch instead of claiming success.
+- Exit `0` / batch `succeeded` means every entry succeeded. Exit `1` / batch
+  `failed` means at least one failed. Successful packages remain available.
+- To stop, use `sudo systemctl stop dart-overnight-20261029`. SIGTERM requests
+  cooperative cancellation and prevents subsequent submissions; exit `130`
+  / batch `cancelled` leaves unstarted entries `pending`. Stopping can take
+  time while the current file/network operation finishes.
+- Power loss or forced termination may leave the summary `running`. This is
+  not proof that a process is alive or that packages completed. Verify the
+  service and job evidence. As with individual jobs, there is **no automatic
+  resume**; active job records become `interrupted` on the next service open.
+  Build a new queue containing only failed, interrupted, or pending
+  collections after inspecting partial outputs. Rerunning the entire queue
+  runs successful entries again too, preserving their IDs but creating new
+  jobs/packages.
+
+The next day, work through successful summary entries using the desktop steps
+below. For automatically created Linux projects, first establish the matching
+Mac core from the same header-only schema using SHOW's Mac-side initializer:
+
+```bash
+# Run at the local Mac prompt, not on dg-landing. Preview first.
+ruby "$HOME/GitHub/SHOW/scripts/initialize_collection.rb" \
+  --slug REPLACE-COLLECTION --metadata-name REPLACE-COLLECTION_metadata
+# After reviewing the planned files and catalog cell changes:
+ruby "$HOME/GitHub/SHOW/scripts/initialize_collection.rb" \
+  --slug REPLACE-COLLECTION --metadata-name REPLACE-COLLECTION_metadata --apply
+```
+
+This creates the CSV and populated `_config.yml`/`Collection_Notes.md` together,
+and records pending review/merge in SHOW's collection catalog without
+publishing. Existing files are preserved. It uses the catalog's existing
+title; supply `--title 'Actual Collection Title'` in both commands when adding
+a missing row. New catalog rows default to draft, with search disabled.
+To initialize **all catalog collections with no existing SHOW directory** in
+one Mac-side step, use `--all` instead of `--slug`/`--metadata-name`: preview
+with `ruby "$HOME/GitHub/SHOW/scripts/initialize_collection.rb" --all`, then
+repeat with `--apply`. Bulk mode uses `<slug>_metadata.csv` and skips existing
+collection directories entirely, including incomplete ones. DART does not
+invoke this automatically; Linux project setup and job submission remain
+separate.
+See [Establish the Authoritative Mac Core](GEMS-HEADLESS-PILOT.md#2-establish-the-authoritative-mac-core)
+for safeguards and existing-collection handling. Verify that SHOW's template
+header matches the staged Linux schema before proceeding.
+
+Then configure Function 0 with the same collection ID and Linux project path.
+Pull the **exact job ID** from the summary.
+Local-only rehearsal packages are for review, not final publishing;
+after approval, run the publishing queue and pull its packages for merge.
+Review ID conflicts and warnings even when a job succeeded. After each merge,
+push a fresh core snapshot before preparing more updates to that collection.
+All authoritative core writes and merge decisions remain on the Mac.
+
+### 2. Pull and Review on the Mac
 
 1. Open desktop DART on the matching project and click **Function 4**.
 2. Click **Pull From Headless DART...**. The dialog lists complete packages
@@ -258,7 +430,7 @@ Authorize uploads for publishing-ready derivative URLs.
 Headless DART never moves GEMS objects into `.complete`, never deletes
 sources, and never publishes a CollectionBuilder site.
 
-## Concurrency, Cancellation, And Recovery
+## Concurrency, Cancellation, and Recovery
 
 Only one headless DART process may write the managed roots at a time. A second
 writer is refused; inspect the existing process rather than deleting locks.

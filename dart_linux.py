@@ -36,8 +36,9 @@ def main() -> int:
     modes.add_argument("--configure", action="store_true",
                        help="Save collection settings from --inputs (working_dir plus settings fields)")
     modes.add_argument("--job", choices=JOB_KINDS, help="Run one headless job from --inputs")
+    modes.add_argument("--batch", action="store_true", help="Prepare a sequential collection queue from --inputs")
     modes.add_argument("--list-jobs", action="store_true", help="Print job history as JSON")
-    parser.add_argument("--inputs", help="Private JSON file of explicit inputs for --configure or --job")
+    parser.add_argument("--inputs", help="Private JSON file of explicit inputs for --configure, --job, or --batch")
     args = parser.parse_args()
     if os.name != "posix":
         parser.error("Managed mode requires POSIX; use app.py for Windows desktop operation.")
@@ -60,7 +61,7 @@ def main() -> int:
                                   for job in service.jobs()], indent=2))
             return 0
         if not args.inputs:
-            parser.error("--configure and --job require --inputs")
+            parser.error("--configure, --job, and --batch require --inputs")
         inputs = read_private_json(args.inputs)
         with JobService(storage) as service:
             service.claim("headless")
@@ -80,6 +81,9 @@ def main() -> int:
 
             signal.signal(signal.SIGINT, stop)
             signal.signal(signal.SIGTERM, stop)
+            if args.batch:
+                from dart_batch import run_batch
+                return run_batch(service, inputs, interrupted)
             job_id = service.submit("headless", args.job, inputs)
             if interrupted.is_set():
                 service._cancel.set()
