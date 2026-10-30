@@ -2,6 +2,11 @@
 
 ## Purpose and Boundaries
 
+For the October 29 **15-collection overnight run**, use its
+[dedicated launch and follow-up guide](OVERNIGHT-20261029.md) for collection
+paths and actual-job selection. The four-collection table below describes the
+earlier afternoon batch only.
+
 Use this runbook **after a headless batch finishes**. Linux has prepared
 handoff packages; it has not merged the authoritative SHOW metadata CSVs or
 published collection sites. Work through each successful collection separately:
