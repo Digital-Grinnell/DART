@@ -21,7 +21,6 @@ from urllib.parse import urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import dart_handoff
-from dart_processing import get_derivative_azure_paths
 
 
 # Runs with managed writer locks; credentials never leave Linux.
@@ -133,6 +132,8 @@ def table(content: bytes) -> tuple[list[str], list[dict[str, str]]]:
 
 def validate(content: bytes, manifest: dict, evidence: dict, slug: str) -> dict:
     """Prove row shape, families, source coverage, and explicit exclusions."""
+    from dart_processing import get_derivative_azure_paths
+
     columns, rows = table(content)
     required = {"objectid", "original_file_name", "parentid", "title", "object_location",
                 "image_small", "image_thumb"}
@@ -267,6 +268,55 @@ def check_show_config(show: Path, slug: str) -> None:
         raise ReviewRequired("SHOW overlay baseurl/metadata do not match the selected core")
 
 
+def update_catalog(path: Path, slug: str, values: dict[str, str], work: Path, *,
+                   apply: bool) -> str:
+    """Change only approved cells, retaining unrelated rows byte for byte."""
+    if path.resolve(strict=True) != path:
+        raise ReviewRequired("Catalog path is aliased")
+    before = path.read_bytes()
+    text = before.decode("utf-8-sig")
+    lines = text.splitlines(keepends=True)
+    reader = csv.reader(io.StringIO(text, newline=""))
+    header = next(reader)
+    if len(set(header)) != len(header) or not {"objectid", *values}.issubset(header):
+        raise ReviewRequired("Catalog columns missing or duplicated")
+    end = reader.line_num
+    chunks = ["".join(lines[:end])]
+    matches = 0
+    for row in reader:
+        start, end = end, reader.line_num
+        if len(row) != len(header):
+            raise ReviewRequired("Malformed catalog row")
+        if row[header.index("objectid")] == slug:
+            matches += 1
+            for key, value in values.items():
+                row[header.index(key)] = value
+            buffer = io.StringIO(newline="")
+            csv.writer(buffer, lineterminator="\r\n" if lines[end - 1].endswith("\r\n") else "\n").writerow(row)
+            chunks.append(buffer.getvalue())
+        else:
+            chunks.append("".join(lines[start:end]))
+    if matches != 1:
+        raise ReviewRequired("Catalog requires exactly one row for this collection")
+    after = "".join(chunks).encode("utf-8")
+    if before.startswith(b"\xef\xbb\xbf"):
+        after = b"\xef\xbb\xbf" + after
+    if not apply:
+        return "validated"
+    if before == after:
+        return "already_identical"
+    backup = work / f"catalog-before-{sha(before)}.csv"
+    if backup.exists() and backup.read_bytes() != before:
+        raise ReviewRequired("Catalog backup collision")
+    atomic(backup, before)
+    if path.read_bytes() != before:
+        raise ReviewRequired("Catalog changed before write")
+    atomic(path, after)
+    if path.read_bytes() != after:
+        raise RuntimeError("Catalog write verification failed")
+    return "written"
+
+
 def run(args: argparse.Namespace) -> int:
     show = args.show_root.resolve(strict=True)
     root = args.working_root.expanduser()
@@ -323,6 +373,13 @@ def run(args: argparse.Namespace) -> int:
                     raise ReviewRequired("Linux core snapshot changed since preparation")
                 if args.build:
                     check_show_config(show, slug)
+                catalog_values = {
+                    "status": args.catalog_status,
+                    "collection_group": args.catalog_group,
+                    "progress status": args.catalog_progress,
+                } if args.catalog_status is not None else {}
+                if catalog_values:
+                    update_catalog(show / "_data/digital_collections.csv", slug, catalog_values, work, apply=False)
                 if not args.apply:
                     result.update(state="ready", stage="preview")
                 else:
@@ -340,6 +397,13 @@ def run(args: argparse.Namespace) -> int:
                     if pushed["sha256"] != sha(content):
                         raise RuntimeError("Pushed snapshot checksum mismatch")
                     result["snapshot_sha256"] = pushed["sha256"]
+                    if catalog_values:
+                        result["stage"] = "catalog_update"
+                        persist()
+                        result["catalog_update"] = update_catalog(
+                            show / "_data/digital_collections.csv", slug, catalog_values, work, apply=True,
+                        )
+                        result["catalog_values"] = catalog_values
                     if args.build:
                         result["stage"] = "show_build"
                         log = work / f"accept-build-{args.batch_id}.log"
@@ -375,6 +439,9 @@ def main() -> int:
     parser.add_argument("--inventory", default="/data/dart/config/overnight-20261029-inventory.json")
     parser.add_argument("--apply", action="store_true", help="Back up/write empty cores and push snapshots")
     parser.add_argument("--build", action="store_true", help="With --apply, build each accepted SHOW collection")
+    parser.add_argument("--catalog-status", choices=["published", "draft"])
+    parser.add_argument("--catalog-group")
+    parser.add_argument("--catalog-progress")
     args = parser.parse_args()
     if not dart_handoff.valid_job_id(args.batch_id):
         parser.error("Use an exact 32-character batch ID")
@@ -383,6 +450,9 @@ def main() -> int:
         parser.error(message)
     if args.build and not args.apply:
         parser.error("--build requires --apply")
+    catalog = (args.catalog_status, args.catalog_group, args.catalog_progress)
+    if any(value is not None for value in catalog) and not all(value is not None for value in catalog):
+        parser.error("Supply all three --catalog-status, --catalog-group, --catalog-progress options or none")
     os.umask(0o077)
     try:
         return run(args)

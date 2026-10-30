@@ -59,6 +59,15 @@ records. A later follow-up failure does not roll back an already accepted core.
 See the [overnight automated follow-up](OVERNIGHT-20261029.md#automated-mac-follow-up-for-the-completed-batch)
 for the approved batch, known blockers, launch command, and result locations.
 
+For an explicitly approved catalog update, supply all three
+`--catalog-status`, `--catalog-group`, and `--catalog-progress` options.
+Only validated/accepted collections get those three cells updated, with a
+catalog backup; unrelated cells are preserved. Updates occur after snapshot
+push and before an optional build. A failed later build does not roll back
+catalog changes. The [final-three pipeline](FINAL-THREE-20261029.md) connects
+Linux preparation to these Mac-side steps without additional approval prompts.
+It never deploys sites.
+
 ## Metadata Preservation and Addition Order
 
 Desktop and managed Linux comparisons preserve embedded line endings in CSV

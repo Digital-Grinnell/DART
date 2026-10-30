@@ -9,7 +9,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from scripts.accept_headless_batch import ReviewRequired, accept_core, run, sha, table, validate
+from scripts.accept_headless_batch import ReviewRequired, accept_core, run, sha, table, update_catalog, validate
 
 
 def content(rows):
@@ -104,6 +104,26 @@ class AcceptanceTests(unittest.TestCase):
         with self.assertRaises(ReviewRequired):
             table(b"a,b\n1,2,3\n")
 
+    def test_catalog_updates_only_selected_cells_with_backup(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            path = root / "catalog.csv"
+            before = b'objectid,status,collection_group,progress status,title\r\ndemo,draft,,old,"Title"\r\nother,published,Keep,Keep,Other\r\n'
+            path.write_bytes(before)
+            values = {"status": "published", "collection_group": "Batch of 3",
+                      "progress status": "DART Complete, Pending Review of 3"}
+            self.assertEqual(update_catalog(path, "demo", values, root, apply=False), "validated")
+            self.assertEqual(path.read_bytes(), before)
+            self.assertEqual(update_catalog(path, "demo", values, root, apply=True), "written")
+            rows = list(csv.DictReader(io.StringIO(path.read_text())))
+            self.assertEqual(rows[0]["progress status"], values["progress status"])
+            self.assertEqual(rows[0]["title"], "Title")
+            self.assertTrue(path.read_bytes().endswith(b"other,published,Keep,Keep,Other\r\n"))
+            self.assertEqual((root / f"catalog-before-{sha(before)}.csv").read_bytes(), before)
+            self.assertEqual(update_catalog(path, "demo", values, root, apply=True), "already_identical")
+            with self.assertRaises(ReviewRequired):
+                update_catalog(path, "missing", values, root, apply=True)
+
     def test_backup_write_and_identical_retry(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -157,7 +177,12 @@ class AcceptanceTests(unittest.TestCase):
             self.evidence.update(job_id="a" * 32, project="/data/dart/data/projects/demo",
                                  snapshot_sha256=self.manifest["core_snapshot_sha256"])
             args = argparse.Namespace(show_root=show, working_root=work, batch_id="b" * 32,
-                                      host="host", inventory="/inventory.json", apply=True, build=True)
+                                      host="host", inventory="/inventory.json", apply=True, build=True,
+                                      catalog_status="published", catalog_group="Batch of 3",
+                                      catalog_progress="DART Complete, Pending Review of 3")
+            catalog = show / "_data/digital_collections.csv"
+            catalog.parent.mkdir()
+            catalog.write_text("objectid,status,collection_group,progress status\ndemo,draft,,Pending\n")
             pushes = []
 
             def remote(_host, request):
@@ -178,6 +203,9 @@ class AcceptanceTests(unittest.TestCase):
                 return dict(csv=str(export), manifest=str(manifest))
 
             def build(*_args, **_kwargs):
+                row, = list(csv.DictReader(catalog.open()))
+                self.assertEqual(row["status"], "published")
+                self.assertEqual(row["collection_group"], "Batch of 3")
                 site = show / "_site/demo"
                 site.mkdir(parents=True)
                 for name in ("index.html", "browse.html"):
@@ -190,6 +218,7 @@ class AcceptanceTests(unittest.TestCase):
                 args.apply = args.build = False
                 self.assertEqual(run(args), 0)
                 self.assertEqual(core.read_bytes(), content([]))
+                self.assertIn("draft", catalog.read_text())
                 self.assertEqual(pushes, [])
                 runner.assert_not_called()
                 args.apply = args.build = True
