@@ -1,5 +1,116 @@
 # October 29 Overnight Batch: Launch and Follow-Up
 
+## Automated Mac Follow-Up for the Completed Batch
+
+The completed server batch is **`f4f25f30904c434a93cd7b5b47f7a2f7`**.
+You approved automated new-record-only core writes with backups, refreshed
+Linux snapshots, and local SHOW builds. You also approved documented unsupported
+file exclusions, but not unexplained missing records or other validation failures.
+
+**Run the following on Terminal A - Mac, NOT on dg-landing.** Quit desktop DART
+first; do not edit the SHOW cores or run another SHOW build during this job.
+No Function 0 setup is needed for this script: it explicitly selects each
+collection's core and working directory.
+
+```bash
+# MAC: writes only validated empty cores, pushes snapshots, builds locally.
+(
+set -eu
+cd "$HOME/GitHub/DART"
+caffeinate -i .venv/bin/python -u scripts/accept_headless_batch.py \
+  --batch-id f4f25f30904c434a93cd7b5b47f7a2f7 \
+  --apply --build
+)
+```
+
+**Leave this terminal open, the Mac powered and lid open, and VPN connected.**
+`caffeinate -i` prevents idle system sleep while the command runs; it does not
+keep a closed laptop awake or preserve a dropped VPN. Unlike the Linux batch,
+this is a foreground Mac process. It does not need DGIngest mounted.
+
+For a preview only, run the same Python command **without `--apply --build`**.
+Preview pulls checksummed packages and saves evidence but does not write cores,
+push snapshots, or build. The apply job revalidates everything; no preview
+result authorizes a later changed package.
+
+### What the Automated Job Does
+
+For each exact successful publishing job in that batch, it:
+
+1. Verifies the pulled CSV checksum, collection ID, job ID, warnings/conflicts,
+   backfill, unique IDs/filenames, expected source inventory, compound families,
+   titles, and Azure URL shapes. URL validation is not a content-download audit.
+2. Reconciles GEMS filename coverage. Only explicitly inventoried unsupported
+   files may explain missing GEMS rows; missing generated parents still block.
+3. Requires the core schema/checksum to match the unchanged header-only snapshot
+   used during preparation. A populated core is refused unless its bytes are
+   already **identical** to this package, permitting safe retries.
+4. Backs up an empty core inside that collection's
+   `.DART-working-directory`, atomically writes the exact export, and verifies
+   the bytes. It never regenerates IDs, merges into populated cores, or deletes
+   records.
+5. Pushes the accepted core under Linux writer locks, refusing an unexpectedly
+   changed Linux snapshot.
+6. Runs SHOW's `rake collection:build[slug]` with Pagefind enabled, checks expected
+   output pages, and records the result. Builds happen sequentially.
+
+It does **not** deploy, change catalog/publication/search status, delete
+originals, or alter settings/ID maps. Ignored GEMS columns are recorded in the
+validation evidence, not silently added to the authoritative schema. Human
+visual review and any final coverage/publication decisions remain necessary.
+
+### Verified Preview Findings
+
+The live preview found **11 ready collections**:
+Handbooks, Lawrence, Cook, Grinnell and You, Grinnell in China, Stella,
+Kleinschmidt, Military, New Students, Scarlet & Black, and Underground.
+
+These four are **not eligible for unattended acceptance** and will remain
+unchanged unless their evidence is corrected and passes a later validation:
+
+| Collection | Blocking Finding |
+| --- | --- |
+| `faculty-scholarship` | Three GEMS parent filenames absent from the export: `_grinnell_13117-01.pdf`, `_grinnell_23326-01.bin`, `_grinnell_23334-01.bin`; the 28 known unsupported physical files alone do not explain these parent records |
+| `buildings` | At least one blank title in the export |
+| `beaton` | Four GEMS parent records absent: `_beaton_dg_1792727749`, `_beaton_dg_1792727752`, `_beaton_dg_1792727775`, `_beaton_dg_1792727779` |
+| `social-gospel` | GEMS parent record `_social-gospel_dg_1792730848` absent |
+
+These are not automatic repair instructions. Do not invent parent relationships,
+fill titles speculatively, reset IDs, or edit the checksummed handoff to bypass
+the gates. Use desktop review/investigation for those collections.
+
+### Results, Errors, and Retrying
+
+The command prints a JSON result for each collection and continues after an
+individual failure. **Exit 1 is expected if any collection needs review or
+failed**, even when the other collections finished successfully. Read the
+per-collection states rather than treating that exit code as “nothing ran.”
+
+**Terminal A - Mac, after the command exits:**
+
+```bash
+python3 -m json.tool \
+  "$HOME/DART-projects/.DART-working-directory/accept-f4f25f30904c434a93cd7b5b47f7a2f7/summary.json"
+```
+
+- `succeeded`: core written/already identical, snapshot pushed, local build passed.
+- `review_required`: a safety gate failed; inspect `message` and `stage`.
+- `failed`: an operational error occurred; inspect `message`, `stage`, and
+  `build_log` when present.
+
+Per-collection package copies, source-validation evidence, original-core
+backups (`core-before-SHA256.csv`), and build logs are under
+`~/DART-projects/<slug>/.DART-working-directory/`. Previous attempt summaries
+are retained beside the current summary.
+
+**There is no cross-collection rollback.** If the core write succeeds but a
+snapshot push or build fails, that accepted core stays written; the summary
+records the failed stage. Repeating the same command recognizes byte-identical
+cores and retries follow-up safely. A manually edited/nonidentical populated
+core is refused rather than overwritten. If the process is interrupted, a
+`running` stage in the summary requires inspection; rerun only when no previous
+acceptance process is still active.
+
 ## What Is Ready
 
 The approved **publishing** queue contains the 15 collections below, in the

@@ -5,7 +5,7 @@ Compare two CSV files to identify matching records, new records, changed values,
 
 ## Reviewing Headless DART Handoff Packages
 
-Compare and merge always happen here, on the desktop, against the
+Interactive compare and merge happen here, on the desktop, against the
 authoritative core CSV. [Headless DART](LINUX-HEADLESS-OVERVIEW.md) on Linux
 only prepares data. When `headless_host` and `headless_project_dir` are set in
 [Function 0](FUNCTION_0_APP_SETTINGS.md), desktop DART recognizes the project
@@ -41,6 +41,23 @@ warnings such as `id_conflicts` or local-only derivative paths. Review those
 before merging. Headless packages are already GEMS-backfilled on the server
 when configured, and pulling never retires or moves GEMS source folders.
 Selection, merge, and backup behavior described below is unchanged.
+
+### Optional New-Record-Only Batch Acceptance
+
+The Mac-side helper `scripts/accept_headless_batch.py` is an explicit,
+preview-first alternative for approved publishing batches whose authoritative
+cores are still header-only. It reuses checksummed handoff pulls, validates
+source/GEMS coverage and compound families, backs up each core, writes only
+validated new records, and pushes a checked snapshot under Linux writer locks.
+`--apply` is required for writes; `--build` additionally builds accepted SHOW
+collections locally. It never deploys or marks collections published.
+
+This helper does not perform general merges: populated, changed, or ambiguous
+cores/packages require interactive review. Exact byte-identical retries are
+allowed so a failed snapshot push/build can be retried without duplicating
+records. A later follow-up failure does not roll back an already accepted core.
+See the [overnight automated follow-up](OVERNIGHT-20261029.md#automated-mac-follow-up-for-the-completed-batch)
+for the approved batch, known blockers, launch command, and result locations.
 
 ## Metadata Preservation and Addition Order
 
