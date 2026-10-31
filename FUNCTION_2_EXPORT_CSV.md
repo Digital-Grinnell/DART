@@ -17,6 +17,15 @@ silently disabling Azure. ID mappings are saved before network work so retries
 reuse them. OHM transcript copies stay inside the managed project; originals
 remain read-only.
 
+For non-OHM headless scans, an ID embedded in a filename is reused only
+when it identifies one asset in that scan. Numbered siblings such as
+`dg_123-01.mp3`, `dg_123-02.pdf`, and `dg_123-03.jpg` share an embedded
+basename but are distinct assets: DART logs the ambiguity and assigns
+separate durable IDs, without renaming sources. Existing path mappings
+and unambiguous core-filename IDs are preserved. Ambiguous/colliding
+existing mappings still fail explicitly rather than being rewritten.
+Unambiguous embedded IDs and OHM filename-ID behavior remain unchanged.
+
 ## When to Use
 Use this function when you want to:
 - Generate metadata CSV files for CollectionBuilder

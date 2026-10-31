@@ -44,13 +44,33 @@ Selection, merge, and backup behavior described below is unchanged.
 
 ### Optional New-Record-Only Batch Acceptance
 
+For the approved non-OHM alumni/PHPP oral-history queues, see
+[Oral History Overnight Jobs](ORAL-HISTORIES-20261030.md). Their optional
+VTT-to-CSV preparation is separate from OHM processing; the Mac pipeline uses
+the same acceptance gates with **no catalog updates**. Transcript exceptions
+are retained in reports for review, not silently repaired or treated as
+publication approval.
+
 The Mac-side helper `scripts/accept_headless_batch.py` is an explicit,
 preview-first alternative for approved publishing batches whose authoritative
 cores are still header-only. It reuses checksummed handoff pulls, validates
 source/GEMS coverage and compound families, backs up each core, writes only
 validated new records, and pushes a checked snapshot under Linux writer locks.
 `--apply` is required for writes; `--build` additionally builds accepted SHOW
-collections locally. It never deploys or marks collections published.
+collections locally. It never deploys; catalog changes require the separate
+explicit options described below. Use `--collections slug [slug ...]` to retry
+only selected collections from a batch without processing the others.
+
+Missing GEMS records (including omitted compound parents) are **coverage
+warnings, not a reason to discard an otherwise valid export**. The helper
+prints each warning, records exact filenames in
+`validation.unexplained_gems_names`, and can write/push/build the partial core
+for editing. Preview returns `ready_with_warnings`; an applied run returns
+`accepted_with_warnings`. Both return exit `1` to keep the need for review
+visible, even when the core write and local build succeeded. It does not
+invent missing records, repair relationships, or claim complete coverage.
+Package warnings/conflicts, checksum or inventory mismatches, invalid
+relationships, blank titles, and other existing safety gates still block.
 
 This helper does not perform general merges: populated, changed, or ambiguous
 cores/packages require interactive review. Exact byte-identical retries are
@@ -61,12 +81,14 @@ for the approved batch, known blockers, launch command, and result locations.
 
 For an explicitly approved catalog update, supply all three
 `--catalog-status`, `--catalog-group`, and `--catalog-progress` options.
-Only validated/accepted collections get those three cells updated, with a
+Only validated collections without coverage warnings get those three cells updated, with a
 catalog backup; unrelated cells are preserved. Updates occur after snapshot
 push and before an optional build. A failed later build does not roll back
 catalog changes. The [final-three pipeline](FINAL-THREE-20261029.md) connects
 Linux preparation to these Mac-side steps without additional approval prompts.
-It never deploys sites.
+It never deploys sites. For incomplete coverage, all requested catalog updates
+are skipped (`catalog_update: skipped_incomplete_coverage`); the current
+publication status is left unchanged, not automatically changed to draft.
 
 ## Metadata Preservation and Addition Order
 

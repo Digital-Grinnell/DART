@@ -5,7 +5,9 @@
 The completed server batch is **`f4f25f30904c434a93cd7b5b47f7a2f7`**.
 You approved automated new-record-only core writes with backups, refreshed
 Linux snapshots, and local SHOW builds. You also approved documented unsupported
-file exclusions, but not unexplained missing records or other validation failures.
+file exclusions. The October 30 policy update now accepts unexplained missing
+GEMS records as prominent coverage warnings for editing; other validation
+failures remain blocking. Partial acceptance does not approve publication.
 
 **Run the following on Terminal A - Mac, NOT on dg-landing.** Quit desktop DART
 first; do not edit the SHOW cores or run another SHOW build during this job.
@@ -40,8 +42,10 @@ For each exact successful publishing job in that batch, it:
 1. Verifies the pulled CSV checksum, collection ID, job ID, warnings/conflicts,
    backfill, unique IDs/filenames, expected source inventory, compound families,
    titles, and Azure URL shapes. URL validation is not a content-download audit.
-2. Reconciles GEMS filename coverage. Only explicitly inventoried unsupported
-   files may explain missing GEMS rows; missing generated parents still block.
+2. Reconciles GEMS filename coverage. Explicitly inventoried unsupported files
+   explain their own missing rows; other missing rows, including generated
+   parents, are reported as review warnings without preventing a partial core
+   write or build. No missing records or relationships are invented.
 3. Requires the core schema/checksum to match the unchanged header-only snapshot
    used during preparation. A populated core is refused unless its bytes are
    already **identical** to this package, permitting safe retries.
@@ -65,19 +69,25 @@ The live preview found **11 ready collections**:
 Handbooks, Lawrence, Cook, Grinnell and You, Grinnell in China, Stella,
 Kleinschmidt, Military, New Students, Scarlet & Black, and Underground.
 
-These four are **not eligible for unattended acceptance** and will remain
-unchanged unless their evidence is corrected and passes a later validation:
+The original preview blocked these four collections. Under the October 30
+policy, the missing-record findings below permit partial acceptance with
+warnings; Buildings' blank title still blocks. Historical summaries retain
+their original results until a new acceptance attempt:
 
 | Collection | Blocking Finding |
 | --- | --- |
-| `faculty-scholarship` | Three GEMS parent filenames absent from the export: `_grinnell_13117-01.pdf`, `_grinnell_23326-01.bin`, `_grinnell_23334-01.bin`; the 28 known unsupported physical files alone do not explain these parent records |
+| `faculty-scholarship` | Coverage warning: three GEMS parent filenames absent from the export: `_grinnell_13117-01.pdf`, `_grinnell_23326-01.bin`, `_grinnell_23334-01.bin`; the 28 known unsupported physical files alone do not explain these parent records |
 | `buildings` | At least one blank title in the export |
-| `beaton` | Four GEMS parent records absent: `_beaton_dg_1792727749`, `_beaton_dg_1792727752`, `_beaton_dg_1792727775`, `_beaton_dg_1792727779` |
-| `social-gospel` | GEMS parent record `_social-gospel_dg_1792730848` absent |
+| `beaton` | Coverage warning: four GEMS parent records absent: `_beaton_dg_1792727749`, `_beaton_dg_1792727752`, `_beaton_dg_1792727775`, `_beaton_dg_1792727779` |
+| `social-gospel` | Coverage warning: GEMS parent record `_social-gospel_dg_1792730848` absent |
 
 These are not automatic repair instructions. Do not invent parent relationships,
 fill titles speculatively, reset IDs, or edit the checksummed handoff to bypass
 the gates. Use desktop review/investigation for those collections.
+
+To accept only Faculty Scholarship for editing, preview the existing package
+with `--collections faculty-scholarship`, then add `--apply --build` after
+review. This does not rerun Linux preparation or change any other collection.
 
 ### Results, Errors, and Retrying
 
@@ -94,6 +104,10 @@ python3 -m json.tool \
 ```
 
 - `succeeded`: core written/already identical, snapshot pushed, local build passed.
+- `ready_with_warnings` / `accepted_with_warnings`: incomplete GEMS coverage;
+  inspect `warnings` and `validation.unexplained_gems_names`. An applied run
+  still writes the partial core, pushes its snapshot, and builds if requested.
+  Exit `1` flags outstanding review, not a failed core write.
 - `review_required`: a safety gate failed; inspect `message` and `stage`.
 - `failed`: an operational error occurred; inspect `message`, `stage`, and
   `build_log` when present.

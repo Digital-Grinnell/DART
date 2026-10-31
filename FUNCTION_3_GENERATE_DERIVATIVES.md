@@ -13,6 +13,19 @@ their CSV cells hold local Linux paths, not published URLs; handoff
 manifests flag this with a warning. Derivative files are not transferred to
 the desktop.
 
+For publishing jobs with overwrite disabled, headless DART checks each exact
+Azure derivative **before opening/decoding the original or normalizing TIFFs**.
+An existing blob is reused only after a bounded download (at most 16 MiB),
+ETag-conditional verification, successful JPEG decoding, and a check that
+both dimensions are within the requested 800/400-pixel bounds. Its URL is
+written into the export without generating a local duplicate or uploading.
+This validates the stored derivative, not its historical correspondence to
+the current original; keep permanent IDs and source files stable on retries.
+Missing derivatives alone are generated. Invalid blobs and access/download
+errors fail explicitly; they are not silently replaced or treated as missing.
+Explicit overwrite jobs regenerate both sizes; local-only jobs remain offline.
+Results report `images` (generated) and `reused` separately.
+
 Local images, partial results, and updated CSVs are retained under the project's
 hidden working directory with the job ID. Temporary TIFF normalization also
 stays there. Compound derivative references use an unambiguous descendant

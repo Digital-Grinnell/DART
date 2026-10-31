@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import ExitStack
 import fcntl
 import json
 from pathlib import Path
@@ -39,14 +40,18 @@ def status(host: str, queue: str) -> dict:
     ))
 
 
-def launch(host: str, unit: str, queue: str) -> None:
+def launch(host: str, unit: str, queue: str, oral_history_plan: str | None = None) -> None:
+    job = (["scripts/prepare_oral_history_batch.py", "--plan", oral_history_plan]
+           if oral_history_plan else [
+               "-m", "dart_linux", "--env-file", "/data/dart/config/dart.env",
+               "--batch", "--inputs", queue, "--min-free-gib", "50",
+           ])
     command = shlex.join([
         "sudo", "systemd-run", "--unit=" + unit,
         "--uid=sysadmin", "--gid=sysadmin", "--working-directory=/home/sysadmin/GitHub/DART",
         "--property=UMask=0077", "--property=TimeoutStopSec=infinity",
         "--setenv=PYTHONUNBUFFERED=1",
-        "/home/sysadmin/GitHub/DART/.venv/bin/python", "-m", "dart_linux",
-        "--env-file", "/data/dart/config/dart.env", "--batch", "--inputs", queue, "--min-free-gib", "50",
+        "/home/sysadmin/GitHub/DART/.venv/bin/python", *job,
     ])
     # A TTY permits the initial sudo prompt; subsequent monitoring is noninteractive.
     subprocess.run(["ssh", "-t", *dart_handoff.SSH_OPTIONS, "--", host, command], check=True)
@@ -56,8 +61,15 @@ def run(args: argparse.Namespace) -> int:
     work = Path.home() / "DART-projects/.DART-working-directory"
     work.mkdir(parents=True, exist_ok=True)
     record_path = work / f"pipeline-{args.unit}.json"
-    with (work / f"pipeline-{args.unit}.lock").open("a") as lock:
+    with ExitStack() as stack:
+        lock = stack.enter_context((work / f"pipeline-{args.unit}.lock").open("a"))
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        if getattr(args, "oral_history_plan", None):
+            oral_lock = stack.enter_context((work / "oral-history-pipelines.lock").open("a"))
+            try:
+                fcntl.flock(oral_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError:
+                raise RuntimeError("Another oral-history Mac pipeline is active; run the two jobs sequentially") from None
         initial = status(args.host, args.queue)
         queue_hash = sha(json.dumps(initial["queue"], sort_keys=True).encode())
         entries = initial["queue"].get("collections", [])
@@ -83,8 +95,19 @@ def run(args: argparse.Namespace) -> int:
         record = dict(unit=args.unit, queue=args.queue, queue_sha256=queue_hash, state="preparing")
         atomic(record_path, json.dumps(record, indent=2).encode())
         if initial["summary"] is None:
-            print("Starting Linux publishing batch. Authorize sudo now if prompted.", flush=True)
-            launch(args.host, args.unit, args.queue)
+            active = dart_handoff._ssh(
+                args.host, "systemctl show " + shlex.quote(args.unit) + " -p ActiveState --value",
+                subprocess.run,
+            ).decode().strip()
+            if active not in {"active", "activating", "deactivating"}:
+                print("Starting Linux publishing batch. Authorize sudo now if prompted.", flush=True)
+                plan = getattr(args, "oral_history_plan", None)
+                if plan:
+                    launch(args.host, args.unit, args.queue, plan)
+                else:
+                    launch(args.host, args.unit, args.queue)
+            else:
+                print("Resuming monitoring of the existing Linux service.", flush=True)
         deadline = time.monotonic() + 24 * 60 * 60
         summary = initial["summary"]
         while summary is None or summary["state"] == "running":
@@ -118,14 +141,16 @@ def run(args: argparse.Namespace) -> int:
             raise ValueError("Unexpected batch ID")
         record.update(state="mac_acceptance", batch_id=summary["id"])
         atomic(record_path, json.dumps(record, indent=2).encode())
-        print("Linux batch finished. Accepting eligible cores, updating catalog, building locally.", flush=True)
+        print("Linux batch finished. Accepting eligible cores and building locally.", flush=True)
         command = [
             sys.executable, "-u", str(Path(__file__).with_name("accept_headless_batch.py")),
             "--batch-id", summary["id"], "--host", args.host,
             "--inventory", args.inventory, "--show-root", str(args.show_root),
-            "--apply", "--build", "--catalog-status", "published",
-            "--catalog-group", args.catalog_group, "--catalog-progress", args.catalog_progress,
+            "--apply", "--build",
         ]
+        if args.catalog_group is not None:
+            command.extend(["--catalog-status", "published", "--catalog-group", args.catalog_group,
+                            "--catalog-progress", args.catalog_progress])
         completed = subprocess.run(command)
         code = completed.returncode or int(summary["state"] != "succeeded")
         record.update(state="completed" if code == 0 else "needs_attention", exit_code=code,
@@ -142,14 +167,17 @@ def main() -> int:
     parser.add_argument("--inventory", required=True)
     parser.add_argument("--unit", required=True)
     parser.add_argument("--collections", nargs="+", required=True)
+    parser.add_argument("--oral-history-plan", help="Approved private transcript-preparation plan on Linux")
     parser.add_argument("--show-root", type=Path, default=Path.home() / "GitHub/SHOW")
-    parser.add_argument("--catalog-group", required=True)
-    parser.add_argument("--catalog-progress", required=True)
+    parser.add_argument("--catalog-group")
+    parser.add_argument("--catalog-progress")
     parser.add_argument("--apply", action="store_true")
     args = parser.parse_args()
     if not re.fullmatch(r"dart-[a-z0-9-]+", args.unit):
         parser.error("Use a dart-prefixed systemd unit name containing lowercase letters, digits, hyphens")
-    for path in (args.queue, args.inventory):
+    if (args.catalog_group is None) != (args.catalog_progress is None):
+        parser.error("Supply both --catalog-group and --catalog-progress, or neither")
+    for path in (args.queue, args.inventory, *([args.oral_history_plan] if args.oral_history_plan else [])):
         if not re.fullmatch(r"/data/dart/config/[a-zA-Z0-9_.-]+", path):
             parser.error("Queue/inventory must be named files under /data/dart/config")
     if (len(set(args.collections)) != len(args.collections)

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import hashlib
+import io
 import json
 import logging
 import os
@@ -22,7 +23,7 @@ import dart_handoff
 import dart_processing
 from dart_service import ACTIVE, JobService, RedactedFormatter
 from dart_storage import MARKER, Storage, atomic_json, load_environment, redact
-from dart_workflows import read_csv, write_csv
+from dart_workflows import Workflow, read_csv, write_csv
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -108,6 +109,63 @@ class ManagedTests(unittest.TestCase):
         manifest = json.loads(Path(job["result"]["manifest"]).read_text())
         return job, manifest, Path(job["result"]["package"]) / manifest["csv"]
 
+    def test_numbered_dg_siblings_get_distinct_durable_ids_without_renaming(self):
+        (self.source / "sample.jpg").unlink()
+        self.values.update(group_compound_objects=True, create_multiple_objects=False)
+        self.service.configure("operator", str(self.work), self.values)
+        folder = self.source / "dg_1780413456"
+        folder.mkdir()
+        names = ["dg_1780413456-01.mp3", "dg_1780413456-02.pdf", "dg_1780413456-03.jpg"]
+        for name in names:
+            (folder / name).write_bytes(b"fixture")
+        singleton = self.source / "dg_1780413457.mp3"
+        singleton.write_bytes(b"fixture")
+        exported = self.export()
+        _, rows = read_csv(Path(exported["result"]["csv"]))
+        self.assertEqual(5, len(rows))
+        self.assertEqual(5, len({row["objectid"] for row in rows}))
+        self.assertEqual(1, sum(row["original_file_name"].startswith("_") for row in rows))
+        assets = {row["original_file_name"]: row for row in rows if not row["original_file_name"].startswith("_")}
+        self.assertEqual(set(names + [singleton.name]), set(assets))
+        self.assertTrue(all(assets[name]["parentid"] for name in names))
+        self.assertTrue(all(assets[name]["objectid"] != "test_dg_1780413456" for name in names))
+        self.assertEqual("test_dg_1780413457", assets[singleton.name]["objectid"])
+        again = self.export()
+        self.assertEqual(rows, read_csv(Path(again["result"]["csv"]))[1])
+        self.assertTrue(all((folder / name).read_bytes() == b"fixture" for name in names))
+
+    def test_ambiguous_filename_ids_preserve_existing_core_asset_ids(self):
+        (self.source / "sample.jpg").unlink()
+        names = ["dg_1780413456-01.mp3", "dg_1780413456-02.pdf"]
+        for name in names:
+            (self.source / name).write_bytes(b"fixture")
+        row = dict.fromkeys(self.columns, "")
+        row.update(objectid="test_dg_1780413456", original_file_name=names[0], title="Existing")
+        write_csv(self.core, self.columns, [row])
+        before = self.core.read_bytes()
+        exported = self.export()
+        _, rows = read_csv(Path(exported["result"]["csv"]))
+        assets = {r["original_file_name"]: r for r in rows}
+        self.assertEqual("test_dg_1780413456", assets[names[0]]["objectid"])
+        self.assertNotEqual(assets[names[0]]["objectid"], assets[names[1]]["objectid"])
+        self.assertEqual(before, self.core.read_bytes())
+
+    def test_colliding_durable_mappings_fail_without_reassigning_or_uploading(self):
+        (self.source / "sample.jpg").unlink()
+        paths = [self.source / "dg_1780413456-01.mp3", self.source / "dg_1780413456-02.pdf"]
+        for path in paths:
+            path.write_bytes(b"fixture")
+        settings_path = self.work / ".DART-working-directory" / app.APP_SETTINGS_FILENAME
+        settings = json.loads(settings_path.read_bytes())
+        settings["file_to_id_map"] = {str(path): "test_dg_1780413456" for path in paths}
+        atomic_json(settings_path, settings)
+        before = settings_path.read_bytes()
+        with patch.object(Workflow, "upload", side_effect=AssertionError("Must not upload")):
+            job = self.run_job("export", input_dir=str(self.source))
+        self.assertEqual("failed", job["state"])
+        self.assertIn("Duplicate object IDs", job["message"])
+        self.assertEqual(before, settings_path.read_bytes())
+
     def test_local_derivatives_and_handoff_package_never_write_core(self):
         core_before = self.core.read_bytes()
         exported = self.export()
@@ -143,6 +201,125 @@ class ManagedTests(unittest.TestCase):
         self.assertTrue(rows[0]["image_small"])
         skipped = self.success("prepare", input_dir=str(self.source), derivatives=False)
         self.assertIsNone(skipped["result"]["derivatives"])
+
+    def remote_derivative_client(self, missing=(), invalid=False):
+        from azure.core.exceptions import ResourceNotFoundError
+        client = MagicMock()
+        blobs = {}
+        for suffix, maximum in (("_SMALL.jpg", 800), ("_TN.jpg", 400)):
+            data = io.BytesIO()
+            Image.new("RGB", (maximum, maximum // 2), "blue").save(data, format="JPEG")
+            content = b"invalid" if invalid else data.getvalue()
+            blob = MagicMock()
+            blob.url = f"https://example.blob.core.windows.net/smalls/test/id{suffix}"
+            if suffix in missing:
+                blob.get_blob_properties.side_effect = ResourceNotFoundError("missing")
+            else:
+                blob.get_blob_properties.return_value = SimpleNamespace(size=len(content), etag='"stable"')
+                blob.download_blob.return_value.readall.return_value = content
+            blobs[suffix] = blob
+        client.get_blob_client.side_effect = lambda **kwargs: blobs[
+            "_SMALL.jpg" if kwargs["blob"].endswith("_SMALL.jpg") else "_TN.jpg"]
+        return client, blobs
+
+    def test_existing_derivatives_skip_all_original_processing_and_populate_urls(self):
+        exported = self.export()
+        self.values["azure_blob_storage_path"] = "/objs/test"
+        self.service.configure("operator", str(self.work), self.values)
+        client, blobs = self.remote_derivative_client()
+        with patch.object(Workflow, "azure", return_value=client), \
+                patch("app.generate_derivative", side_effect=AssertionError("Must not regenerate")), \
+                patch.object(Workflow, "upload", side_effect=AssertionError("Must not upload")):
+            job = self.success("derivatives", csv_path=exported["result"]["csv"])
+        self.assertEqual(0, job["result"]["images"])
+        self.assertEqual(2, job["result"]["reused"])
+        row = read_csv(Path(job["result"]["csv"]))[1][0]
+        self.assertEqual(blobs["_SMALL.jpg"].url, row["image_small"])
+        self.assertEqual(blobs["_TN.jpg"].url, row["image_thumb"])
+        self.assertEqual([], list(Path(job["result"]["derivatives"]).iterdir()))
+        for blob in blobs.values():
+            self.assertEqual('"stable"', blob.download_blob.call_args.kwargs["etag"])
+
+    def test_missing_one_derivative_generates_only_that_size(self):
+        exported = self.export()
+        self.values["azure_blob_storage_path"] = "/objs/test"
+        self.service.configure("operator", str(self.work), self.values)
+        client, _ = self.remote_derivative_client(missing=("_TN.jpg",))
+        with patch.object(Workflow, "azure", return_value=client), \
+                patch("app.generate_derivative", wraps=app.generate_derivative) as generate, \
+                patch.object(Workflow, "upload", return_value=("https://example/new_TN.jpg", True)) as upload:
+            job = self.success("derivatives", csv_path=exported["result"]["csv"])
+        self.assertEqual(1, job["result"]["images"])
+        self.assertEqual(1, job["result"]["reused"])
+        self.assertEqual(1, generate.call_count)
+        self.assertEqual((400, 400), generate.call_args.args[2:4])
+        upload.assert_called_once()
+
+    def test_invalid_existing_derivative_fails_explicitly_without_regeneration(self):
+        exported = self.export()
+        self.values["azure_blob_storage_path"] = "/objs/test"
+        self.service.configure("operator", str(self.work), self.values)
+        client, _ = self.remote_derivative_client(invalid=True)
+        with patch.object(Workflow, "azure", return_value=client), \
+                patch("app.generate_derivative") as generate, patch.object(Workflow, "upload") as upload:
+            job = self.run_job("derivatives", csv_path=exported["result"]["csv"])
+        self.assertEqual("failed", job["state"])
+        self.assertIn("cannot identify image", job["message"])
+        generate.assert_not_called()
+        upload.assert_not_called()
+
+    def test_overwrite_explicitly_regenerates_without_reuse_checks(self):
+        exported = self.export()
+        self.values["azure_blob_storage_path"] = "/objs/test"
+        self.service.configure("operator", str(self.work), self.values)
+        client, _ = self.remote_derivative_client()
+        with patch.object(Workflow, "azure", return_value=client), \
+                patch.object(Workflow, "existing_derivative", side_effect=AssertionError("Do not reuse")), \
+                patch.object(Workflow, "upload", return_value=("https://example/new.jpg", True)), \
+                patch.dict(os.environ, {"DART_AZURE_CONNECTION_STRING": "fixture"}):
+            job = self.success("derivatives", csv_path=exported["result"]["csv"], overwrite=True,
+                               allow_uploads=True)
+        self.assertEqual(2, job["result"]["images"])
+        self.assertEqual(0, job["result"]["reused"])
+
+    def test_existing_tiff_derivatives_skip_original_header_and_decode(self):
+        (self.source / "sample.jpg").rename(self.source / "sample.tiff")
+        exported = self.export()
+        self.values["azure_blob_storage_path"] = "/objs/test"
+        self.service.configure("operator", str(self.work), self.values)
+        client, _ = self.remote_derivative_client()
+        original_open = app.Image.open
+
+        def remote_only(path, *args, **kwargs):
+            self.assertIsInstance(path, io.BytesIO, "Must not open the original TIFF")
+            return original_open(path, *args, **kwargs)
+
+        with patch.object(Workflow, "azure", return_value=client), \
+                patch("app.Image.open", side_effect=remote_only), \
+                patch("app.generate_derivative", side_effect=AssertionError("Must not regenerate")):
+            job = self.success("derivatives", csv_path=exported["result"]["csv"])
+        self.assertEqual(2, job["result"]["reused"])
+
+    def test_existing_derivative_guards_and_storage_errors_are_not_missing_fallbacks(self):
+        from azure.core.exceptions import HttpResponseError
+        workflow = Workflow(self.storage, self.work, "fixture", lambda: None, lambda *args: None)
+        for case in ("zero", "oversize", "wrong_dimensions", "wrong_format", "changed_etag", "forbidden"):
+            client, blobs = self.remote_derivative_client()
+            blob = blobs["_SMALL.jpg"]
+            if case in {"zero", "oversize"}:
+                blob.get_blob_properties.return_value.size = 0 if case == "zero" else 16 * 1024**2 + 1
+            elif case in {"wrong_dimensions", "wrong_format"}:
+                data = io.BytesIO()
+                Image.new("RGB", (801, 10) if case == "wrong_dimensions" else (20, 10)).save(
+                    data, format="JPEG" if case == "wrong_dimensions" else "PNG")
+                blob.get_blob_properties.return_value.size = len(data.getvalue())
+                blob.download_blob.return_value.readall.return_value = data.getvalue()
+            elif case == "changed_etag":
+                blob.download_blob.side_effect = HttpResponseError("condition failed")
+            else:
+                blob.get_blob_properties.side_effect = HttpResponseError("forbidden")
+            with self.subTest(case=case), self.assertRaises((ValueError, HttpResponseError)):
+                workflow.existing_derivative(client, "/smalls/test", "id_SMALL.jpg", 800)
 
     def test_removed_compare_and_merge_jobs_are_rejected(self):
         for kind in ("compare", "merge"):

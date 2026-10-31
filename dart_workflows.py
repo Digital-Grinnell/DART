@@ -194,8 +194,11 @@ class Workflow:
         mappings = dict(self.settings["file_to_id_map"])
         core_path = self.storage.managed(self.settings["core_metadata_csv"])
         columns, existing = read_csv(core_path, metadata=True)
+        filename_ids = Counter(identifier for path in files
+                               if (identifier := core.get_filename_dg_id(path, collection)))
         page = SimpleNamespace(session=SimpleNamespace(
-            generated_ids=set(mappings.values()) | {row["objectid"] for row in existing if row.get("objectid")}))
+            generated_ids=set(mappings.values()) | set(filename_ids)
+            | {row["objectid"] for row in existing if row.get("objectid")}))
         # The core CSV is a desktop-pushed snapshot: reuse its IDs for files it already holds,
         # but only when the filename is unambiguous in both the snapshot and this scan.
         core_names = Counter(core.get_csv_filename_value(row) for row in existing)
@@ -210,10 +213,16 @@ class Workflow:
             if self.settings["process_OHM_data"]:
                 object_id = core.get_ohm_filename_id(path, collection)
             else:
-                object_id = mappings.get(stable) or core.get_filename_dg_id(path, collection)
+                embedded_id = core.get_filename_dg_id(path, collection)
+                object_id = mappings.get(stable)
+                if not object_id and embedded_id and filename_ids[embedded_id] == 1:
+                    object_id = embedded_id
                 if not object_id and scanned_names[path.name] == 1:
                     object_id = core_ids.get(path.name, "")
                 if not object_id:
+                    if embedded_id and filename_ids[embedded_id] > 1:
+                        self.report(f"Ambiguous filename ID {embedded_id} for {path.name}; "
+                                    "assigning a distinct durable asset ID", None)
                     object_id = core.generate_unique_id(page, collection)
             mappings[stable] = object_id
             page.session.generated_ids.add(object_id)
@@ -347,7 +356,7 @@ class Workflow:
         directory.mkdir(mode=0o700)
         self.artifact(derivatives=str(directory))
         client = self.azure(inputs)
-        generated = 0
+        generated = reused = 0
         for index, row in enumerate(rows):
             self.checkpoint()
             name = core.get_csv_filename_value(row)
@@ -367,6 +376,18 @@ class Workflow:
             for field, suffix, size, target in (("image_small", "_SMALL", 800, "smalls"),
                                                 ("image_thumb", "_TN", 400, "thumbs")):
                 self.checkpoint()
+                destination = ""
+                if client is not None:
+                    destinations = get_derivative_azure_paths(self.settings["azure_blob_storage_path"])
+                    destination = destinations[0 if target == "smalls" else 1]
+                    if not inputs["overwrite"]:
+                        existing = self.existing_derivative(
+                            client, destination, row["objectid"] + suffix + ".jpg", size)
+                        if existing is not None:
+                            row[field] = existing
+                            reused += 1
+                            self.report(f"Reused verified derivative: {row['objectid']}{suffix}.jpg", None)
+                            continue
                 headroom = 16 * 1024**2
                 if source.suffix.lower() in {".tif", ".tiff"}:
                     with core.Image.open(source) as image:
@@ -380,13 +401,12 @@ class Workflow:
                 if not ok:
                     raise RuntimeError(message)
                 if client is not None:
-                    destinations = get_derivative_azure_paths(self.settings["azure_blob_storage_path"])
-                    destination = destinations[0 if target == "smalls" else 1]
                     row[field], _ = self.upload(client, output, destination, row["objectid"] + suffix, inputs["overwrite"])
                 else:
                     row[field] = str(output)
                 generated += 1
-            self.report(f"Derivative rows: {index + 1}/{len(rows)}", (index + 1) / max(1, len(rows)))
+            self.report(f"Derivative rows: {index + 1}/{len(rows)}; generated {generated}, reused {reused}",
+                        (index + 1) / max(1, len(rows)))
         for row in rows:
             name = core.get_csv_filename_value(row)
             if name.startswith("_"):
@@ -402,8 +422,35 @@ class Workflow:
         self.artifact(csv=str(output))
         self.checkpoint()
         write_csv(output, columns, rows)
-        return dict(csv=str(output), derivatives=str(directory), images=generated, rows=len(rows),
+        return dict(csv=str(output), derivatives=str(directory), images=generated, reused=reused, rows=len(rows),
                     local_only=client is None)
+
+    def existing_derivative(self, client, destination: str, filename: str, maximum: int) -> str | None:
+        """Validate the exact remote JPEG before skipping original-image processing."""
+        from azure.core import MatchConditions
+        from azure.core.exceptions import ResourceNotFoundError
+
+        parts = destination.strip("/").split("/", 1)
+        name = (parts[1] + "/" if len(parts) == 2 else "") + filename
+        blob = client.get_blob_client(container=parts[0], blob=name)
+        self.checkpoint()
+        try:
+            properties = blob.get_blob_properties(timeout=30)
+        except ResourceNotFoundError:
+            return None
+        if not 0 < properties.size <= 16 * 1024**2:
+            raise ValueError(f"Existing derivative has invalid byte size: {name}; not overwritten")
+        content = blob.download_blob(
+            etag=properties.etag, match_condition=MatchConditions.IfNotModified, timeout=30,
+        ).readall()
+        self.checkpoint()
+        if len(content) != properties.size:
+            raise ValueError(f"Existing derivative byte count changed: {name}")
+        with core.Image.open(io.BytesIO(content)) as image:
+            if image.format != "JPEG" or not (0 < image.width <= maximum and 0 < image.height <= maximum):
+                raise ValueError(f"Existing derivative is not a JPEG within {maximum}px: {name}; not overwritten")
+            image.load()
+        return blob.url.split("?", 1)[0]
 
     def handoff(self, inputs: dict[str, Any]) -> dict[str, Any]:
         """Package an export for desktop review; headless DART never writes a core CSV."""

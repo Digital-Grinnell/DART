@@ -47,19 +47,36 @@ class AcceptanceTests(unittest.TestCase):
         return validate(content(rows or [self.row]), self.manifest, self.evidence, "demo")
 
     def test_exact_new_records_pass(self):
-        self.assertEqual(self.validate()["rows"], 1)
+        result = self.validate()
+        self.assertEqual(result["rows"], 1)
+        self.assertEqual(result["warnings"], [])
 
     def test_documented_unsupported_file_allowed(self):
         self.evidence["files"].append(dict(path="/data/run/objects/extra.bin", size=2, eligible=False))
         self.evidence["inventory"].update(source_files=2, source_bytes=52, excluded_files=["extra.bin"])
         self.evidence["gems_names"].append("extra.bin")
         self.manifest["gems_backfill"]["gems_rows"] = 2
-        self.assertEqual(self.validate()["excluded_gems_names"], ["extra.bin"])
+        result = self.validate()
+        self.assertEqual(result["excluded_gems_names"], ["extra.bin"])
+        self.assertEqual(result["unexplained_gems_names"], [])
+        self.assertEqual(result["warnings"], [])
 
-    def test_missing_gems_parent_blocks(self):
+    def test_missing_gems_parent_is_a_review_warning(self):
         self.evidence["gems_names"].append("_missing.pdf")
         self.manifest["gems_backfill"]["gems_rows"] = 2
-        with self.assertRaisesRegex(ReviewRequired, "Unexplained"):
+        result = self.validate()
+        self.assertEqual(result["unexplained_gems_names"], ["_missing.pdf"])
+        self.assertEqual(result["excluded_gems_names"], [])
+        self.assertIn("_missing.pdf", result["warnings"][0])
+
+    def test_coverage_warning_does_not_bypass_other_validation(self):
+        self.evidence["gems_names"].append("_missing.pdf")
+        self.manifest["gems_backfill"]["gems_rows"] = 2
+        with self.assertRaisesRegex(ReviewRequired, "parent link"):
+            self.validate([dict(self.row, parentid="absent")])
+        self.evidence["gems_names"].append("_missing.pdf")
+        self.manifest["gems_backfill"]["gems_rows"] = 3
+        with self.assertRaisesRegex(ReviewRequired, "duplicate GEMS"):
             self.validate()
 
     def test_changed_inventory_blocks(self):
@@ -166,6 +183,15 @@ class AcceptanceTests(unittest.TestCase):
             self.assertEqual(core.read_bytes(), b"edited")
 
     def test_batch_writes_pushes_builds_and_recovers_build_failure(self):
+        self.run_batch_scenario(incomplete=False)
+
+    def test_incomplete_batch_writes_builds_but_never_updates_catalog(self):
+        self.run_batch_scenario(incomplete=True)
+
+    def run_batch_scenario(self, *, incomplete):
+        if incomplete:
+            self.evidence["gems_names"].append("_missing.pdf")
+            self.manifest["gems_backfill"]["gems_rows"] = 2
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary).resolve()
             show, work = root / "show", root / "work"
@@ -179,18 +205,23 @@ class AcceptanceTests(unittest.TestCase):
             args = argparse.Namespace(show_root=show, working_root=work, batch_id="b" * 32,
                                       host="host", inventory="/inventory.json", apply=True, build=True,
                                       catalog_status="published", catalog_group="Batch of 3",
-                                      catalog_progress="DART Complete, Pending Review of 3")
+                                      catalog_progress="DART Complete, Pending Review of 3",
+                                      collections=["demo"])
             catalog = show / "_data/digital_collections.csv"
             catalog.parent.mkdir()
             catalog.write_text("objectid,status,collection_group,progress status\ndemo,draft,,Pending\n")
+            original_catalog = catalog.read_bytes()
             pushes = []
 
             def remote(_host, request):
                 if request["action"] == "summary":
                     return dict(summary=dict(id=args.batch_id, state="succeeded"),
-                                queue=dict(collections=[dict(collection_id="demo", allow_uploads=True,
-                                                             overwrite=False)]))
+                                queue=dict(collections=[
+                                    dict(collection_id="demo", allow_uploads=True, overwrite=False),
+                                    dict(collection_id="untouched", allow_uploads=True, overwrite=False),
+                                ]))
                 if request["action"] == "evidence":
+                    self.assertEqual(request["collection"], "demo")
                     return self.evidence
                 pushes.append(request)
                 self.evidence["snapshot_sha256"] = sha(request["content"].encode())
@@ -203,9 +234,9 @@ class AcceptanceTests(unittest.TestCase):
                 return dict(csv=str(export), manifest=str(manifest))
 
             def build(*_args, **_kwargs):
-                row, = list(csv.DictReader(catalog.open()))
-                self.assertEqual(row["status"], "published")
-                self.assertEqual(row["collection_group"], "Batch of 3")
+                row, = list(csv.DictReader(io.StringIO(catalog.read_text())))
+                self.assertEqual(row["status"], "draft" if incomplete else "published")
+                self.assertEqual(row["collection_group"], "" if incomplete else "Batch of 3")
                 site = show / "_site/demo"
                 site.mkdir(parents=True)
                 for name in ("index.html", "browse.html"):
@@ -216,23 +247,48 @@ class AcceptanceTests(unittest.TestCase):
                     patch("scripts.accept_headless_batch.check_show_config"), \
                     patch("scripts.accept_headless_batch.subprocess.run") as runner:
                 args.apply = args.build = False
-                self.assertEqual(run(args), 0)
+                self.assertEqual(run(args), int(incomplete))
                 self.assertEqual(core.read_bytes(), content([]))
                 self.assertIn("draft", catalog.read_text())
                 self.assertEqual(pushes, [])
                 runner.assert_not_called()
+                summary_path = work / ".DART-working-directory" / f"accept-{args.batch_id}/summary.json"
+                if incomplete:
+                    preview = json.loads(summary_path.read_text())["collections"][0]
+                    self.assertEqual(preview["state"], "ready_with_warnings")
+                    self.assertTrue(preview["warnings"])
                 args.apply = args.build = True
                 # The core and snapshot persist if the later build fails.
                 runner.side_effect = subprocess.CalledProcessError(1, ["rake"])
                 self.assertEqual(run(args), 1)
                 self.assertEqual(core.read_bytes(), after)
                 runner.side_effect = build
-                self.assertEqual(run(args), 0)
+                self.assertEqual(run(args), int(incomplete))
                 summary = json.loads((work / ".DART-working-directory" /
                                       f"accept-{args.batch_id}/summary.json").read_text())
                 self.assertEqual(summary["collections"][0]["core_write"], "already_identical")
-                self.assertEqual(summary["collections"][0]["state"], "succeeded")
+                result = summary["collections"][0]
+                self.assertEqual(result["state"], "accepted_with_warnings" if incomplete else "succeeded")
+                if incomplete:
+                    self.assertEqual(catalog.read_bytes(), original_catalog)
+                    self.assertEqual(result["catalog_update"], "skipped_incomplete_coverage")
+                    self.assertTrue(result["warnings"])
                 self.assertEqual(len(pushes), 2)
+
+    def test_unknown_or_duplicate_selected_collections_block_before_pull(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            args = argparse.Namespace(show_root=root, working_root=root, batch_id="b" * 32,
+                                      host="host", collections=["missing"])
+            batch = dict(summary=dict(id=args.batch_id, state="succeeded"),
+                         queue=dict(collections=[dict(collection_id="demo")]))
+            with patch("scripts.accept_headless_batch.remote", return_value=batch), \
+                    patch("scripts.accept_headless_batch.dart_handoff.pull_package") as pull:
+                for selected in (["missing"], ["demo", "demo"], []):
+                    args.collections = selected
+                    with self.subTest(selected=selected), self.assertRaisesRegex(ReviewRequired, "unique"):
+                        run(args)
+                pull.assert_not_called()
 
 
 if __name__ == "__main__":

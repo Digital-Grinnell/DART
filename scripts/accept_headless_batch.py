@@ -170,8 +170,6 @@ def validate(content: bytes, manifest: dict, evidence: dict, slug: str) -> dict:
         raise ReviewRequired("Current sources differ from approved inventory/analysis")
     missing = set(evidence["gems_names"]) - set(names)
     unexplained = missing - {Path(name).name for name in excluded}
-    if unexplained:
-        raise ReviewRequired("Unexplained GEMS records absent from export: " + ", ".join(sorted(unexplained)))
     if not all(evidence["gems_names"]) or len(set(evidence["gems_names"])) != len(evidence["gems_names"]):
         raise ReviewRequired("Missing/duplicate GEMS filename keys")
     for row in rows:
@@ -223,8 +221,16 @@ def validate(content: bytes, manifest: dict, evidence: dict, slug: str) -> dict:
             expected = {f"https://{account}/{destination.strip('/')}/{oid}{suffix}" for oid in choices}
             if row[field] not in expected:
                 raise ReviewRequired("Derivative URL does not match object/family destination")
+    warnings = []
+    if unexplained:
+        warnings.append(
+            "Incomplete GEMS coverage: records absent from export: "
+            + ", ".join(sorted(unexplained))
+            + ". Core may be accepted for editing; reconcile these records before publication."
+        )
     return dict(rows=len(rows), assets=len(objects), parents=len(parents),
-                excluded_files=sorted(excluded), excluded_gems_names=sorted(missing),
+                excluded_files=sorted(excluded), excluded_gems_names=sorted(missing - unexplained),
+                unexplained_gems_names=sorted(unexplained), warnings=warnings,
                 ignored_gems_columns=stats.get("ignored_gems_columns", []))
 
 
@@ -333,6 +339,11 @@ def run(args: argparse.Namespace) -> int:
         slugs = [e["collection_id"] for e in entries]
         if len(set(slugs)) != len(slugs):
             raise ReviewRequired("Duplicate queue collections")
+        if args.collections is not None:
+            selected = set(args.collections)
+            if not selected or len(selected) != len(args.collections) or not selected.issubset(slugs):
+                raise ReviewRequired("Select unique collection IDs present in the batch queue")
+            entries = [entry for entry in entries if entry["collection_id"] in selected]
         if (state / "summary.json").exists():
             atomic(state / f"previous-{uuid.uuid4().hex}.json", (state / "summary.json").read_bytes())
         report: dict = dict(batch_id=args.batch_id, apply=args.apply, build=args.build, collections=[])
@@ -364,6 +375,10 @@ def run(args: argparse.Namespace) -> int:
                 manifest = json.loads(Path(pulled["manifest"]).read_text())
                 result.update(job_id=evidence["job_id"], core=str(core),
                               validation=validate(content, manifest, evidence, slug))
+                warnings = result["validation"]["warnings"]
+                result["warnings"] = warnings
+                for warning in warnings:
+                    print(f"WARNING [{slug}]: {warning}", file=sys.stderr, flush=True)
                 before = core.read_bytes()
                 columns, rows = table(before)
                 if before != content and (rows or columns != table(content)[0]
@@ -378,10 +393,15 @@ def run(args: argparse.Namespace) -> int:
                     "collection_group": args.catalog_group,
                     "progress status": args.catalog_progress,
                 } if args.catalog_status is not None else {}
+                if warnings and catalog_values:
+                    catalog_values = {}
+                    result["catalog_update"] = "skipped_incomplete_coverage"
+                    print(f"WARNING [{slug}]: catalog updates skipped; publication/completion not approved "
+                          "with incomplete coverage.", file=sys.stderr, flush=True)
                 if catalog_values:
                     update_catalog(show / "_data/digital_collections.csv", slug, catalog_values, work, apply=False)
                 if not args.apply:
-                    result.update(state="ready", stage="preview")
+                    result.update(state="ready_with_warnings" if warnings else "ready", stage="preview")
                 else:
                     result["stage"] = "core_write"
                     persist()
@@ -418,7 +438,7 @@ def run(args: argparse.Namespace) -> int:
                             raise RuntimeError("SHOW build did not produce expected pages")
                     if core.read_bytes() != content:
                         raise ReviewRequired("Core changed during follow-up; inspect snapshot/build")
-                    result.update(state="succeeded", stage="complete")
+                    result.update(state="accepted_with_warnings" if warnings else "succeeded", stage="complete")
             except ReviewRequired as exc:
                 result.update(state="review_required", message=str(exc))
             except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
@@ -436,6 +456,7 @@ def main() -> int:
     parser.add_argument("--host", default="sysadmin@dg-landing")
     parser.add_argument("--show-root", type=Path, default=Path.home() / "GitHub/SHOW")
     parser.add_argument("--working-root", type=Path, default=Path.home() / "DART-projects")
+    parser.add_argument("--collections", nargs="+", help="Accept only these collection IDs from the batch")
     parser.add_argument("--inventory", default="/data/dart/config/overnight-20261029-inventory.json")
     parser.add_argument("--apply", action="store_true", help="Back up/write empty cores and push snapshots")
     parser.add_argument("--build", action="store_true", help="With --apply, build each accepted SHOW collection")

@@ -62,9 +62,11 @@ cells updated. The result records the exact failed stage.
 No excluded or zero-byte files were found in these source runs. Compound parents
 can explain some differences, but counts alone cannot prove complete coverage.
 In particular, Geology's metadata-to-file difference requires exact reconciliation
-after preparation. **A collection with unexplained missing GEMS records, blank
-titles, conflicts, warnings, changed cores, or invalid families is skipped**, not
-silently repaired or marked complete. Other eligible collections continue.
+after preparation. **Unexplained missing GEMS records now permit a partial core
+for editing, with explicit coverage warnings and no catalog updates**.
+Blank titles, package warnings/conflicts, changed cores, and invalid families
+still block acceptance. Nothing is silently repaired or marked complete.
+Other eligible collections continue.
 There are no mid-run approval questions; real errors are recorded rather than
 bypassed.
 
@@ -84,6 +86,9 @@ and `build_log`. Successful builds live in SHOW's `_site/<slug>/`.
 - Exit `0`: all three completed the approved pipeline.
 - Exit `1`: some require attention; eligible collections may still have finished.
 - `review_required`: a safety gate failed; inspect before making corrections.
+- `accepted_with_warnings`: partial core accepted/pushed/built, but coverage
+  needs review; catalog updates were skipped and the pipeline exits `1`
+  (`needs_attention`), rather than marking it complete.
 - `failed`: an operational failure; the stage identifies what persisted.
 
 Backups, pulled packages, evidence, and build logs stay in each project's
