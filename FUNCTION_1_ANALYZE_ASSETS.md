@@ -72,6 +72,10 @@ Function 2 creates one standalone metadata record for each OHM MP3. OHM mode doe
 
 ## Compound Object Grouping
 
+For a step-by-step desktop procedure, including the limits of automatic
+filename-based grouping and the absence of manual member assignment, see
+[Creating Compound Objects in Desktop DART](DESKTOP_COMPOUND_OBJECTS.md).
+
 ### What Are Compound Objects?
 A **compound object** is a logical grouping of related digital assets. The compound itself doesn't represent a single file, but rather the folder containing multiple child assets that belong together.
 
@@ -81,7 +85,7 @@ A **compound object** is a logical grouping of related digital assets. The compo
 - Multi-file recordings (video + audio tracks)
 
 **Key Characteristics:**
-- One compound is created per **folder**, not per filename pattern - if a folder contains several distinct groups (e.g. multiple numbered sequences), they all share the same single compound parent
+- When one or more filename groups are detected, one compound is created per **folder**, not per filename pattern - distinct groups (e.g. multiple numbered sequences) in that folder share the same compound parent
 - The compound itself is untitled (no title/text base) since it may represent several unrelated groups
 - Has its own unique identifier in either `dg_<epoch>` or `<prefix>_dg_<epoch>` form
 - Serves as the parent for all groups found in that folder
@@ -322,7 +326,7 @@ In this example:
 - Object IDs are generated automatically and cannot be manually specified
 - When compound grouping is DISABLED, all files are standalone with no parentid
 - When compound grouping is ENABLED, files are analyzed for text-based grouping
-- One untitled compound object is created per folder, even if that folder contains several distinct groups
+- One untitled compound object is created per folder with detected groups; distinct groups in that folder share that compound
 - Compound IDs persist: same folder always produces the same compound ID
 - Groups with 2+ numbered files get their own nested `multiple` object (sibling to other groups in the same folder); its ID persists the same way, keyed by folder + group base
 - Non-sequence groups (all-unnumbered, or only 1 numbered file) attach directly to the compound, without a `multiple` wrapper
