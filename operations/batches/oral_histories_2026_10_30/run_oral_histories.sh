@@ -8,7 +8,7 @@ fi
 case "${1:-}" in
   1) collections=(alumni-1940s phpp-oral) ;;
   2) collections=(alumni-1950s alumni-1960s alumni-1970s alumni-1980s alumni-1990s alumni-2000s alumni-2010s) ;;
-  *) printf 'Usage: bash scripts/run_oral_histories.sh 1|2\n' >&2; exit 1 ;;
+  *) printf 'Usage: bash operations/batches/oral_histories_2026_10_30/run_oral_histories.sh 1|2\n' >&2; exit 1 ;;
 esac
 part=$1
 repo=$(cd "$(dirname "$0")/.." && pwd)

@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [7.0] - 2026-11-03
+
 ### Added
 - Added optional headless Linux operation (`dart_linux.py`) for `dg-landing`
   with explicit private storage roots, read-only approved source mounts,

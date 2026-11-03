@@ -11,9 +11,9 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
-from scripts.process_cyclone_yearbooks import (
+from operations.collections.cyclone_2026.process_cyclone_yearbooks import (
     Azure, DEFAULT_LOCATION, DEFAULT_PROJECT, SHEET_URL, atomic_write, csv_bytes,
     load_sheet, match_key, sheet_record,
 )

@@ -39,9 +39,9 @@ Two steps:
 which provides azure-storage-blob and cryptography.
 
 Usage:
-    .venv/bin/python scripts/merge_reunion_oral_histories.py init
-    .venv/bin/python scripts/merge_reunion_oral_histories.py merge
-    .venv/bin/python scripts/merge_reunion_oral_histories.py merge --apply \\
+    .venv/bin/python operations/collections/reunion_2026/merge_reunion_oral_histories.py init
+    .venv/bin/python operations/collections/reunion_2026/merge_reunion_oral_histories.py merge
+    .venv/bin/python operations/collections/reunion_2026/merge_reunion_oral_histories.py merge --apply \\
         --settings ~/DART-projects/baumann/.DART-working-directory/dart_settings.json
 """
 
@@ -606,7 +606,7 @@ def record_note(collection_dir: Path, rows: list[dict[str, str]], backup: Path, 
         f"## {args.event} Oral Histories Merge — {datetime.now():%B %-d, %Y}",
         "",
         f"Appended {len(rows)} OHM-processed interview(s) from `{args.source.name}` with",
-        "`scripts/merge_reunion_oral_histories.py`. Object IDs were preserved; MP3s,",
+        "`operations/collections/reunion_2026/merge_reunion_oral_histories.py`. Object IDs were preserved; MP3s,",
         f"image derivatives, and transcripts were copied to the `{DEST_ACCOUNT}`",
         f"storage account under `{collection_dir.name}/` and verified byte-for-byte.",
         f"Pre-merge backup: `{backup}`.",

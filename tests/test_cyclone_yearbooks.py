@@ -7,8 +7,14 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from scripts.process_cyclone_yearbooks import main, sheet_record, staged_pdf
-from scripts.finalize_cyclone_completed import completed_records
+from operations.collections.cyclone_2026.process_cyclone_yearbooks import (
+    main,
+    sheet_record,
+    staged_pdf,
+)
+from operations.collections.cyclone_2026.finalize_cyclone_completed import (
+    completed_records,
+)
 
 
 class StagedPdfTests(unittest.TestCase):
@@ -37,7 +43,11 @@ class StagedPdfTests(unittest.TestCase):
                 writer.write(b"P")
                 raise OSError(5, "Input/output error")
 
-            with patch("scripts.process_cyclone_yearbooks.shutil.copyfileobj", side_effect=failing_copy):
+            with patch(
+                "operations.collections.cyclone_2026.process_cyclone_yearbooks."
+                "shutil.copyfileobj",
+                side_effect=failing_copy,
+            ):
                 with self.assertRaisesRegex(OSError, "check the DGIngest mount/VPN"):
                     with staged_pdf(source, hidden, 3):
                         self.fail("Incomplete PDF must not reach the uploader")
@@ -47,7 +57,8 @@ class StagedPdfTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             source = Path(root) / "Cyclone2004.pdf"
             source.write_bytes(b"PDF")
-            with patch("scripts.process_cyclone_yearbooks.shutil.disk_usage",
+            with patch("operations.collections.cyclone_2026.process_cyclone_yearbooks."
+                       "shutil.disk_usage",
                        return_value=SimpleNamespace(free=1024**3)):
                 with self.assertRaisesRegex(RuntimeError, "Local staging needs"):
                     with staged_pdf(source, Path(root), 3):
@@ -147,8 +158,10 @@ class RemainingRunTests(unittest.TestCase):
                 is_protected_core_csv_name=lambda path: False, generate_pdf_derivative=derivative)
             argv = ["--source", str(source), "--project", str(project), "--only-ids", str(selection), "--apply"]
             with patch.dict("sys.modules", {"app": fake_core}), \
-                    patch("scripts.process_cyclone_yearbooks.load_sheet", return_value=sheet), \
-                    patch("scripts.process_cyclone_yearbooks.Azure", FakeAzure), \
+                    patch("operations.collections.cyclone_2026.process_cyclone_yearbooks."
+                          "load_sheet", return_value=sheet), \
+                    patch("operations.collections.cyclone_2026.process_cyclone_yearbooks."
+                          "Azure", FakeAzure), \
                     patch("sys.stdout", new_callable=io.StringIO):
                 self.assertEqual(main(argv), 0)
                 self.assertEqual(main(argv), 0)

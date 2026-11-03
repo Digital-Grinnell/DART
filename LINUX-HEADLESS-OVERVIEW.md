@@ -180,7 +180,7 @@ Ctrl+C or SIGTERM requests cooperative cancellation.
 
 For the approved October 30 non-OHM oral-history pipelines, including VTT
 sidecars and automatic Mac acceptance/builds without catalog changes, use
-[Oral History Overnight Jobs](ORAL-HISTORIES-20261030.md).
+[Oral History Overnight Jobs](operations/batches/oral_histories_2026_10_30/ORAL-HISTORIES-20261030.md).
 
 Use `--batch` instead of `--job prepare` to process multiple collections
 **sequentially**, then review/merge their packages individually the next day.

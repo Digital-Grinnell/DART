@@ -44,8 +44,8 @@ Selection, merge, and backup behavior described below is unchanged.
 
 ### Optional New-Record-Only Batch Acceptance
 
-For the approved non-OHM alumni/PHPP oral-history queues, see
-[Oral History Overnight Jobs](ORAL-HISTORIES-20261030.md). Their optional
+For the approved non-OHM alumni/PHPP oral-history queues, see the
+[Oral History Overnight Jobs](operations/batches/oral_histories_2026_10_30/ORAL-HISTORIES-20261030.md). Their optional
 VTT-to-CSV preparation is separate from OHM processing; the Mac pipeline uses
 the same acceptance gates with **no catalog updates**. Transcript exceptions
 are retained in reports for review, not silently repaired or treated as
@@ -76,7 +76,7 @@ This helper does not perform general merges: populated, changed, or ambiguous
 cores/packages require interactive review. Exact byte-identical retries are
 allowed so a failed snapshot push/build can be retried without duplicating
 records. A later follow-up failure does not roll back an already accepted core.
-See the [overnight automated follow-up](OVERNIGHT-20261029.md#automated-mac-follow-up-for-the-completed-batch)
+See the [overnight automated follow-up](operations/batches/2026-10-29/OVERNIGHT-20261029.md#automated-mac-follow-up-for-the-completed-batch)
 for the approved batch, known blockers, launch command, and result locations.
 
 For an explicitly approved catalog update, supply all three
@@ -84,7 +84,7 @@ For an explicitly approved catalog update, supply all three
 Only validated collections without coverage warnings get those three cells updated, with a
 catalog backup; unrelated cells are preserved. Updates occur after snapshot
 push and before an optional build. A failed later build does not roll back
-catalog changes. The [final-three pipeline](FINAL-THREE-20261029.md) connects
+catalog changes. The [final-three pipeline](operations/batches/2026-10-29/FINAL-THREE-20261029.md) connects
 Linux preparation to these Mac-side steps without additional approval prompts.
 It never deploys sites. For incomplete coverage, all requested catalog updates
 are skipped (`catalog_update: skipped_incomplete_coverage`); the current

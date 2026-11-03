@@ -1,7 +1,7 @@
 # Cyclone Yearbooks From DGIngest — November 1, 2026
 
 `dg-landing` cannot reach `//storage/MEDIADB/DGIngest`, so this job runs on the Mac with
-[scripts/process_cyclone_yearbooks.py](scripts/process_cyclone_yearbooks.py).
+[process_cyclone_yearbooks.py](process_cyclone_yearbooks.py).
 
 ## What It Does
 
@@ -37,7 +37,7 @@ Reconnect VPN and remount DGIngest before running the separate remaining-only sc
 ```bash
 cd "$HOME/GitHub/DART"
 set -o pipefail
-caffeinate -i .venv/bin/python scripts/process_remaining_cyclone_yearbooks.py --apply \
+caffeinate -i .venv/bin/python operations/collections/cyclone_2026/process_remaining_cyclone_yearbooks.py --apply \
   2>&1 | tee "$HOME/DART-projects/cyclone/logfiles/cyclone-remaining-$(date +%Y%m%d_%H%M).log"
 ```
 
@@ -54,8 +54,8 @@ open and VPN connected. About 228 GiB is uploaded, so this can take many hours.
 ```bash
 cd "$HOME/GitHub/DART"
 set -o pipefail
-.venv/bin/python scripts/process_cyclone_yearbooks.py            # dry run: plan + skips
-caffeinate -i .venv/bin/python -u scripts/process_cyclone_yearbooks.py --apply \
+.venv/bin/python operations/collections/cyclone_2026/process_cyclone_yearbooks.py            # dry run: plan + skips
+caffeinate -i .venv/bin/python -u operations/collections/cyclone_2026/process_cyclone_yearbooks.py --apply \
   2>&1 | tee "$HOME/DART-projects/cyclone/logfiles/cyclone-yearbooks-$(date +%Y%m%d_%H%M).log"
 ```
 

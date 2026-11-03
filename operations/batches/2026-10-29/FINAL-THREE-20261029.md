@@ -9,7 +9,7 @@ No processing was started during staging.
 **Quit desktop DART first. Run this in Terminal A on the Mac, not Linux:**
 
 ```bash
-bash "$HOME/GitHub/DART/scripts/run_final_three.sh"
+bash "$HOME/GitHub/DART/operations/batches/2026-10-29/run_final_three.sh"
 ```
 
 Authorize the initial Linux `sudo systemd-run` prompt if requested. After that,

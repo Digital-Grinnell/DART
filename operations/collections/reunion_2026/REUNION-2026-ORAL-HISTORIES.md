@@ -2,7 +2,7 @@
 
 How to merge the OHM-processed Reunion 2026 alumni oral histories from
 `~/GitHub/gccb-2026-Reunion-OH` into the SHOW `alumni-<decade>` collections
-with [`scripts/merge_reunion_oral_histories.py`](scripts/merge_reunion_oral_histories.py).
+with [`merge_reunion_oral_histories.py`](merge_reunion_oral_histories.py).
 
 ## What It Does
 
@@ -40,7 +40,7 @@ Run from `~/GitHub/DART` with DART's venv, which provides
 1. **Draft the mapping** (already done once; rerun only with `--force`):
 
    ```bash
-   .venv/bin/python scripts/merge_reunion_oral_histories.py init
+   .venv/bin/python operations/collections/reunion_2026/merge_reunion_oral_histories.py init
    ```
 
    This writes `~/GitHub/gccb-2026-Reunion-OH/reunion-alumni-merge-map.csv`
@@ -58,7 +58,7 @@ Run from `~/GitHub/DART` with DART's venv, which provides
    transcripts, and lists each planned copy or already-present blob):
 
    ```bash
-   .venv/bin/python scripts/merge_reunion_oral_histories.py merge
+   .venv/bin/python operations/collections/reunion_2026/merge_reunion_oral_histories.py merge
    ```
 
 4. **Apply** with a `digitalgrinnell` connection string, either from a DART
@@ -67,7 +67,7 @@ Run from `~/GitHub/DART` with DART's venv, which provides
    refuses any other storage account and never prints the secret.
 
    ```bash
-   .venv/bin/python scripts/merge_reunion_oral_histories.py merge --apply \
+   .venv/bin/python operations/collections/reunion_2026/merge_reunion_oral_histories.py merge --apply \
      --settings ~/DART-projects/baumann/.DART-working-directory/dart_settings.json
    ```
 
@@ -99,7 +99,7 @@ content, or an upload does not read back identically.
 - Appending rows changes the Mac core relative to the dg-landing snapshot
   accepted by the October 30–31 oral-history pipelines. Do not rerun
   header-only acceptance for these collections; see
-  [ORAL-HISTORIES-20261030.md](ORAL-HISTORIES-20261030.md).
+  [ORAL-HISTORIES-20261030.md](../../batches/oral_histories_2026_10_30/ORAL-HISTORIES-20261030.md).
 - The one OHM input never processed (a WAV once misnamed
   `Blanchard_Mark_with_Kane_Jesse_AOH`) is not in the source metadata, so it
   is not merged.

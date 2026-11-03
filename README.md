@@ -40,6 +40,12 @@ provisioning and deployment require separate approval. Headless jobs enforce
 one managed writer and require explicit per-job consent for uploads. No source
 trees are copied wholesale, retired, or silently remapped.
 
+## Collection-Specific Operations
+
+Historical, collection-specific runbooks and one-off processing helpers are
+kept under [`operations/`](operations/README.md), separate from DART's reusable
+application and scripts.
+
 ## Core Mission
 
 DART is focused on providing a valid import/ingest-compatible CSV metadata file using the digital objects and their original filenames as the "source of truth". Each object is given a unique Digital.Grinnell identifier and DART can help maintain those while directing files to proper long-term/preservation storage.

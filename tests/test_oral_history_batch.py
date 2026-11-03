@@ -8,7 +8,13 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from scripts.prepare_oral_history_batch import convert_vtt, prepare_collection, run, transcript_plan, upload_transcript
+from operations.batches.oral_histories_2026_10_30.prepare_oral_history_batch import (
+    convert_vtt,
+    prepare_collection,
+    run,
+    transcript_plan,
+    upload_transcript,
+)
 
 
 VTT = b"WEBVTT\n\n1\n00:00:01.900 --> 00:00:03.000 align:start\n<v Interviewer>Hello &amp; welcome.\nSecond line.</v>\n"
@@ -95,11 +101,13 @@ class OralHistoryTests(unittest.TestCase):
         blob = client.get_blob_client.return_value
         blob.exists.return_value = False
         blob.url = "https://example.blob.core.windows.net/transcripts/demo/a.csv"
-        with patch("scripts.prepare_oral_history_batch.urlopen") as public:
+        with patch("operations.batches.oral_histories_2026_10_30."
+                   "prepare_oral_history_batch.urlopen") as public:
             public.return_value.__enter__.return_value.read.return_value = b"expected"
             self.assertEqual(upload_transcript(client, "demo", "a.csv", b"expected"), blob.url)
         self.assertFalse(blob.upload_blob.call_args.kwargs["overwrite"])
-        with patch("scripts.prepare_oral_history_batch.urlopen") as public:
+        with patch("operations.batches.oral_histories_2026_10_30."
+                   "prepare_oral_history_batch.urlopen") as public:
             public.return_value.__enter__.return_value.read.return_value = b"wrong"
             with self.assertRaisesRegex(ValueError, "Public transcript verification failed"):
                 upload_transcript(client, "demo", "a.csv", b"expected")
@@ -125,7 +133,9 @@ class OralHistoryTests(unittest.TestCase):
                               str(source / "a.vtt"): hashlib.sha256(VTT).hexdigest()},
             )
             url = "https://example.blob.core.windows.net/transcripts/demo/a_transcript.csv"
-            with patch("scripts.prepare_oral_history_batch.upload_transcript", return_value=url):
+            with patch("operations.batches.oral_histories_2026_10_30."
+                       "prepare_oral_history_batch.upload_transcript",
+                       return_value=url):
                 result = prepare_collection(None, entry, inventory)
             self.assertEqual(len(result["transcripts"]), 1)
             self.assertEqual(metadata.read_bytes(), original)
@@ -170,10 +180,12 @@ class OralHistoryTests(unittest.TestCase):
                         patch("dart_storage.Storage.from_environment", return_value=storage), \
                         patch.dict(os.environ, {"DART_AZURE_CONNECTION_STRING": "test-only-value"}), \
                         patch("azure.storage.blob.BlobServiceClient.from_connection_string"), \
-                        patch("scripts.prepare_oral_history_batch.prepare_collection",
+                        patch("operations.batches.oral_histories_2026_10_30."
+                              "prepare_oral_history_batch.prepare_collection",
                               side_effect=[ValueError("test upload failure"), dict(collection="good")]), \
                         patch("dart_batch.run_batch", return_value=1) as batch, \
-                        patch("scripts.prepare_oral_history_batch.signal.signal"):
+                        patch("operations.batches.oral_histories_2026_10_30."
+                              "prepare_oral_history_batch.signal.signal"):
                     self.assertEqual(run(str(plan)), 1)
                 batch.assert_called_once()
                 self.assertEqual([e["collection_id"] for e in batch.call_args.args[1]["collections"]],

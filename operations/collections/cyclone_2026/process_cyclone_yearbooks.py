@@ -26,7 +26,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent.parent
+REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO))
 
 SHEET_URL = ("https://docs.google.com/spreadsheets/d/1up8_aZNtBeSUuMcaDiqnRBZS0_Thw6KMGi9iA9QixYM"

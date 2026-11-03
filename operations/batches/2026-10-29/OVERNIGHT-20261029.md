@@ -364,7 +364,7 @@ selecting the correct folder and save them there again.
 
 ## 4. Review, Merge, and Refresh Each Snapshot
 
-Use the detailed [post-batch review runbook](BATCH-DART-FOLLOW-UP.md#4-compare-and-reconcile-coverage-before-merging),
+Use the detailed [post-batch review runbook](../../../BATCH-DART-FOLLOW-UP.md#4-compare-and-reconcile-coverage-before-merging),
 but use **this overnight summary's IDs and this document's core paths**, not
 the four-collection afternoon table.
 
@@ -411,7 +411,7 @@ For each accepted core, verify `_config.yml` uses the selected slug and
 compound navigation and assets, and record actual progress in
 `Collection_Notes.md` and SHOW's `_data/digital_collections.csv`. Publication,
 catalog/search enablement, and portal deployment remain separate decisions.
-See [SHOW follow-up](BATCH-DART-FOLLOW-UP.md#6-validate-show-and-record-publication-separately).
+See [SHOW follow-up](../../../BATCH-DART-FOLLOW-UP.md#6-validate-show-and-record-publication-separately).
 
 Do not automatically repeat the afternoon's original-file verification waiver.
 This queue deletes nothing. Local derivative cleanup can be previewed later

@@ -41,7 +41,8 @@ def status(host: str, queue: str) -> dict:
 
 
 def launch(host: str, unit: str, queue: str, oral_history_plan: str | None = None) -> None:
-    job = (["scripts/prepare_oral_history_batch.py", "--plan", oral_history_plan]
+    job = (["operations/batches/oral_histories_2026_10_30/prepare_oral_history_batch.py",
+            "--plan", oral_history_plan]
            if oral_history_plan else [
                "-m", "dart_linux", "--env-file", "/data/dart/config/dart.env",
                "--batch", "--inputs", queue, "--min-free-gib", "50",

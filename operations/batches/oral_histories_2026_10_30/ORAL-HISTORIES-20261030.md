@@ -9,13 +9,13 @@ SHOW builds while a pipeline is active.
 ### Job 1: Alumni of the 1940s and PHPP Oral Histories
 
 ```bash
-bash "$HOME/GitHub/DART/scripts/run_oral_histories.sh" 1
+bash "$HOME/GitHub/DART/operations/batches/oral_histories_2026_10_30/run_oral_histories.sh" 1
 ```
 
 ### Job 2: Remaining Available Alumni Collections
 
 ```bash
-bash "$HOME/GitHub/DART/scripts/run_oral_histories.sh" 2
+bash "$HOME/GitHub/DART/operations/batches/oral_histories_2026_10_30/run_oral_histories.sh" 2
 ```
 
 Job 2 includes `alumni-1950s`, `alumni-1960s`, `alumni-1970s`, `alumni-1980s`,
@@ -144,7 +144,7 @@ VTT text is handled by the separate conversion step below.
 
 ## Non-OHM Transcript Handling
 
-The Linux wrapper uses `scripts/prepare_oral_history_batch.py` before DART's
+The Linux wrapper uses `prepare_oral_history_batch.py` before DART's
 existing batch runner. It does not alter DART's normal asset scan or require
 OHM naming/processing.
 

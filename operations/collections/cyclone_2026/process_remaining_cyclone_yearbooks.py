@@ -6,9 +6,12 @@ import argparse
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
-from scripts.process_cyclone_yearbooks import DEFAULT_PROJECT, main as process
+from operations.collections.cyclone_2026.process_cyclone_yearbooks import (
+    DEFAULT_PROJECT,
+    main as process,
+)
 
 
 def main() -> int:

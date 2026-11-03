@@ -20,7 +20,7 @@ import time
 from urllib.request import urlopen
 from urllib.error import URLError
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 MAX_BYTES = 20 * 1024**2
 

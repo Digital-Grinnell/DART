@@ -3,7 +3,7 @@
 ## Purpose and Boundaries
 
 For the October 29 **15-collection overnight run**, use its
-[dedicated launch and follow-up guide](OVERNIGHT-20261029.md) for collection
+[dedicated launch and follow-up guide](operations/batches/2026-10-29/OVERNIGHT-20261029.md) for collection
 paths and actual-job selection. The four-collection table below describes the
 earlier afternoon batch only.
 
