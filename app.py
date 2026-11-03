@@ -5922,19 +5922,6 @@ Detailed results: {output_diff.name}
 
     inputs_inner_column = ft.Column(
         controls=[
-            input_folder_row := ft.Row(
-                controls=[
-                    input_dir_field,
-                    ft.ElevatedButton(
-                        "Browse...",
-                        icon=ft.Icons.FOLDER_OPEN,
-                        on_click=lambda _: input_dir_picker.get_directory_path(
-                            dialog_title="Select Inputs Folder"
-                        ),
-                    ),
-                ],
-            ),
-            ft.Container(height=5),
             ft.Row(
                 controls=[
                     output_dir_field,
@@ -5943,6 +5930,19 @@ Detailed results: {output_diff.name}
                         icon=ft.Icons.FOLDER_OPEN,
                         on_click=lambda _: output_dir_picker.get_directory_path(
                             dialog_title="Select Working/Outputs Folder"
+                        ),
+                    ),
+                ],
+            ),
+            ft.Container(height=5),
+            input_folder_row := ft.Row(
+                controls=[
+                    input_dir_field,
+                    ft.ElevatedButton(
+                        "Browse...",
+                        icon=ft.Icons.FOLDER_OPEN,
+                        on_click=lambda _: input_dir_picker.get_directory_path(
+                            dialog_title="Select Inputs Folder"
                         ),
                     ),
                 ],
