@@ -8,13 +8,13 @@ Compare two CSV files to identify matching records, new records, changed values,
 Interactive compare and merge happen here, on the desktop, against the
 authoritative core CSV. [Headless DART](LINUX-HEADLESS-OVERVIEW.md) on Linux
 only prepares data. When `headless_host` and `headless_project_dir` are set in
-[Function 0](FUNCTION_0_APP_SETTINGS.md), desktop DART recognizes the project
+[App Settings](APP_SETTINGS.md), desktop DART recognizes the project
 as configured for headless handoff.
 
 The main window also labels **Inputs Folder** as **Not necessary for headless
 DART handoff**, with a note that Function 4 uses the server package rather
 than that local folder. The note updates at startup, when selecting another
-Working/Outputs folder, and after saving Function 0 settings. DART detects
+Working/Outputs folder, and after saving App Settings. DART detects
 configured headless handoff, not a special GEMS launch mode. **Inputs Folder**
 and **Files Selection**, including their Browse/Clear buttons, are disabled
 and grayed out for these projects. Saved local paths and file selections are
@@ -112,8 +112,8 @@ Use this function when you want to:
 
 ## Requirements
 - **Working/Outputs folder** must be set
-- **Core metadata CSV** must be configured in Function 0 settings
-- **Optional:** `gems_metadata_csv` in Function 0 settings, to backfill GEMS metadata (see "GEMS Backfill")
+- **Core metadata CSV** must be configured in App Settings
+- **Optional:** `gems_metadata_csv` in App Settings, to backfill GEMS metadata (see "GEMS Backfill")
 - **At least 1 DART_export CSV file** must exist in the `.DART-working-directory` subfolder (for comparison)
 - Both CSV files must have an `original_file_name` column (unique identifier)
 - No duplicate `original_file_name` values within each file
@@ -160,7 +160,7 @@ Function 4 uses the csvdiff Python library for comparison:
 
 ## Workflow
 
-1. Configure **core_metadata_csv** in Function 0 settings (used as baseline, can be anywhere)
+1. Configure **core_metadata_csv** in App Settings (used as baseline, can be anywhere)
 
 2. Ensure your working directory contains DART_export CSV file(s) in the `.DART-working-directory` subfolder
 
@@ -188,9 +188,9 @@ Function 4 uses the csvdiff Python library for comparison:
 
 GEMS gathers the descriptive metadata (title, date, description, subjects, rights, …) into its own `collection_metadata.csv`. A DART export holds only DART's fields (`objectid`, `parentid`, Azure URLs, derivatives). After the first batch, your core CSV holds published records for the earlier batches, but **not** the GEMS rows for the batch you're processing. Without a backfill, Function 4 adds that batch as records with no GEMS metadata.
 
-**Setup:** in Function 0, set **gems_metadata_csv** to the GEMS run's `collection_metadata.csv` for the current batch. GEMS's CSV is cumulative, so a run covering records 151–350 also contains 1–150, and the extra rows are ignored.
+**Setup:** in App Settings, set **gems_metadata_csv** to the GEMS run's `collection_metadata.csv` for the current batch. GEMS's CSV is cumulative, so a run covering records 151–350 also contains 1–150, and the extra rows are ignored.
 
-**Use:** the Function 4 file-selection dialog shows a **Backfill empty fields from GEMS metadata CSV** checkbox. It's checked by default when the setting points at an existing file, and disabled when the setting is blank. Uncheck it to compare the raw export. Your GEMS batch workflow is then just Functions 1 → 2 → 3 → 4, and `automatic_four` uses the same checkbox.
+**Use:** the Function 4 file-selection dialog shows a **Backfill empty fields from GEMS metadata CSV** checkbox. It's checked by default when the setting points at an existing file, and disabled when the setting is blank. Uncheck it to compare the raw export. Run Functions 1 → 2 → 3 → 4 individually for each batch.
 
 **What the backfill does** before csvdiff runs:
 1. Matches each export row to a GEMS row on exact `original_file_name`
@@ -352,14 +352,14 @@ Core metadata CSV is configured in settings
 
 **Common errors:**
 
-- **"Core metadata CSV not configured"**: Set core_metadata_csv in Function 0 settings
+- **"Core metadata CSV not configured"**: Set core_metadata_csv in App Settings
 - **"Core CSV file not found"**: Verify core_metadata_csv path is correct in settings
 - **"No DART_export CSV files found"**: Run Function 2 to generate a CSV export
 - **"Only core CSV found, no DART_export files to compare"**: Run Function 2 to generate a new export to compare
 - **"Missing original_file_name column"**: Both files must have this column
 - **"Duplicate original_file_name values"**: Fix duplicates before comparison
 - **"Error comparing CSVs"**: Check log for csvdiff or data format issues
-- **Only "new" and "missing" records, 0 "changed", and the new records have no titles or descriptions**: The core CSV doesn't contain this batch's GEMS rows, for example because it holds an earlier batch. Close the dialog without merging. Set `gems_metadata_csv` in Function 0 to the GEMS run's `collection_metadata.csv`, then run Function 4 again with the GEMS backfill checkbox checked. See "GEMS Backfill" above.
+- **Only "new" and "missing" records, 0 "changed", and the new records have no titles or descriptions**: The core CSV doesn't contain this batch's GEMS rows, for example because it holds an earlier batch. Close the dialog without merging. Set `gems_metadata_csv` in App Settings to the GEMS run's `collection_metadata.csv`, then run Function 4 again with the GEMS backfill checkbox checked. See "GEMS Backfill" above.
 - **⚠️ "NEW RECORDS HAVE NO METADATA" banner** (v6.6+): At least half of the new records have values only in DART-generated columns (`objectid`, `parentid`, `display_template`, `original_file_name`, `filepath`, `originating_system_id`, `object_location`, `image_small`, `image_thumb`, `type`, `format`). Title, date, description and every other metadata column are empty. The banner appears in the results dialog and the review/merge view, and is also written to the log and status bar. It's only a warning, and merging is still allowed. Its advice depends on the situation:
   - No `gems_metadata_csv` is set: set it and run Function 4 again.
   - The backfill checkbox was unchecked: run Function 4 again with it checked.
@@ -395,11 +395,11 @@ Function 4 implements CSV comparison using csvdiff:
 - Review the text summary first for quick overview
 - Use the JSON output for programmatic processing
 - Use the interactive merge viewer to selectively apply changes
-- Configure core_metadata_csv in Function 0 (e.g., `core_metadata.csv`)
+- Configure core_metadata_csv in App Settings (e.g., `core_metadata.csv`)
 
 ## Example Workflow
 
-1. Configure core_metadata_csv in Function 0 (e.g., `core_metadata.csv`)
+1. Configure core_metadata_csv in App Settings (e.g., `core_metadata.csv`)
 2. Run Function 2 to export new batch of assets (creates `DART_export_20260514_143022.csv`)
 3. Run Function 4 to compare
 4. Selection dialog shows:

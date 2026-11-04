@@ -1,7 +1,7 @@
 # Function 1: Analyze Digital Assets & Generate Standard DG Identifiers
 
 ## Purpose
-Analyze selected digital asset files or scan a folder to generate unique standard DG identifiers for each file. Legacy identifiers follow the format `dg_<epoch_time>`. If `collection-id` is configured in Function 0, new identifiers follow `<collection-id>_dg_<epoch_time>`.
+Analyze selected digital asset files or scan a folder to generate unique standard DG identifiers for each file. Legacy identifiers follow the format `dg_<epoch_time>`. If `collection-id` is configured in App Settings, new identifiers follow `<collection-id>_dg_<epoch_time>`.
 
 ## Headless Linux Analysis
 
@@ -15,23 +15,12 @@ no saved mapping or filename ID, headless DART reuses the `objectid` from the
 pushed core snapshot for a unique matching `original_file_name`. Changing
 hosts does not automatically migrate existing mapping keys.
 
-## Automated Workflow
-**NEW**: Enable `automatic_four` in Function 0 (App Settings) to automatically execute Functions 2, 3, and 4 after this function completes successfully. This creates a seamless workflow:
-
-1. **Function 1**: Analyze assets and generate identifiers
-2. **Function 2**: Export to CSV and upload to Azure (automatic)
-3. **Function 3**: Generate derivatives and upload to Azure (automatic)
-4. **Function 4**: Compare and merge metadata into core CSV (automatic)
-
-The workflow stops immediately if any errors occur. The `automatic_four` setting automatically resets to `false` at the start of each new session, ensuring you consciously enable automation when needed.
-
 ## When to Use
 Use this function to:
 - Generate standard unique identifiers for digital assets
 - Prepare asset metadata with guaranteed unique IDs
 - Create identifiers that can be tracked across systems
 - Ensure each file has a globally unique, timestamp-based identifier
-- **NEW**: Trigger the complete workflow automatically (when `automatic_four` is enabled)
 
 ## Supported File Types
 - **Images**: JPG, JPEG, PNG, GIF, TIF, TIFF, BMP, WEBP
@@ -39,34 +28,37 @@ Use this function to:
 - **Video**: MP4, MOV, AVI, MKV, WMV, FLV, WEBM
 - **Audio**: MP3, WAV, FLAC, AAC, OGG, M4A, WMA
 - **Archives**: ZIP, TAR, GZ, 7Z, RAR, BZ2
+- **Other data**: BIN, DIFF, ASC
 
 ## Requirements
 - **Either**: Files selected using the Files Selection picker (recommended)
-- **Or**: Inputs folder must be selected (scans the folder **and all its subfolders recursively**, v6.1+; each subfolder gets its own compound parent when grouping is enabled). Dot-prefixed files and folders (`.DS_Store`, `._` AppleDouble files, `.Trashes`) are always skipped (v6.5+)
-- **Grouping never crosses folder boundaries** (v6.5+): prefix matching and compound grouping compare only files within the same folder, so same-named files in different subfolders can never be grouped together
+- **Or**: Inputs folder must be selected (scans the folder **and all its subfolders recursively**). Dot-prefixed files and folders (`.DS_Store`, `._` AppleDouble files, `.Trashes`) are always skipped (v6.5+)
+- **Compounds Grouped by Subdirectory**: When enabled (default), each immediate subfolder of the Inputs Folder becomes one compound containing all supported assets in that directory and its descendants. File names do not affect membership; files directly in the Inputs Folder stay standalone.
+- **Filename-based grouping never crosses folder boundaries** (v6.5+): prefix matching compares only files within the same folder. Source-directory mode intentionally includes nested descendants under their immediate parent directory.
 - **Optional**: Working/Outputs folder (to load compound grouping setting)
-- **OHM-data mode**: When `process_OHM_data` is enabled in Function 0, select the project folder containing `OHM-data` (or select `OHM-data` itself). Function 1 ignores file selections and ordinary assets, recursively finds only `.mp3` files, and assigns each one a standard persistent DG identifier.
+- **OHM-data mode**: When `process_OHM_data` is enabled in App Settings, select the project folder containing `OHM-data` (or select `OHM-data` itself). Function 1 ignores file selections and ordinary assets, recursively finds only `.mp3` files, and assigns each one a standard persistent DG identifier.
 
 ## How It Works
 1. **First checks** if files are selected in the Files Selection area
-   - If files are selected, analyzes only those files
+   - If files are selected, analyzes only those files using filename-based grouping
 2. **Falls back** to scanning the Inputs Folder if no files are selected
    - Scans all files in the folder **and its subfolders** matching supported types (recursive as of v6.1)
-   - Each folder (and subfolder) is analyzed separately for compound grouping, so per-compound subfolders each produce their own compound parent
+   - With **Compounds Grouped by Subdirectory** enabled, each immediate subfolder produces one compound parent for all its descendant files, while root-level files remain standalone
+   - With that setting disabled, the existing filename-based grouping is used
 3. **Generates unique identifiers** using the standard DG format: `dg_<epoch_time>`
    - Each file receives a permanent identifier
-   - If `collection-id` is set in Function 0, the generated format becomes `<collection-id>_dg_<epoch_time>`
+   - If `collection-id` is set in App Settings, the generated format becomes `<collection-id>_dg_<epoch_time>`
    - IDs are reused if the file was previously processed
 4. **Creates compound objects** (if grouping enabled)
-   - Groups files by text similarity in filenames
-   - Numbers are used for sequencing, not grouping
-   - One untitled compound per folder; numeric sequences nest under it as `multiple` children
+   - Source-directory mode groups by the immediate subfolder name and ignores filename conventions
+   - Otherwise, groups files by text similarity in filenames; numbers are used for sequencing, not grouping
+   - Source-directory compounds use the directory name as their suggested title; filename-based mode creates one untitled compound per folder, with numeric sequences nested as `multiple` children
    - Each compound/multiple gets its own permanent identifier using the same legacy or prefixed format
    - Child files track their parent via `parentid` field
 
 ### OHM-data Processing
 
-When `process_OHM_data` is `true`, Function 1 uses the selected Inputs Folder as the project root and looks for an `OHM-data` directory. It recursively processes only `.mp3` files beneath that directory, including files in interviewee subdirectories. Selected files and all non-MP3 assets are ignored, and compound grouping is disabled automatically. The resulting MP3 objects can then be exported by Function 2 and uploaded to Azure using their assigned identifiers.
+When `process_OHM_data` is `true`, Function 1 uses the selected Inputs Folder as the project root and looks for an `OHM-data` directory. It recursively processes only `.mp3` files beneath that directory, including files in interviewee subdirectories. Selected files and all non-MP3 assets are ignored, and compound grouping is bypassed. The resulting MP3 objects can then be exported by Function 2 and uploaded to Azure using their assigned identifiers.
 
 Function 2 creates one standalone metadata record for each OHM MP3. OHM mode does not create compound objects or `parentid` relationships.
 
@@ -91,7 +83,7 @@ A **compound object** is a logical grouping of related digital assets. The compo
 - Serves as the parent for all groups found in that folder
 
 ### How Grouping Works
-When `group_compound_objects` is enabled in Function 0:
+When **Compounds Grouped by Subdirectory** is off and `group_compound_objects` is enabled in App Settings:
 
 1. **Intelligent Pattern Analysis**: Files are analyzed in three passes to find common patterns:
    
@@ -152,7 +144,7 @@ When `group_compound_objects` is enabled in Function 0:
    - Unnumbered files in the same group become direct children of the compound - siblings of the `multiple` object, not its children
    - Groups that are NOT a numeric sequence (all-unnumbered, or only 1 numbered file) skip the `multiple` wrapper entirely - their files attach directly to the compound
    - The `multiple` ID is reused if the same group (folder + group base) is processed again, just like compound IDs
-   - Set `create_multiple_objects` to `false` in Function 0 (v6.1+) to skip this wrapper entirely: numbered files then attach directly to the compound, keeping their sequence numbers for ordering. Intended for Alma/GEMS-style migrations, where each compound is a flat object and `multiple` has no counterpart - see `GEMS_FILENAME_RULES.md`
+   - Set `create_multiple_objects` to `false` in App Settings (v6.1+) to skip this wrapper entirely: numbered files then attach directly to the compound, keeping their sequence numbers for ordering. Intended for Alma/GEMS-style migrations, where each compound is a flat object and `multiple` has no counterpart - see `GEMS_FILENAME_RULES.md`
 
 7. **Child Tracking**: Each child asset:
    - Has its own unique permanent identifier (objectid)

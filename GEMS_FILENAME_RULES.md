@@ -107,10 +107,10 @@ python3 scripts/organize_compound_folders.py /path/to/objects          # preview
 python3 scripts/organize_compound_folders.py /path/to/objects --apply  # move files
 ```
 
-The script groups by shared filename base, so it can only separate compounds from each other — a flat batch of **individual** exports that share a base (`grinnell-310.pdf`, `grinnell-1135.pdf`, …) would be herded into one folder and still mis-group. For those, re-export from current GEMS (one folder per record) or, if the collection is truly all individuals, turn off compound grouping for that working folder (`group_compound_objects = false` in Function 0).
+The script groups by shared filename base, so it can only separate compounds from each other — a flat batch of **individual** exports that share a base (`grinnell-310.pdf`, `grinnell-1135.pdf`, …) would be herded into one folder and still mis-group. For those, re-export from current GEMS (one folder per record) or, if the collection is truly all individuals, turn off compound grouping for that working folder (`group_compound_objects = false` in App Settings).
 
 ### 2. Flat compounds in DART (v6.1+)
-In **Function 0: App Settings**, set:
+In **App Settings**, set:
 
 ```
 group_compound_objects = true
@@ -136,7 +136,7 @@ A compound parent's `original_file_name` is the alphabetically-first child filen
 After reorganizing into per-compound folders, point DART at a **new working folder**. Reusing one whose `file_to_id_map` was built under the old flat layout would leave stale compound/`multiple` ID mappings, and moved files (new paths) would receive new identifiers anyway.
 
 ### 6. Bring GEMS metadata into later batches (DART `gems_metadata_csv`, v6.6+)
-After the first batch, the core metadata CSV holds published DART IDs for earlier records, but not the GEMS rows for the next batch. Merging a new DART export straight into it adds the batch as records with **no GEMS metadata**. Instead, in DART Function 0, set **gems_metadata_csv** to the GEMS run's cumulative `collection_metadata.csv`, then run Functions 1 → 2 → 3 → 4 as usual. Function 4's **Backfill empty fields from GEMS metadata CSV** checkbox, on by default, fills the export's empty fields from GEMS before comparing, so the batch is added with full metadata. DART identifiers, structure, and Azure URLs are never taken from GEMS. Update the setting after each new GEMS run. See "GEMS Backfill" in `FUNCTION_4_COMPARE_MERGE_CSV.md`.
+After the first batch, the core metadata CSV holds published DART IDs for earlier records, but not the GEMS rows for the next batch. Merging a new DART export straight into it adds the batch as records with **no GEMS metadata**. Instead, in DART App Settings, set **gems_metadata_csv** to the GEMS run's cumulative `collection_metadata.csv`, then run Functions 1 → 2 → 3 → 4 as usual. Function 4's **Backfill empty fields from GEMS metadata CSV** checkbox, on by default, fills the export's empty fields from GEMS before comparing, so the batch is added with full metadata. DART identifiers, structure, and Azure URLs are never taken from GEMS. Update the setting after each new GEMS run. See "GEMS Backfill" in `FUNCTION_4_COMPARE_MERGE_CSV.md`.
 
 ### 7. Completed object folders move to `objects/.complete` (DART v6.6+)
 When the DART Inputs Folder is the GEMS `objects/` folder and no files are selected, Function 4's final step moves each fully processed object folder into `objects/.complete/` after a successful merge. A folder qualifies when all its files were exported, merged, uploaded, and given derivatives without error. Folders with any problem stay in `objects/`, so the next DART run picks up only the remaining and failed objects. GEMS and other producers should treat `objects/.complete/` as DART-owned and must not write new objects into it. See "Retiring Completed GEMS Object Folders" in `FUNCTION_4_COMPARE_MERGE_CSV.md`.

@@ -68,8 +68,8 @@ Managed headless differences are deliberate:
   Derivative files are not transferred to the desktop.
 - GEMS backfill runs on the server when the project names a GEMS CSV.
 - Headless DART never compares, merges, or writes a core CSV, and never
-  retires sources. Neither `automatic_four` nor saved desktop upload flags can
-  silently enable side effects.
+  retires sources. Saved desktop upload flags cannot silently enable side
+  effects.
 - The native application refuses new managed storage roots; use the managed
   entry point there. Ordinary native project locations are unchanged.
 
@@ -366,7 +366,7 @@ mkdir -m 700 /data/dart/data/projects/REPLACE-COLLECTION
 ```
 
 Do not bulk-copy source objects. Then, from desktop DART on the Mac, set
-`headless_host` and `headless_project_dir` in Function 0 and click **Push Core
+`headless_host` and `headless_project_dir` in App Settings and click **Push Core
 Snapshot** in Function 4. This writes `core-snapshot.csv` (owner-only) into
 the project. The snapshot needs `objectid` and `original_file_name` (legacy
 `filename` is normalized) and the desired CollectionBuilder columns. The

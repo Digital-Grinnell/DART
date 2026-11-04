@@ -73,7 +73,7 @@ DART is focused on providing a valid import/ingest-compatible CSV metadata file 
 
 ## OHM-data Mode
 
-Set `process_OHM_data` to `true` in Function 0 for packaged Oral History Manager data. Select the project root containing `OHM-data`, or select the `OHM-data` directory itself.
+Set `process_OHM_data` to `true` in App Settings for packaged Oral History Manager data. Select the project root containing `OHM-data`, or select the `OHM-data` directory itself.
 
 - Function 1 recursively finds only `.mp3` files.
 - Existing `dg_...` values in MP3 filenames are preserved; `collection-id` is prepended.
@@ -97,7 +97,7 @@ DART provides a comprehensive platform for digital asset management workflows:
 ### Core Platform Features
 - **Persistent Settings**: Automatic saving/loading of window position, directories, and user preferences
 - **Persistent File Selection**: Selected files are remembered across app restarts - no need to re-select
-- **Permanent ID Assignment**: Files receive unique permanent identifiers that never change once assigned: legacy `dg_<epoch>` for IDs created before v6.0, or `<collection-id>_dg_<epoch>` using the required `collection-id` configured in Function 0
+- **Permanent ID Assignment**: Files receive unique permanent identifiers that never change once assigned: legacy `dg_<epoch>` for IDs created before v6.0, or `<collection-id>_dg_<epoch>` using the required `collection-id` configured in App Settings
 - **CSV Metadata Management**: Template-based CSV generation with intelligent merging into master metadata file
 - **Isolated Working Directory**: Automatic `.DART-working-directory` subfolder for temporary files
   - DART_export CSV files written to hidden subfolder
@@ -125,17 +125,12 @@ DART provides a comprehensive platform for digital asset management workflows:
 - **Secure Settings**: Encrypted storage for API keys and credentials
 
 ### Workflow Functions
-- **Function 0** ⚙️: App Settings with encrypted sensitive fields
-  - **Automated Workflow**: Enable `automatic_four` to automatically execute Functions 2, 3, and 4 after Function 1 completes
-  - Creates a seamless workflow from asset analysis through metadata merge
-  - Stops immediately if any errors occur
-  - Automatically resets to `false` at start of each new session (opt-in per session)
+- **App Settings** ⚙️: Configure settings with encrypted sensitive fields
   - **Required Collection Identifier**: Set `collection-id` to generate new IDs as `<collection-id>_dg_<epoch>` for multi-collection uniqueness. This value becomes part of every new object's unique ID and is also used for Azure sub-directory names and CollectionBuilder slugs. Blank values are rejected on save. Collection identifiers may be any length and can contain letters, numbers, hyphens, and underscores
   - **Optional GEMS Metadata CSV**: Set `gems_metadata_csv` (Browse/Clear) to the GEMS run's `collection_metadata.csv` so Function 4 fills new records with GEMS metadata
 - **Function 1** 🎯: Analyze digital assets and generate standard DG identifiers (dg_<epoch>)
   - Creates compound objects for related file groups (optional)
   - Permanent ID assignment with folder-based compound tracking
-  - When `automatic_four` is enabled, automatically triggers Functions 2, 3, and 4
 - **Function 2** 📊: Export Assets to CSV and Azure
   - Generates CollectionBuilder-compatible metadata files
   - Auto-populates objectid, original_file_name, parentid, display_template, format, and object_location fields
@@ -144,7 +139,7 @@ DART provides a comprehensive platform for digital asset management workflows:
   - **Azure Blob Storage integration**: Automatically uploads files and generates object_location URLs
   - **Auto-creates Azure containers**: No manual Azure Portal setup required
   - Files uploaded with object identifiers as filenames (e.g., `dg_1715614222.jpg` or `tdps_dg_1715614222.jpg`)
-  - **Optional overwrite mode**: Set `overwrite_existing_azure_files=true` in Function 0 to replace existing Azure blobs instead of skipping them
+  - **Optional overwrite mode**: Set `overwrite_existing_azure_files=true` in App Settings to replace existing Azure blobs instead of skipping them
   - **Kill Switch**: Emergency stop for long-running Azure uploads (stops cleanly after current file)
   - Timestamped exports to `.DART-working-directory` subfolder
 - **Function 3** 🖼️: Generate Derivatives for CSV and Azure
@@ -153,7 +148,7 @@ DART provides a comprehensive platform for digital asset management workflows:
   - **Auto-creates derivative containers**: Automatic /smalls/ and /thumbs/ container setup
   - **Smart skip existing**: Checks Azure and skips files with existing derivatives by default (fast re-runs)
   - **ICC-aware TIFF handling**: Embedded grayscale/scanner profiles are converted to sRGB before JPEG derivatives are written
-  - **Optional overwrite mode**: Set `overwrite_existing_azure_files=true` in Function 0 to regenerate and replace existing derivatives in Azure
+  - **Optional overwrite mode**: Set `overwrite_existing_azure_files=true` in App Settings to regenerate and replace existing derivatives in Azure
   - Automatically populates image_small and image_thumb CSV columns
   - Maintains aspect ratios, handles EXIF orientation and transparency
   - Reads from and writes to `.DART-working-directory` subfolder
@@ -312,7 +307,7 @@ DART/
 ├── README.md                   # This file (full documentation)
 ├── INSTALLATION.md             # Detailed installation guide
 ├── QUICKSTART.md              # Quick reference guide
-├── FUNCTION_0_APP_SETTINGS.md # Help docs for Function 0
+├── APP_SETTINGS.md            # Help docs for App Settings
 ├── FUNCTION_1_ANALYZE_ASSETS.md  # Help docs for Function 1
 ├── FUNCTION_2_EXPORT_CSV.md     # Help docs for Function 2 (CSV and Azure export)
 ├── FUNCTION_3_GENERATE_DERIVATIVES.md  # Help docs for Function 3 (Derivatives)

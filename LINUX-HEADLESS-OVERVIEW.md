@@ -73,12 +73,12 @@ ssh -o BatchMode=yes sysadmin@dg-landing true
 ```
 
 **FIRST select the collection's Working/Outputs Folder in the main DART window.
-ONLY THEN open Function 0.** Settings belong to the selected folder; changing
+ONLY THEN open App Settings.** Settings belong to the selected folder; changing
 folders loads a different project's settings rather than transferring entries.
 Launch commands and printed shell values do not configure DART automatically.
 Repeat this order for every collection.
 
-In **Function 0**, under **Headless DART Handoff**, set and save:
+In **App Settings**, under **Headless DART Handoff**, set and save:
 
 | Setting | Example | Meaning |
 | --- | --- | --- |
@@ -350,7 +350,7 @@ for safeguards and existing-collection handling. Verify that SHOW's template
 header matches the staged Linux schema before proceeding.
 
 Then **select the collection's Mac Working/Outputs Folder FIRST; ONLY THEN
-open Function 0**, configure the same collection ID and Linux project path,
+open App Settings**, configure the same collection ID and Linux project path,
 and save. Do not switch working folders after configuring this collection.
 Pull the **exact job ID** from the summary.
 Local-only rehearsal packages are for review, not final publishing;

@@ -26,7 +26,7 @@ If a behavior is driven by documentation, mappings, or a focused helper script, 
 
 ### Durable Identifiers
 - `dg_<epoch>` object identifiers are intended to be permanent once assigned
-- As of v6.0, `collection-id` (formerly `dg_prefix`) is a **required** Function 0 setting; the settings dialog rejects blank values. It becomes part of every new object's unique ID (`<collection-id>_dg_<epoch>`) and is also used for Azure sub-directory names and CollectionBuilder slugs; preserve that value when present
+- As of v6.0, `collection-id` (formerly `dg_prefix`) is a **required** App Settings value; the settings section rejects blank values. It becomes part of every new object's unique ID (`<collection-id>_dg_<epoch>`) and is also used for Azure sub-directory names and CollectionBuilder slugs; preserve that value when present
 - `collection-id` values are CollectionBuilder collection identifiers. They may contain lowercase letters, numbers, hyphens, and underscores, and should be treated as collection-scoped uniqueness aids rather than editable metadata
 - Do not rewrite existing identifier mappings casually
 - Be careful with logic touching `file_to_id_map`, compound object IDs, or merge matching behavior
@@ -72,7 +72,7 @@ Explain your plan and get confirmation before:
 | File or Area | What it controls |
 |---|---|
 | `app.py` | Main Flet application, workflow logic, dialogs, validation, merge behavior |
-| `FUNCTION_0_APP_SETTINGS.md` through `FUNCTION_4_COMPARE_MERGE_CSV.md` | User help for workflow functions 0 through 4 |
+| `APP_SETTINGS.md` and `FUNCTION_1_ANALYZE_ASSETS.md` through `FUNCTION_4_COMPARE_MERGE_CSV.md` | User help for App Settings and workflow functions 1 through 4 |
 | `README.md` / `QUICKSTART.md` / `INSTALLATION.md` | High-level onboarding, setup, and workflow documentation |
 | `scripts/rename_metadata_field.py` | Targeted metadata field renaming across CSV/config contexts |
 | `scripts/fix_config_csv_fields.sh` | Cleanup of CSV-based CollectionBuilder config field references |
@@ -102,7 +102,7 @@ Consult these repo documents when needed:
 - `README.md` — overall product overview and workflow summary
 - `ARCHITECTURE.md` — design decisions and data model rationale
 - `BEST_PRACTICES.md` — filename conventions and compound grouping guidance
-- `FUNCTION_0_APP_SETTINGS.md` — settings behavior, encryption, core metadata CSV, Azure details
+- `APP_SETTINGS.md` — settings behavior, encryption, core metadata CSV, Azure details
 - `FUNCTION_1_ANALYZE_ASSETS.md` through `FUNCTION_4_COMPARE_MERGE_CSV.md` — per-function behavior
 - `RENAME_METADATA_FIELD.md` and `FIXING_RENAME_ISSUES.md` — legacy metadata field normalization guidance
 - `GEMS_FILENAME_RULES.md` — filename and CSV contract for external systems (GEMS/Alma) producing files and metadata CSVs for DART ingestion, including the flat-compound migration pattern using the `create_multiple_objects` setting

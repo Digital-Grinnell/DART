@@ -456,6 +456,77 @@ def analyze_compound_objects(objects, group_compound, file_to_id_map, page, coll
     return compound_objects, file_to_id_map, compound_new_mappings, compound_reused_mappings
 
 
+def group_objects_by_source_directory(
+    objects: list[dict[str, Any]],
+    file_to_id_map: dict[str, str],
+    page: Any,
+    collection_id: str,
+    source_directory_root: str | Path,
+    add_log_message=logger.debug,
+) -> tuple[list[dict[str, Any]], dict[str, str], int, int]:
+    """Make each immediate input subdirectory one compound, including nested files."""
+    root = Path(source_directory_root)
+    directory_groups: dict[Path, list[dict[str, Any]]] = {}
+    standalone_objects = []
+
+    for obj in objects:
+        try:
+            relative_path = Path(obj["filepath"]).relative_to(root)
+        except (KeyError, ValueError):
+            relative_path = Path()
+
+        if len(relative_path.parts) < 2:
+            obj["parentid"] = None
+            obj["type"] = "single"
+            obj["sequence_number"] = None
+            standalone_objects.append(obj)
+            continue
+
+        source_directory = root / relative_path.parts[0]
+        directory_groups.setdefault(source_directory, []).append(obj)
+
+    compound_objects = []
+    compound_new_mappings = 0
+    compound_reused_mappings = 0
+
+    for source_directory, children in sorted(directory_groups.items()):
+        stable_directory = get_stable_path(str(source_directory))
+        compound_key = f"{stable_directory}::COMPOUND"
+        if compound_key in file_to_id_map:
+            compound_id = file_to_id_map[compound_key]
+            compound_reused_mappings += 1
+            add_log_message(f"[DEBUG] Reusing source-directory compound ID {compound_id} for {source_directory}")
+        else:
+            compound_id = generate_unique_id(page, collection_id)
+            file_to_id_map[compound_key] = compound_id
+            compound_new_mappings += 1
+            add_log_message(f"[DEBUG] Created source-directory compound {compound_id} for {source_directory}")
+
+        children.sort(key=lambda obj: obj["filepath"])
+        directory_name = source_directory.name
+        compound_objects.append({
+            "objectid": compound_id,
+            "text_base": directory_name,
+            "display_text_base": directory_name,
+            "child_count": len(children),
+            "folder_path": str(source_directory),
+            "zero_pad_width": 0,
+            "type": "compound",
+            "first_child_filename": children[0]["filename"],
+        })
+
+        for child in children:
+            child["parentid"] = compound_id
+            child["type"] = "child"
+            child["sequence_number"] = None
+
+    add_log_message(
+        f"[DEBUG] Source-directory analysis complete: {len(compound_objects)} compounds created, "
+        f"{len(standalone_objects)} root-level standalone files"
+    )
+    return compound_objects, file_to_id_map, compound_new_mappings, compound_reused_mappings
+
+
 def get_display_template(file_extension):
     """
     Map file extension to CollectionBuilder display_template value.
@@ -485,7 +556,7 @@ def get_display_template(file_extension):
         return 'pdf'
 
     # Archives and other formats → "record"
-    elif ext in ['zip', 'tar', 'gz', '7z', 'rar', 'bz2']:
+    elif ext in ['zip', 'tar', 'gz', '7z', 'rar', 'bz2', 'bin', 'diff', 'asc']:
         return 'record'
 
     # Unknown → empty (will use CB default)

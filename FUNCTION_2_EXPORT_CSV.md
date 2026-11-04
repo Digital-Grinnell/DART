@@ -35,13 +35,14 @@ Use this function when you want to:
 
 ## Requirements
 - **Working/Outputs folder** must be set
-- **CSV structure template** must be configured in Function 0 settings
+- **CSV structure template** must be configured in App Settings
 - Digital asset files to export (either selected files or in inputs folder)
+- **Compounds Grouped by Subdirectory**: During an Inputs Folder scan with no files selected, Function 2 creates one compound per immediate subfolder and includes supported assets from all nested descendants; root-level files remain standalone. The setting is enabled by default and can be changed in App Settings. Selecting specific files uses filename-based grouping.
 - **OHM-data mode**: When `process_OHM_data` is enabled, select the project folder containing `OHM-data` (or select `OHM-data` itself). Function 2 ignores file selections and exports only recursively discovered `.mp3` files, uploading them to Azure when configured.
 
 ## Workflow
 
-1. Configure your CSV template in **Function 0: App Settings**
+1. Configure your CSV template in **App Settings**
    - Set `csv_structure_file` to point to your template CSV
    - The template defines which columns will be in the export
 
@@ -61,7 +62,7 @@ Use this function when you want to:
 
 The function automatically populates these CollectionBuilder fields from your assets:
 
-- **objectid**: Unique DG identifier (format: `dg_<epoch>` or `<collection-id>_dg_<epoch>` when `collection-id` is configured in Function 0)
+- **objectid**: Unique DG identifier (format: `dg_<epoch>` or `<collection-id>_dg_<epoch>` when `collection-id` is configured in App Settings)
 - **original_file_name**: Original filename for files; underscore-prefixed first child filename for compound parents
   - Example: `photo_001.jpg` for a regular file
   - Example: `_photo_001.jpg` for a compound parent (no physical file, just an index)
@@ -75,13 +76,14 @@ The function automatically populates these CollectionBuilder fields from your as
   - `audio` for .mp3, .wav, .flac, .aac, .ogg, .m4a, .wma
   - `pdf` for .pdf files
   - `record` for archives (.zip, .tar, .gz, .7z, .rar, .bz2)
+  - `record` for other data (.bin, .diff, .asc)
   - `compound_object` for compound parent objects (if grouping enabled)
 - **format**: File extension (if column exists in template) - e.g., `jpg`, `pdf`, `mp4`
 - **object_location**: Azure Blob Storage URL (if Azure is configured and column exists in template)
   - Full URL to file in Azure: `https://account.blob.core.windows.net/container/path/objectid.ext`
   - Files are uploaded to Azure with renamed filenames matching their objectid
   - Example: `https://collectionbuilder.blob.core.windows.net/objs/tdps/dg_1715614222.jpg`
-  - Empty if Azure is not configured in Function 0 settings
+  - Empty if Azure is not configured in App Settings
 - **OHM-data fields**: In `process_OHM_data` mode, the export has one standalone row per MP3. Each row has `type=transcript`, `object_location` set to the MP3's Azure URL, and `object_transcript` set to the transcript CSV filename. The transcript CSV is copied to `_data/transcripts` and uploaded to Azure under the parallel `transcripts` path.
 - **OHM-data identifiers**: OHM file IDs are taken from the existing filename stem. For example, `dg_1782850662.pdf` uploads as `re26/re26_dg_1782850662.pdf` when `collection-id` is `re26`; Function 2 does not replace it with a newly generated timestamp ID.
 - **Existing filename identifiers**: For other assets without a saved path mapping, a `dg_<number>` found in the filename is preserved instead of generating a new timestamp identifier. The configured `collection-id` prefix is still applied.
@@ -110,7 +112,7 @@ All other columns from your template are included as empty fields, ready for you
 
 ## Azure Blob Storage Upload
 
-When Azure is configured in Function 0 settings, Function 2 automatically:
+When Azure is configured in App Settings, Function 2 automatically:
 
 1. **Validates Azure configuration** before export
    - Checks `azure_blob_storage_path` contains required `/objs/` folder
@@ -129,7 +131,7 @@ When Azure is configured in Function 0 settings, Function 2 automatically:
    - Files are uploaded to the path specified in settings (e.g., `objs/tdps_archive`)
    - Content-Type headers are set automatically based on file extension
    - **Default behavior (safe re-run)**: Checks if file exists before uploading and skips existing files
-   - **Optional overwrite mode**: If `overwrite_existing_azure_files=true` in Function 0, existing blobs are replaced with new uploads
+   - **Optional overwrite mode**: If `overwrite_existing_azure_files=true` in App Settings, existing blobs are replaced with new uploads
 
 4. **Builds object_location URLs** for each file
    - Complete Azure Blob Storage URL
@@ -148,7 +150,7 @@ When Azure is configured in Function 0 settings, Function 2 automatically:
 ### Azure Configuration Requirements
 
 To enable Azure uploads:
-1. Configure in **Function 0: App Settings**:
+1. Configure in **App Settings**:
    - `azure_blob_storage_path`: Must contain `/objs/` folder (e.g., `objs/tdps_archive`)
    - `azure_connection_string`: Full connection string from Azure Portal (encrypted)
    - `overwrite_existing_azure_files`: Optional `true/false` switch for replacing existing blobs
@@ -166,7 +168,7 @@ Function 2 currently uploads only to `/objs/`. Future functions will generate an
 
 ### If Azure is Not Configured
 
-If Azure settings are not configured in Function 0:
+If Azure settings are not configured in App Settings:
 - CSV export still works normally
 - `object_location` column will be empty
 - Log message indicates "Azure uploads disabled"
@@ -339,7 +341,7 @@ Use the **🛑 Kill Switch** button when you need to stop a long-running Azure u
 - Object ID assignments are persistent (stored in settings)
 - Each file always gets the same object ID, even across multiple exports
 - Compound object IDs are also persistent (based on folder + filename pattern)
-- Enable **compound object grouping** in Function 0 settings to group related files
+- Enable **compound object grouping** in App Settings to group related files
 - Future functions will merge additional metadata into these CSV files
 
 ## Notes
@@ -367,7 +369,7 @@ Use the **🛑 Kill Switch** button when you need to stop a long-running Azure u
 
 ## Error Messages
 
-**"CSV structure template not configured"**: Configure `csv_structure_file` in Function 0
+**"CSV structure template not configured"**: Configure `csv_structure_file` in App Settings
 
 **"No digital asset files found"**: Select files or verify your inputs folder contains supported file types
 

@@ -136,7 +136,7 @@ Use disposable approved collection data, not preservation originals.
 | Check | Required Pass Criteria |
 | --- | --- |
 | SSH Key Access | `ssh -o BatchMode=yes HOST true` succeeds from the operator Mac without a prompt |
-| Settings | Function 0 saves valid `headless_host`/`headless_project_dir`, rejects half-set or option-like values, and blank values turn the buttons off |
+| Settings | App Settings saves valid `headless_host`/`headless_project_dir`, rejects half-set or option-like values, and blank values turn the buttons off |
 | Core Snapshot Push | **Push Core Snapshot** writes `core-snapshot.csv` with mode `0600` in the server project; the local core is unchanged |
 | Headless Prepare | `dart_linux --job prepare` succeeds; `--list-jobs` shows it; the package has `export.csv` and `manifest.json` |
 | Pull | **Pull From Headless DART...** lists only complete packages for this collection; pulling saves `DART_export_handoff_JOB-ID.csv`; Function 4 reopens with it as newest |

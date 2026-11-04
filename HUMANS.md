@@ -66,7 +66,7 @@ For larger work such as a new workflow function, UI redesign, or architectural c
 
 Useful anchors in this repo:
 
-- `FUNCTION_0_APP_SETTINGS.md` for how user-facing workflow docs are written
+- `APP_SETTINGS.md` for how user-facing settings help is written
 - `ARCHITECTURE.md` for design rationale that should not be broken casually
 - `BEST_PRACTICES.md` for filename and grouping rules
 - existing helper scripts for how targeted migration tools are structured
@@ -83,7 +83,7 @@ A metadata normalization change:
 
 A settings change:
 
-> Add a new Function 0 setting for [behavior]. Keep the existing encrypted-settings model, document it in the Function 0 help file, and explain where the value is validated before you edit.
+> Add a new App Settings value for [behavior]. Keep the existing encrypted-settings model, document it in the App Settings help file, and explain where the value is validated before you edit.
 
 A packaging change:
 

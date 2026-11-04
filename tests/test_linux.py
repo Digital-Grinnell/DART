@@ -877,6 +877,49 @@ class HandoffTests(unittest.TestCase):
 
 @unittest.skipUnless(os.name == "posix", "Managed headless Linux storage requires POSIX")
 class PureTests(unittest.TestCase):
+    def test_source_directory_grouping_includes_descendants_and_reuses_compound_ids(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            nested_file = root / "object-a" / "nested" / "part.bin"
+            direct_file = root / "object-a" / "cover.diff"
+            other_file = root / "object-b" / "record.asc"
+            root_file = root / "root-level.bin"
+            objects = [
+                {"objectid": "file-a", "filepath": str(nested_file), "filename": nested_file.name},
+                {"objectid": "file-b", "filepath": str(direct_file), "filename": direct_file.name},
+                {"objectid": "file-c", "filepath": str(other_file), "filename": other_file.name},
+                {"objectid": "file-root", "filepath": str(root_file), "filename": root_file.name},
+            ]
+            with patch("dart_processing.generate_unique_id", side_effect=["compound-a", "compound-b"]):
+                compounds, mappings, new_count, reused_count = (
+                    dart_processing.group_objects_by_source_directory(
+                        objects, {}, None, "collection", root, add_log_message=lambda _: None
+                    )
+                )
+
+            self.assertEqual(["object-a", "object-b"], [item["display_text_base"] for item in compounds])
+            self.assertEqual([2, 1], [item["child_count"] for item in compounds])
+            self.assertEqual("compound-a", objects[0]["parentid"])
+            self.assertEqual("compound-a", objects[1]["parentid"])
+            self.assertEqual("compound-b", objects[2]["parentid"])
+            self.assertEqual((None, "single"), (objects[3]["parentid"], objects[3]["type"]))
+            self.assertEqual((2, 0), (new_count, reused_count))
+
+            with patch("dart_processing.generate_unique_id") as generate_id:
+                _, reused_mappings, new_count, reused_count = (
+                    dart_processing.group_objects_by_source_directory(
+                        objects, mappings, None, "collection", root, add_log_message=lambda _: None
+                    )
+                )
+            generate_id.assert_not_called()
+            self.assertEqual((0, 2), (new_count, reused_count))
+            self.assertEqual(mappings, reused_mappings)
+
+    def test_additional_asset_extensions_use_generic_record_template(self):
+        for extension in (".bin", ".diff", ".asc"):
+            with self.subTest(extension=extension):
+                self.assertEqual("record", dart_processing.get_display_template(extension))
+
     def test_shared_comparison_preserves_newline_only_changes_and_ignores_filepath(self):
         old = [dict(objectid="one", original_file_name="one.jpg",
                     title="line\r\nbreak", filepath="/old/one.jpg")]

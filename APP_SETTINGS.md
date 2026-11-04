@@ -1,12 +1,12 @@
-# Function 0: App Settings
+# App Settings
 
 ## Purpose
-Open the application settings file in the selected working/outputs folder's `.DART-working-directory` subfolder and edit values using popup text input fields.
+Open the collapsed App Settings section below Folders to edit settings stored in the selected working/outputs folder's `.DART-working-directory` subfolder. Use the section's Help button to view this guide.
 
-## Required Order: Working Folder First, Function 0 Second
+## Required Order: Working Folder First, App Settings Second
 
 > **FIRST select the collection's Working/Outputs Folder in the main window.
-> ONLY THEN open Function 0, enter/verify its settings, and save.**
+> ONLY THEN open App Settings, enter/verify its settings, and save.**
 
 Settings are **per working folder**, not global. Changing the Working/Outputs
 folder loads the newly selected folder's settings; it does not transfer the
@@ -14,8 +14,8 @@ values you just entered. Repeat this order for every collection, and leave the
 folder unchanged while using that collection's workflow functions.
 
 Runbook shell variables and printed settings **do not configure the application**.
-If you configured Function 0 before selecting the intended folder, select it
-now, reopen Function 0, and enter/verify and save the correct settings there.
+If you configured App Settings before selecting the intended folder, select it
+now, reopen App Settings, and enter/verify and save the correct settings there.
 Previously saved settings remain in the folder selected when they were saved.
 
 ## Headless DART Handoff Settings
@@ -49,61 +49,59 @@ with restricted permissions. The managed browser credential boundary is
 described above and does not change the desktop encryption format.
 
 ## Current Settings
-- **⚠️ Before creating a NEW collection**: The Function 0 settings dialog displays an on-screen reminder to consult `docs/DG-documents/Creating a New Collection (Overlay Model).md` in the `DG-with-CB-and-Pagefind` repository before assigning a new `collection-id`, since that document governs how the identifier is used downstream (overlay slug, `_config.yml`, CSV naming).
-- **collection-id**: **Required** CollectionBuilder collection identifier. This value becomes part of every new object's permanent unique ID (`<collection-id>_dg_<epoch>`) and is also used to name Azure sub-directories and CollectionBuilder slugs; blank values are rejected on save. It may be any length and can contain letters, numbers, hyphens, and underscores; the trailing underscore is added automatically. For the unified Digital.Grinnell site, use the same value as the collection slug and Azure asset-path directory, such as `student-life` with `objs/student-life`, `smalls/student-life`, and `thumbs/student-life`. **[REQUIRED]**
-- **group_compound_objects**: When `true`, groups similar filenames as compound objects in asset analysis. **[BOOLEAN]**
-- **create_multiple_objects**: When `true` (default), each numeric sequence of 2+ numbered files is nested under its own `multiple`-type sub-object inside the folder's compound. When `false`, numbered files attach directly to the compound as flat children (their sequence numbers are still recorded for ordering). Set to `false` for Alma/GEMS-style migrations, where each compound is a flat object and `multiple` has no Alma counterpart; see `GEMS_FILENAME_RULES.md`. Has no effect when `group_compound_objects` is `false`. **[BOOLEAN]**
-- **process_OHM_data**: When `true`, enables OHM-data processing in Functions 1 and 2. Saving this as `true` automatically sets `group_compound_objects` to `false` because OHM-data processing uses a different object-handling model. **[BOOLEAN]**
-- **use_working_folder_for_file_selection**: When `true`, the File Selector opens in the working/outputs folder. When `false`, it opens in the inputs folder. **[BOOLEAN]**
-- **automatic_four**: When `true`, automatically executes Functions 2, 3, and 4 sequentially after Function 1 completes successfully. This creates a seamless workflow from asset analysis through CSV export, derivative generation, and metadata merge. Automatically resets to `false` at the start of each new session. **[BOOLEAN]**
-- **overwrite_existing_azure_files**: When `true`, Functions 2 and 3 replace existing Azure blobs with newly generated uploads. When `false` (default), DART skips existing blobs when possible. **[BOOLEAN]**
-- **core_metadata_csv**: Path to your core metadata CSV file. This file serves two purposes: (1) defines the column structure/template for metadata exports, and (2) acts as the master metadata file that future functions will update and merge into. **[VALIDATED]** As of v6.0, if this path's filename is literally `collection-template.csv`, Functions 4 and 6 refuse to merge into it — point this setting at your project's own copy instead. This mirrors the `DG-with-CB-and-Pagefind` site repository's overlay model, where `collections/_collection-template/_data/collection-template.csv` is likewise a reserved template that gets renamed per-collection and never deployed as-is; see that repository's `docs/DG-documents/Creating a New Collection (Overlay Model).md`.
-- **gems_metadata_csv** (optional, v6.6+): Path to the GEMS run's `collection_metadata.csv` for the batch you're processing. When set, Function 4 offers to **backfill** the DART export before comparing. It fills empty fields with the GEMS metadata (title, date, description, subjects, and so on), so new records reach the core CSV with full metadata. Use **Browse...** to pick it, or **Clear** to turn the backfill off. **[VALIDATED]**: the file must exist and have an `original_file_name` column. GEMS's CSV is cumulative, so after each new GEMS batch, point this at the newest run's file. See "GEMS Backfill" in `FUNCTION_4_COMPARE_MERGE_CSV.md`.
-- **azure_blob_storage_path**: Azure Blob Storage path for cloud storage operations. **[VALIDATED]**
+- **Compounds Grouped by Subdirectory** (`group_by_source_directory`): Checked by default. During an Inputs Folder scan with no files selected, each immediate subfolder becomes one compound object containing all supported assets anywhere beneath it; filenames are ignored for membership, and files directly in the Inputs Folder remain standalone. This setting forces **Group Compound Objects** on. When unchecked, the existing filename-based grouping is used instead. Selecting specific files uses filename-based grouping. OHM-data processing remains standalone. **[CHECKBOX]**
+- **⚠️ Before creating a NEW collection**: The App Settings section displays an on-screen reminder to consult `docs/DG-documents/Creating a New Collection (Overlay Model).md` in the `DG-with-CB-and-Pagefind` repository before assigning a new `collection-id`, since that document governs how the identifier is used downstream (overlay slug, `_config.yml`, CSV naming).
+- **Collection ID (Required)** (`collection-id`): Required CollectionBuilder collection identifier. This value becomes part of every new object's permanent unique ID (`<collection-id>_dg_<epoch>`) and is also used to name Azure sub-directories and CollectionBuilder slugs; blank values are rejected on save. It may be any length and can contain letters, numbers, hyphens, and underscores; the trailing underscore is added automatically. For the unified Digital.Grinnell site, use the same value as the collection slug and Azure asset-path directory, such as `student-life` with `objs/student-life`, `smalls/student-life`, and `thumbs/student-life`. **[REQUIRED]**
+- **Group Compound Objects** (`group_compound_objects`): When checked, groups assets as compound objects during analysis. It is forced on while **Compounds Grouped by Subdirectory** is checked; otherwise, it enables filename-based grouping. **[CHECKBOX]**
+- **Nest Numbered Sequences Under 'Multiple' Objects** (`create_multiple_objects`): Checked by default; nests each numeric sequence of 2+ numbered files under its own `multiple`-type sub-object inside the folder's compound. When unchecked, numbered files attach directly to the compound as flat children (their sequence numbers are still recorded for ordering). Uncheck for Alma/GEMS-style migrations, where each compound is a flat object and `multiple` has no Alma counterpart; see `GEMS_FILENAME_RULES.md`. Has no effect when **Group Compound Objects** is unchecked. **[CHECKBOX]**
+- **Process OHM-Data Objects** (`process_OHM_data`): When checked, enables OHM-data processing in Functions 1 and 2. OHM-data files remain standalone regardless of the grouping settings. **[CHECKBOX]**
+- **Use Working Folder for File Selection** (`use_working_folder_for_file_selection`): When checked, the File Selector opens in the working/outputs folder. When unchecked, it opens in the inputs folder. **[CHECKBOX]**
+- **Overwrite Existing Azure Files** (`overwrite_existing_azure_files`): When checked, Functions 2 and 3 replace existing Azure blobs with newly generated uploads. When unchecked (default), DART skips existing blobs when possible. **[CHECKBOX]**
+- **Core Metadata CSV** (`core_metadata_csv`): Path to your core metadata CSV file. This file serves two purposes: (1) defines the column structure/template for metadata exports, and (2) acts as the master metadata file that future functions will update and merge into. **[VALIDATED]** As of v6.0, if this path's filename is literally `collection-template.csv`, Functions 4 and 6 refuse to merge into it — point this setting at your project's own copy instead. This mirrors the `DG-with-CB-and-Pagefind` site repository's overlay model, where `collections/_collection-template/_data/collection-template.csv` is likewise a reserved template that gets renamed per-collection and never deployed as-is; see that repository's `docs/DG-documents/Creating a New Collection (Overlay Model).md`.
+- **GEMS Metadata CSV** (`gems_metadata_csv`, optional, v6.6+): Path to the GEMS run's `collection_metadata.csv` for the batch you're processing. When set, Function 4 offers to **backfill** the DART export before comparing. It fills empty fields with the GEMS metadata (title, date, description, subjects, and so on), so new records reach the core CSV with full metadata. Use **Browse...** to pick it, or **Clear** to turn the backfill off. **[VALIDATED]**: the file must exist and have an `original_file_name` column. GEMS's CSV is cumulative, so after each new GEMS batch, point this at the newest run's file. See "GEMS Backfill" in `FUNCTION_4_COMPARE_MERGE_CSV.md`.
+- **Azure Blob Storage Path** (`azure_blob_storage_path`): Azure Blob Storage path for cloud storage operations. **[VALIDATED]**
   - **REQUIRED**: Path must contain `/objs/` folder (this holds original source files)
   - Format: `container/objs/subfolder` or `objs/collection_name`
   - Example: `objs/TDPS_archive` or `mycontainer/objs/photos`
   - **Parallel folders**: Your Azure storage should also contain `/smalls/` and `/thumbs/` folders as siblings to `/objs/` for derivative files
   - Validation ensures `/objs/` is present; `/smalls/` and `/thumbs/` are expected but not verified programmatically
-- **headless_host** (optional): SSH target (`host` or `user@host`) running headless DART on Linux, for example `sysadmin@dg-landing`. Requires key-based SSH. Set together with `headless_project_dir`, or leave both blank. See "Headless DART Handoff Settings" above. **[VALIDATED]**
-- **headless_project_dir** (optional): Absolute Linux path of this collection's managed project on `headless_host`. Function 4 pulls handoff packages from its `handoff/` folder and pushes `core-snapshot.csv` into it. **[VALIDATED]**
-- **azure_connection_string**: Azure Storage account connection string for authentication. Required for uploading files to Azure Blob Storage. **[ENCRYPTED]**
+- **Headless Host** (`headless_host`, optional): SSH target (`host` or `user@host`) running headless DART on Linux, for example `sysadmin@dg-landing`. Requires key-based SSH. Set together with **Headless Project Directory**, or leave both blank. See "Headless DART Handoff Settings" above. **[VALIDATED]**
+- **Headless Project Directory** (`headless_project_dir`, optional): Absolute Linux path of this collection's managed project on `headless_host`. Function 4 pulls handoff packages from its `handoff/` folder and pushes `core-snapshot.csv` into it. **[VALIDATED]**
+- **Azure Connection String** (`azure_connection_string`): Azure Storage account connection string for authentication. Required for uploading files to Azure Blob Storage. **[ENCRYPTED]**
 - **api_key**: Your API key for external services. **[ENCRYPTED]**
 - **api_secret**: Your API secret for external services. **[ENCRYPTED]**
 - **password**: General password field for application use. **[ENCRYPTED]**
 
 **Note**: The settings file also contains an internal `file_to_id_map` field that stores permanent file-to-identifier mappings using **full file paths** as keys. This is managed automatically by Function 1 and ensures that once a file receives a `dg_<epoch>` identifier, it never changes. Using full paths prevents collisions between files with the same name in different directories.
 
-**Compound Object Mapping**: When `group_compound_objects` is enabled, the `file_to_id_map` also stores compound object IDs using the format `{folder_path}::COMPOUND::{text_base}`. This ensures compound objects in a given folder always receive the same identifier across runs. Example: `/Users/name/assets::COMPOUND::photo` maps to a specific compound ID.
+**Compound Object Mapping**: The `file_to_id_map` stores compound IDs under stable directory-based keys ending in `::COMPOUND`. In source-directory mode, the key identifies the immediate subfolder of the selected Inputs Folder; in filename mode, it identifies the folder containing the grouped files. Existing IDs are reused when the corresponding key is found.
 
 ## Requirements
 - A **Working/Outputs Folder** must be selected first.
 
 ## Usage
 1. Set **Working/Outputs Folder**.
-2. Select **0: App Settings** from the function list.
-3. Edit values in the text input fields.
-4. Click **Save**.
+2. Expand the **App Settings** section below Folders.
+3. Edit settings; boolean options use checkboxes.
+4. Click **Save** in the expanded section.
 
 ## Settings File
 - File name: `dart_settings.json`
 - Location: Inside `.DART-working-directory` under the selected working/outputs folder
 
-## Accepted Boolean Values
-For boolean settings (`group_compound_objects`, `create_multiple_objects`, `process_OHM_data`, `use_working_folder_for_file_selection`, `automatic_four`, `overwrite_existing_azure_files`), you can enter:
-- true/false
-- yes/no
-- 1/0
-- on/off
+## Checkbox Settings
+The checkbox labels above match the labels shown in the App Settings section. Checked and unchecked values are saved as `true` and `false` in `dart_settings.json`.
 
 ## Notes
 - Settings are specific to each working/outputs folder
 - The settings file is created automatically with defaults in `.DART-working-directory` if it doesn't exist
 - If a legacy root-level `dart_settings.json` is found, DART automatically migrates it into `.DART-working-directory`
 - Sensitive fields (marked **[ENCRYPTED]**) are stored encrypted in the JSON file
-- `group_compound_objects` controls whether Function 1 groups similar filenames as compound objects
+- Legacy `automatic_four` values are ignored and removed the next time settings are saved; run Functions 1–4 individually from the Functions dropdown
+- `group_by_source_directory` (**Compounds Grouped by Subdirectory**) groups each immediate Inputs Folder subdirectory as a compound during recursive scans and forces `group_compound_objects` on
+- `group_compound_objects` controls filename-based grouping when source-directory grouping is disabled; selected-file processing also uses filename-based grouping
 - `create_multiple_objects` controls whether numbered sequences are nested under `multiple` sub-objects (`true`, default) or attach directly to the compound (`false`, flat Alma/GEMS-style compounds). Changing it for an already-analyzed folder re-parents numbered children on the next run; any previously created `multiple` IDs simply become unused
-- `process_OHM_data` enables OHM-data processing in Functions 1 and 2. OHM file identifiers come from existing filename stems, with `collection-id` prepended. When it is saved as `true`, `group_compound_objects` is automatically saved as `false`
+- `process_OHM_data` enables standalone OHM-data processing in Functions 1 and 2. OHM file identifiers come from existing filename stems, with `collection-id` prepended. Compound grouping is bypassed during OHM processing
 - In OHM mode, select the project folder containing `OHM-data` (or select `OHM-data` itself). The package layout is expected to contain one `.mp3` and one transcript `.csv` in each recording directory.
 - `use_working_folder_for_file_selection` controls where the File Selector dialog opens (working/outputs folder when true, inputs folder when false)
 - `collection-id` is required as of v6.0 so DART can be used across multiple collections without ID collisions. It becomes part of every new object's unique ID and is also used for Azure sub-directory names and CollectionBuilder slugs. For the unified Digital.Grinnell CollectionBuilder site, keep it aligned with the collection slug and Azure asset-path directory
@@ -238,7 +236,7 @@ DART will validate that `/objs/` is in the path and expect `/smalls/` and `/thum
 - **Cause**: You entered a full URL in `azure_blob_storage_path` instead of just the path
 - **Wrong**: `https://account.blob.core.windows.net/objs/collection` or `account.blob.core.windows.net/objs/collection`
 - **Correct**: `objs/collection`
-- **Fix**: Edit Function 0 settings and remove the account name/URL portion
+- **Fix**: Edit App Settings and remove the account name/URL portion
 
 ❌ **"Path must contain /objs/ folder"**
 - **Cause**: The path doesn't include the required `/objs/` folder

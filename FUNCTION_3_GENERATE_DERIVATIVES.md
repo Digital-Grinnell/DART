@@ -57,7 +57,7 @@ Use this function after Function 2 (Export Assets to CSV and Azure) when you wan
 
 When `process_OHM_data` is enabled, Function 3 looks for a sibling image (`.jpg`/`.jpeg`/`.png`, not a PDF) beside each interview's MP3. If exactly one such image is found, Function 3 generates small and thumbnail derivatives from that image, uploads them to Azure, and populates `image_small`/`image_thumb` on the MP3's own CSV row (using the row's existing `objectid`). If no sibling image (or more than one) is found, that row is skipped and no derivatives are generated. The MP3, transcript, and other non-image sibling files are never used as derivative sources.
 - **Working/Outputs folder** must be set
-- **Azure Blob Storage** must be configured in Function 0 settings
+- **Azure Blob Storage** must be configured in App Settings
   - Valid `azure_blob_storage_path` (contains `/objs/` folder)
   - Valid `azure_connection_string`
 - **CSV export from Function 2** must exist in `.DART-working-directory` subfolder
@@ -67,7 +67,7 @@ When `process_OHM_data` is enabled, Function 3 looks for a sibling image (`.jpg`
 
 1. Run **Function 2: Export Assets to CSV and Azure** to create your metadata CSV
 
-2. Configure **Azure Blob Storage** in Function 0 if not already done
+2. Configure **Azure Blob Storage** in App Settings if not already done
 
 3. Select **Function 3: Generate Derivatives for CSV and Azure**
 
@@ -242,7 +242,7 @@ Function 3 intelligently checks Azure before generating new derivatives:
    - Saves processing time on large collections
 
 3. **Optional overwrite mode**
-   - If `overwrite_existing_azure_files=true` in Function 0, existing derivatives are regenerated and replaced in Azure
+   - If `overwrite_existing_azure_files=true` in App Settings, existing derivatives are regenerated and replaced in Azure
    - Useful when source files have changed or you need to refresh derivative quality
 
 4. **Builds URLs from existing files**
@@ -361,7 +361,7 @@ The kill switch is useful when:
 
 **"Azure Blob Storage not configured."**
 - Cause: Missing azure_blob_storage_path or azure_connection_string in settings
-- Fix: Configure Azure settings in Function 0
+- Fix: Configure Azure settings in App Settings
 
 **"Source file not found: filename.jpg"**
 - Cause: Original file has been moved or deleted

@@ -17,17 +17,21 @@ This guide helps you get the best results from DART's intelligent compound objec
 
 ## Compound Grouping Setting
 
-**Compound grouping must be enabled in Function 0 (App Settings)** to group related files together. Look for the checkbox labeled "Group compound objects" in the settings.
+By default, **Compounds Grouped by Subdirectory** is enabled in App Settings. During an Inputs Folder scan, every immediate subfolder becomes one compound, including supported files in nested directories. To use filename-based grouping instead, turn **Compounds Grouped by Subdirectory** off and keep **Group Compound Objects** enabled.
 
-**When ENABLED:** DART analyzes filename patterns and groups related files (e.g., "Wit 001.jpg", "Wit 002.jpg", "Wit Poster.jpg") into a single compound object with one parent ID and multiple children. This is ideal for collections where multiple files represent different views, pages, or components of the same intellectual object.
+**When Compounds Grouped by Subdirectory is enabled:** DART ignores filenames for membership; the immediate source subfolder identifies one compound object. Files directly in the selected Inputs Folder remain standalone.
 
-**When DISABLED:** Every file becomes a standalone object with its own unique identifier. Use this mode when each file represents a completely independent object with no relationship to other files, or when you want full control over grouping decisions.
+**When only Group Compound Objects is enabled:** DART analyzes filename patterns and groups related files (e.g., "Wit 001.jpg", "Wit 002.jpg", "Wit Poster.jpg") into a single compound object with one parent ID and multiple children.
+
+**When both settings are disabled:** Every file becomes a standalone object with its own unique identifier.
 
 ---
 
 ## How Compound Grouping Works
 
-DART's compound grouping, when **enabled**, uses a **three-pass intelligent algorithm**:
+When **Compounds Grouped by Subdirectory** is off and **Group Compound Objects** is
+enabled, DART's filename-based grouping uses a **three-pass intelligent
+algorithm**:
 
 ### Pass 1: Learn Patterns from Numbered Files
 The app first looks for files with trailing sequence numbers and extracts their base prefix:

@@ -13,13 +13,14 @@ compound membership.
 ## Create a Compound From Related Files
 
 1. Select the collection's **Working/Outputs Folder** first. DART loads
-   Function 0 settings from that project folder.
-2. Open **Function 0: App Settings** and set:
-   - `group_compound_objects` to `true`
+   App Settings values from that project folder.
+2. Open **App Settings** and set:
+   - **Compounds Grouped by Subdirectory** to `true` to make each immediate Inputs Folder subdirectory one compound, including all supported assets in nested directories. This is the default.
+   - Or set **Compounds Grouped by Subdirectory** to `false` and **Group Compound Objects** to `true` to use filename-based grouping.
    - `process_OHM_data` to `false`
    - `create_multiple_objects` as needed; see
      [Numbered Sequences](#numbered-sequences)
-3. Save Function 0 settings.
+3. Save App Settings.
 4. Put the related, supported asset files in the **same directory** and use
    filenames whose shared pattern identifies the group. For example:
 
@@ -31,11 +32,18 @@ compound membership.
 
    DART also groups eligible unnumbered files with a common filename base,
    such as `artifact_obverse.jpg` and `artifact_reverse.jpg`.
+   This filename convention applies only when **Compounds Grouped by
+   Subdirectory**
+   is off. In the default source-directory mode, filenames are ignored and
+   the immediate subfolder itself defines the compound.
 5. In the main window, either:
-   - Select just those files with **Files Selection → Browse...**, or
+   - Select just those files with **Files Selection → Browse...**; this uses
+     filename-based grouping, or
    - Select the directory with **Inputs Folder → Browse...** and leave Files
      Selection empty. Function 1 scans supported assets in that directory and
-     its subdirectories.
+     its subdirectories. In source-directory mode, each immediate subfolder is
+     one compound, including its nested descendants; files directly in the
+     selected root remain standalone.
 6. Run **Function 1** and inspect the results. A successful group appears
    beneath a `COMPOUND` entry. Numbered sequences may also show a nested
    `MULTIPLE` entry.
@@ -47,27 +55,36 @@ compound membership.
 
 ## How DART Decides What Belongs Together
 
-- Grouping is limited to files in the **same actual directory**. Files selected
-  from different directories do not get grouped together, even if their names
-  match.
-- A group needs at least **two supported files** with a matching filename
-  pattern. Prefix matching is case-insensitive, and the usable common prefix
-  must be at least three characters.
-- A numbered filename pattern such as `photo_01.jpg` and `photo_02.jpg` can
-  form a group. A related unnumbered file such as `photo_cover.jpg` can join
-  when its name matches that numbered prefix.
-- Two or more unnumbered files can also group when DART identifies a shared
-  base, such as `artifact_obverse.jpg` and `artifact_reverse.jpg`.
-- DART creates **one top-level compound per directory** that has one or more
-  detected groups. Separate detected groups in the same directory share that
-  compound; DART does not create one top-level compound per filename prefix.
-- A lone file, a prefix shorter than three characters, or files with no
-  recognized shared pattern remain standalone.
+- With **Compounds Grouped by Subdirectory** enabled (the default), each immediate
+  child directory under the selected Inputs Folder defines one compound. Every
+  supported file beneath it, including files in nested directories, is a child
+  of that compound regardless of filename. Files directly in the selected
+  root remain standalone. Function 2 uses the same rule when exporting an
+  Inputs Folder scan. This mode does not apply when specific files are
+  selected.
+- When subdirectory grouping is disabled, the following filename-based rules
+  apply:
+  - Grouping is limited to files in the **same actual directory**. Files
+    selected from different directories do not get grouped together, even if
+    their names match.
+  - A group needs at least **two supported files** with a matching filename
+    pattern. Prefix matching is case-insensitive, and the usable common prefix
+    must be at least three characters.
+  - A numbered filename pattern such as `photo_01.jpg` and `photo_02.jpg` can
+    form a group. A related unnumbered file such as `photo_cover.jpg` can join
+    when its name matches that numbered prefix.
+  - Two or more unnumbered files can also group when DART identifies a shared
+    base, such as `artifact_obverse.jpg` and `artifact_reverse.jpg`.
+  - DART creates **one top-level compound per directory** that has one or more
+    detected groups. Separate detected groups in the same directory share that
+    compound; DART does not create one top-level compound per filename prefix.
+  - A lone file, a prefix shorter than three characters, or files with no
+    recognized shared pattern remain standalone.
 
-Grouping is heuristic, so always review Function 1's result before accepting
-it. In particular, if unrelated files accidentally share a filename prefix,
-they may be grouped; if related names do not match the patterns, they may
-remain standalone.
+Filename-based grouping is heuristic, so always review Function 1's result
+before accepting it. In particular, if unrelated files accidentally share a
+filename prefix, they may be grouped; if related names do not match the
+patterns, they may remain standalone.
 
 ## Numbered Sequences
 

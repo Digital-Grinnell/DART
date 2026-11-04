@@ -9,6 +9,7 @@ from functools import partial
 import dart_handoff
 from dart_processing import (
     analyze_compound_objects as shared_analyze_compound_objects,
+    group_objects_by_source_directory as shared_group_objects_by_source_directory,
     build_export_rows, compare_metadata_rows, get_derivative_azure_paths, get_display_template, get_stable_path,
     select_compound_derivative_child,
 )
@@ -150,11 +151,11 @@ SENSITIVE_FIELDS = ["azure_connection_string"]
 # App settings filename and defaults
 APP_SETTINGS_FILENAME = "dart_settings.json"
 DEFAULT_APP_SETTINGS = {
-    "group_compound_objects": False,
+    "group_by_source_directory": True,
+    "group_compound_objects": True,
     "create_multiple_objects": True,
     "process_OHM_data": False,
     "use_working_folder_for_file_selection": False,
-    "automatic_four": False,
     "overwrite_existing_azure_files": False,
     "collection-id": "",
     "core_metadata_csv": "",
@@ -301,10 +302,11 @@ class PersistentStorage:
                 except (ValueError, TypeError):
                     continue
         
-        # Convert "Function 1" -> "function_1_list_files" format
+        # Convert displayed function names to their internal keys.
         if most_recent:
             func_map = {
                 "Function 0": "function_0_app_settings",
+                "App Settings": "function_0_app_settings",
                 "Function 1": "function_1_list_files",
                 "Function 2": "function_2_export_csv",
                 "Function 3": "function_3_generate_derivatives",
@@ -729,6 +731,9 @@ def load_app_settings(working_dir: str) -> Tuple[dict, str]:
         if not settings.get("collection-id") and loaded.get("dg_prefix"):
             settings["collection-id"] = loaded["dg_prefix"]
         settings.pop("dg_prefix", None)
+        settings.pop("automatic_four", None)
+        if settings.get("group_by_source_directory"):
+            settings["group_compound_objects"] = True
         return settings, ""
     except Exception as e:
         logger.error(f"Could not load app settings: {str(e)}")
@@ -743,22 +748,13 @@ def save_app_settings(working_dir: str, settings: dict) -> Tuple[bool, str]:
         settings_path = ensure_app_settings_file(working_dir)
         # Encrypt sensitive fields before saving
         settings_to_save = encrypt_sensitive_settings(settings)
+        settings_to_save.pop("automatic_four", None)
         with open(settings_path, "w", encoding="utf-8") as f:
             json.dump(settings_to_save, f, indent=2, ensure_ascii=False)
         return True, str(settings_path)
     except Exception as e:
         logger.error(f"Could not save app settings: {str(e)}")
         return False, f"Error saving app settings: {str(e)}"
-
-
-def parse_bool_text(value: str) -> Optional[bool]:
-    """Parse user-entered boolean text. Returns None if invalid."""
-    lowered = (value or "").strip().lower()
-    if lowered in ["true", "1", "yes", "y", "on"]:
-        return True
-    if lowered in ["false", "0", "no", "n", "off"]:
-        return False
-    return None
 
 
 def validate_collection_id(value: str) -> Tuple[bool, str, str]:
@@ -1983,10 +1979,16 @@ def main(page: ft.Page):
     def on_kill_switch_click(e):
         """Handle Kill Switch button click - emergency stop for batch operations."""
         nonlocal kill_switch
+        if help_mode_enabled.current and help_mode_enabled.current.value:
+            return
         logger.warning("KILL SWITCH ACTIVATED")
         kill_switch = True
         add_log_message("⚠️ KILL SWITCH ACTIVATED - Stopping batch operation")
         update_status("⚠️ Kill switch activated - stopping after current file", True)
+
+    def on_help_mode_change(e):
+        kill_switch_button.disabled = bool(e.control.value)
+        page.update()
 
     def validate_directories():
         """Validate that configured directories exist and show warnings if not."""
@@ -2025,6 +2027,8 @@ def main(page: ft.Page):
             logger.warning(f"Saved input directory does not exist (may be unmounted): {input_dir}")
 
     dirs_expanded = True
+    app_settings_expanded = False
+    app_settings_working_dir = ""
 
     # ------------------------------------------------------------------ directory selection
 
@@ -2070,9 +2074,12 @@ def main(page: ft.Page):
                 update_status(error, is_error=True)
                 return
         update_input_folder_guidance(input_dir_field, settings)
-        file_field.disabled = input_dir_field.disabled
+        file_selection_disabled = (
+            input_dir_field.disabled or settings.get("group_by_source_directory", False)
+        )
+        file_field.disabled = file_selection_disabled
         input_folder_row.disabled = input_dir_field.disabled
-        file_selection_row.disabled = input_dir_field.disabled
+        file_selection_row.disabled = file_selection_disabled
 
     def on_file_result(e: ft.FilePickerResultEvent):
         if e.files and len(e.files) > 0:
@@ -2155,8 +2162,9 @@ def main(page: ft.Page):
     # ------------------------------------------------------------------ function implementations
 
     def on_function_0_app_settings(e):
-        """Function 0: Open and edit app settings in working directory."""
-        storage.record_function_usage("Function 0")
+        """Show and edit app settings in the App Settings section."""
+        nonlocal app_settings_expanded, app_settings_working_dir
+        storage.record_function_usage("App Settings")
 
         working_dir = output_dir_field.value
         if not working_dir:
@@ -2168,55 +2176,64 @@ def main(page: ft.Page):
             update_status(load_error, is_error=True)
             return
 
+        app_settings_working_dir = working_dir
         settings_path = get_app_settings_path(working_dir)
         
         # Create form fields
+        group_by_source_directory_field = ft.Checkbox(
+            label="Compounds Grouped by Subdirectory",
+            value=settings.get("group_by_source_directory", True),
+            tooltip="When scanning the Inputs Folder, make each immediate subfolder one compound object containing all supported files beneath it.",
+        )
         collection_id_field = ft.TextField(
-            label="collection-id (required)",
+            label="Collection ID (Required)",
             value=str(settings.get("collection-id", "")),
             hint_text="Required: becomes part of every object's unique ID (<collection-id>_dg_<epoch>) and is used for Azure sub-directory names and CollectionBuilder slugs",
             width=320,
         )
-        group_compound_field = ft.TextField(
-            label="group_compound_objects",
-            value=str(settings.get("group_compound_objects", False)).lower(),
-            hint_text="true or false - group similar assets as compound objects",
-            width=320,
+        group_compound_field = ft.Checkbox(
+            label="Group Compound Objects",
+            value=settings.get("group_compound_objects", False) or group_by_source_directory_field.value,
+            disabled=group_by_source_directory_field.value,
+            tooltip="Group similar assets as compound objects",
         )
-        create_multiple_objects_field = ft.TextField(
-            label="create_multiple_objects",
-            value=str(settings.get("create_multiple_objects", True)).lower(),
-            hint_text="true or false - nest numbered sequences under 'multiple' objects (false = flat Alma/GEMS-style compounds)",
-            width=320,
+
+        def on_group_by_source_directory_change(e):
+            if group_by_source_directory_field.value:
+                group_compound_field.value = True
+            group_compound_field.disabled = group_by_source_directory_field.value
+            file_selection_disabled = (
+                input_dir_field.disabled or group_by_source_directory_field.value
+            )
+            file_field.disabled = file_selection_disabled
+            file_selection_row.disabled = file_selection_disabled
+            page.update()
+
+        group_by_source_directory_field.on_change = on_group_by_source_directory_change
+        create_multiple_objects_field = ft.Checkbox(
+            label="Nest Numbered Sequences Under 'Multiple' Objects",
+            value=settings.get("create_multiple_objects", True),
+            tooltip="Turn off for flat Alma/GEMS-style compounds",
         )
-        process_ohm_data_field = ft.TextField(
-            label="process_OHM_data",
-            value=str(settings.get("process_OHM_data", False)).lower(),
-            hint_text="true or false - process OHM-data objects",
-            width=320,
+        process_ohm_data_field = ft.Checkbox(
+            label="Process OHM-Data Objects",
+            value=settings.get("process_OHM_data", False),
+            tooltip="Process OHM-data objects instead of ordinary assets",
         )
-        use_working_folder_field = ft.TextField(
-            label="use_working_folder_for_file_selection",
-            value=str(settings.get("use_working_folder_for_file_selection", False)).lower(),
-            hint_text="true or false - use working folder as initial directory for file picker",
-            width=320,
+        use_working_folder_field = ft.Checkbox(
+            label="Use Working Folder for File Selection",
+            value=settings.get("use_working_folder_for_file_selection", False),
+            tooltip="Use the working folder as the initial directory for the file picker",
         )
-        automatic_four_field = ft.TextField(
-            label="automatic_four",
-            value=str(settings.get("automatic_four", False)).lower(),
-            hint_text="true or false - automatically run Functions 2, 3, 4 after Function 1 completes",
-            width=320,
-        )
-        overwrite_existing_azure_files_field = ft.TextField(
-            label="overwrite_existing_azure_files",
-            value=str(settings.get("overwrite_existing_azure_files", False)).lower(),
-            hint_text="true or false - replace existing Azure blobs during Function 2/3 uploads",
-            width=320,
+        overwrite_existing_azure_files_field = ft.Checkbox(
+            label="Overwrite Existing Azure Files",
+            value=settings.get("overwrite_existing_azure_files", False),
+            tooltip="Replace existing Azure blobs during Function 2/3 uploads",
         )
         
         # Core Metadata CSV field with picker
         core_csv_field = ft.TextField(
-            label="core_metadata_csv",
+            label="Core Metadata CSV",
             value=str(settings.get("core_metadata_csv", "")),
             hint_text="Path to core/controlling metadata CSV file (defines structure and holds master metadata)",
             width=500,
@@ -2270,7 +2287,7 @@ def main(page: ft.Page):
         
         # GEMS metadata CSV (optional) with picker; Function 4 backfills new DART exports from it
         gems_csv_field = ft.TextField(
-            label="gems_metadata_csv",
+            label="GEMS Metadata CSV",
             value=str(settings.get("gems_metadata_csv", "")),
             hint_text="Optional: GEMS run's collection_metadata.csv; Function 4 fills empty export fields from it",
             width=500,
@@ -2318,7 +2335,7 @@ def main(page: ft.Page):
         gems_csv_clear_button = ft.TextButton("Clear", on_click=clear_gems_csv_click)
         
         azure_storage_field = ft.TextField(
-            label="azure_blob_storage_path",
+            label="Azure Blob Storage Path",
             value=str(settings.get("azure_blob_storage_path", "")),
             hint_text="Azure Blob Storage path (must contain /objs/ folder)",
             width=500,
@@ -2354,7 +2371,7 @@ def main(page: ft.Page):
         azure_storage_field.on_change = on_azure_path_change
         
         azure_connection_field = ft.TextField(
-            label="azure_connection_string",
+            label="Azure Connection String",
             value=str(settings.get("azure_connection_string", "")),
             hint_text="Azure Storage connection string (encrypted)",
             password=True,
@@ -2370,78 +2387,44 @@ def main(page: ft.Page):
         )
 
         headless_host_field = ft.TextField(
-            label="headless_host",
+            label="Headless Host",
             value=str(settings.get("headless_host", "")),
             hint_text="Optional SSH target running headless DART, e.g. sysadmin@dg-landing (key-based login required)",
             width=500,
         )
         headless_project_dir_field = ft.TextField(
-            label="headless_project_dir",
+            label="Headless Project Directory",
             value=str(settings.get("headless_project_dir", "")),
             hint_text="Optional absolute server project path, e.g. /data/dart/data/projects/<collection-id>",
             width=500,
         )
 
         def close_dialog(evt):
-            settings_dialog.open = False
+            nonlocal app_settings_expanded, app_settings_working_dir
+            app_settings_expanded = False
+            app_settings_inner_column.visible = False
+            app_settings_inner_column.controls = []
+            app_settings_working_dir = ""
+            app_settings_toggle_button.icon = ft.Icons.EXPAND_MORE
             page.update()
 
         def save_settings_click(evt):
+            nonlocal app_settings_expanded
             collection_id_valid, parsed_collection_id, collection_id_error = validate_collection_id(collection_id_field.value)
             if not collection_id_valid:
                 update_status(f"Error: {collection_id_error}", is_error=True)
                 return
 
-            parsed_group_compound = parse_bool_text(group_compound_field.value)
-            if parsed_group_compound is None:
-                update_status(
-                    "Error: group_compound_objects must be true/false (or yes/no, 1/0)",
-                    is_error=True,
-                )
-                return
-
-            parsed_process_ohm_data = parse_bool_text(process_ohm_data_field.value)
-            if parsed_process_ohm_data is None:
-                update_status(
-                    "Error: process_OHM_data must be true/false (or yes/no, 1/0)",
-                    is_error=True,
-                )
-                return
-
-            if parsed_process_ohm_data:
+            parsed_group_compound = group_compound_field.value
+            parsed_process_ohm_data = process_ohm_data_field.value
+            parsed_group_by_source_directory = group_by_source_directory_field.value
+            if parsed_group_by_source_directory:
+                parsed_group_compound = True
+            elif parsed_process_ohm_data:
                 parsed_group_compound = False
-
-            parsed_create_multiple = parse_bool_text(create_multiple_objects_field.value)
-            if parsed_create_multiple is None:
-                update_status(
-                    "Error: create_multiple_objects must be true/false (or yes/no, 1/0)",
-                    is_error=True,
-                )
-                return
-            
-            parsed_use_working_folder = parse_bool_text(use_working_folder_field.value)
-            if parsed_use_working_folder is None:
-                update_status(
-                    "Error: use_working_folder_for_file_selection must be true/false (or yes/no, 1/0)",
-                    is_error=True,
-                )
-                return
-            
-            parsed_automatic_four = parse_bool_text(automatic_four_field.value)
-            if parsed_automatic_four is None:
-                update_status(
-                    "Error: automatic_four must be true/false (or yes/no, 1/0)",
-                    is_error=True,
-                )
-                return
-
-            parsed_overwrite_existing_azure_files = parse_bool_text(overwrite_existing_azure_files_field.value)
-            if parsed_overwrite_existing_azure_files is None:
-                update_status(
-                    "Error: overwrite_existing_azure_files must be true/false (or yes/no, 1/0)",
-                    is_error=True,
-                )
-                return
+            parsed_create_multiple = create_multiple_objects_field.value
+            parsed_use_working_folder = use_working_folder_field.value
+            parsed_overwrite_existing_azure_files = overwrite_existing_azure_files_field.value
 
             # Validate core metadata CSV if provided
             core_csv_path = (core_csv_field.value or "").strip()
@@ -2489,11 +2472,11 @@ def main(page: ft.Page):
 
             new_settings = dict(settings)
             new_settings.update({
+                "group_by_source_directory": parsed_group_by_source_directory,
                 "group_compound_objects": parsed_group_compound,
                 "create_multiple_objects": parsed_create_multiple,
                 "process_OHM_data": parsed_process_ohm_data,
                 "use_working_folder_for_file_selection": parsed_use_working_folder,
-                "automatic_four": parsed_automatic_four,
                 "overwrite_existing_azure_files": parsed_overwrite_existing_azure_files,
                 "collection-id": parsed_collection_id,
                 "core_metadata_csv": core_csv_path,
@@ -2511,13 +2494,13 @@ def main(page: ft.Page):
             refresh_input_folder_guidance()
             add_log_message(f"Settings saved: {save_result}")
             update_status("Application settings updated")
-            settings_dialog.open = False
+            app_settings_expanded = False
+            app_settings_inner_column.visible = False
+            app_settings_toggle_button.icon = ft.Icons.EXPAND_MORE
             page.update()
 
-        settings_dialog = ft.AlertDialog(
-            modal=True,
-            title=ft.Text("Function 0: App Settings", weight=ft.FontWeight.BOLD),
-            content=ft.Container(
+        app_settings_inner_column.controls = [
+            ft.Container(
                 content=ft.Column(
                     controls=[
                         ft.Text(
@@ -2549,11 +2532,11 @@ def main(page: ft.Page):
                         ft.Container(height=4),
                         collection_id_field,
                         ft.Container(height=8),
+                        group_by_source_directory_field,
                         group_compound_field,
                         create_multiple_objects_field,
                         process_ohm_data_field,
                         use_working_folder_field,
-                        automatic_four_field,
                         overwrite_existing_azure_files_field,
                         ft.Container(height=8),
                         ft.Text(
@@ -2614,14 +2597,17 @@ def main(page: ft.Page):
                 width=700,
                 height=400,
             ),
-            actions=[
-                ft.TextButton("Save", on_click=save_settings_click),
-                ft.TextButton("Cancel", on_click=close_dialog),
-            ],
-        )
-
-        page.overlay.append(settings_dialog)
-        settings_dialog.open = True
+            ft.Row(
+                controls=[
+                    ft.TextButton("Save", on_click=save_settings_click),
+                    ft.TextButton("Cancel", on_click=close_dialog),
+                ],
+                alignment=ft.MainAxisAlignment.END,
+            ),
+        ]
+        app_settings_expanded = True
+        app_settings_inner_column.visible = True
+        app_settings_toggle_button.icon = ft.Icons.EXPAND_LESS
         page.update()
 
     analyze_compound_objects = partial(shared_analyze_compound_objects, add_log_message=add_log_message)
@@ -2632,12 +2618,14 @@ def main(page: ft.Page):
         # Load settings to check compound object grouping
         working_dir = output_dir_field.value
         group_compound = False
+        group_by_source_directory = False
         process_ohm_data = False
         collection_id = ""
         create_multiple = True
         if working_dir:
             settings, _ = load_app_settings(working_dir)
             group_compound = settings.get("group_compound_objects", False)
+            group_by_source_directory = settings.get("group_by_source_directory", False)
             process_ohm_data = settings.get("process_OHM_data", False)
             if process_ohm_data:
                 group_compound = False
@@ -2658,9 +2646,11 @@ def main(page: ft.Page):
             '.mp4', '.mov', '.avi', '.mkv', '.wmv', '.flv', '.webm',  # Video
             '.mp3', '.wav', '.flac', '.aac', '.ogg', '.m4a', '.wma',  # Audio
             '.zip', '.tar', '.gz', '.7z', '.rar', '.bz2',  # Archives
+            '.bin', '.diff', '.asc',  # Other digital assets
         }
 
         files = []
+        selected_files = []
         source_description = ""
         if process_ohm_data:
             if not current_directory or not current_directory.exists():
@@ -2697,6 +2687,9 @@ def main(page: ft.Page):
                         and not is_hidden_path(file_path, current_directory)):
                     files.append(str(file_path))  # Store full path
             source_description = f"in {current_directory.name}"
+        source_directory_mode = (
+            group_by_source_directory and not process_ohm_data and not selected_files
+        )
 
         # DEBUG: Log files found
         add_log_message(f"[DEBUG] Found {len(files)} asset files matching extensions")
@@ -2779,6 +2772,17 @@ def main(page: ft.Page):
             compound_objects = []
             compound_new = 0
             compound_reused = 0
+        elif source_directory_mode:
+            compound_objects, file_to_id_map, compound_new, compound_reused = (
+                shared_group_objects_by_source_directory(
+                    objects,
+                    file_to_id_map,
+                    page,
+                    collection_id,
+                    current_directory,
+                    add_log_message=add_log_message,
+                )
+            )
         else:
             compound_objects, file_to_id_map, compound_new, compound_reused = analyze_compound_objects(
                 objects, group_compound, file_to_id_map, page, collection_id, create_multiple
@@ -2915,12 +2919,6 @@ def main(page: ft.Page):
 
         result_text = "\n".join(result_lines)
 
-        # Load automatic workflow preference once; run only after user confirms with Close.
-        automatic_four = False
-        if working_dir:
-            latest_settings, _ = load_app_settings(working_dir)
-            automatic_four = latest_settings.get("automatic_four", False)
-
         def commit_function_1_results() -> bool:
             """Persist Function 1 outputs only after user confirms they are acceptable."""
             if working_dir and file_to_id_map != original_file_to_id_map:
@@ -2940,62 +2938,12 @@ def main(page: ft.Page):
             page.update()
             return True
 
-        def run_automatic_four_workflow():
-            """Run Functions 2, 3, and 4 automatically after confirmed Function 1 results."""
-            add_log_message("[INFO] automatic_four enabled - will run Functions 2, 3, and 4 automatically")
-            logger.info("automatic_four enabled - starting automatic workflow")
-
-            # Execute Function 2 (Export CSV)
-            add_log_message("[INFO] Starting Function 2 (Export CSV)...")
-            logger.info("Automatic workflow: Starting Function 2")
-            try:
-                on_function_2_export_csv(None)
-                add_log_message("[SUCCESS] Function 2 completed")
-                logger.info("Automatic workflow: Function 2 completed successfully")
-            except Exception as ex:
-                error_msg = f"Error in Function 2: {str(ex)}"
-                add_log_message(f"[ERROR] {error_msg}")
-                logger.error(f"Automatic workflow failed at Function 2: {ex}")
-                update_status(f"Automatic workflow stopped: {error_msg}", is_error=True)
-                return
-
-            # Execute Function 3 (Generate Derivatives)
-            add_log_message("[INFO] Starting Function 3 (Generate Derivatives)...")
-            logger.info("Automatic workflow: Starting Function 3")
-            try:
-                on_function_3_generate_derivatives(None)
-                add_log_message("[SUCCESS] Function 3 completed")
-                logger.info("Automatic workflow: Function 3 completed successfully")
-            except Exception as ex:
-                error_msg = f"Error in Function 3: {str(ex)}"
-                add_log_message(f"[ERROR] {error_msg}")
-                logger.error(f"Automatic workflow failed at Function 3: {ex}")
-                update_status(f"Automatic workflow stopped: {error_msg}", is_error=True)
-                return
-
-            # Execute Function 4 (Compare/Merge CSV)
-            add_log_message("[INFO] Starting Function 4 (Compare/Merge CSV)...")
-            logger.info("Automatic workflow: Starting Function 4")
-            try:
-                on_function_4_compare_merge(None)
-                add_log_message("[SUCCESS] Function 4 completed")
-                logger.info("Automatic workflow: Function 4 completed successfully")
-                update_status("✅ Automatic workflow completed: Functions 1-4 executed successfully")
-            except Exception as ex:
-                error_msg = f"Error in Function 4: {str(ex)}"
-                add_log_message(f"[ERROR] {error_msg}")
-                logger.error(f"Automatic workflow failed at Function 4: {ex}")
-                update_status(f"Automatic workflow stopped: {error_msg}", is_error=True)
-
         def close_dialog(e):
             if not commit_function_1_results():
                 return
 
             dialog.open = False
             page.update()
-
-            if automatic_four:
-                run_automatic_four_workflow()
 
         def cancel_dialog(e):
             dialog.open = False
@@ -3029,9 +2977,6 @@ def main(page: ft.Page):
             update_status(f"Analyzed {len(files)} file(s), generated {len(objects)} unique object ID(s)")
             logger.info(f"Function 1: Analyzed {len(files)} files, generated {len(objects)} unique object IDs")
         
-        # Automatic workflow (if enabled) now starts only after user confirms with Close.
-
-
     def on_function_2_export_csv(e):
         """Function 2: Export analyzed assets to CSV using template structure."""
         nonlocal kill_switch
@@ -3050,7 +2995,7 @@ def main(page: ft.Page):
         
         if not csv_template_path or not Path(csv_template_path).exists():
             update_status("Error: Core metadata CSV not configured in settings", is_error=True)
-            add_log_message("[ERROR] No core metadata CSV found - configure in Function 0")
+            add_log_message("[ERROR] No core metadata CSV found - configure in App Settings")
             return
 
         # Load CSV template to get column structure
@@ -3097,6 +3042,7 @@ def main(page: ft.Page):
 
         # Get files to process (similar to Function 1)
         group_compound = settings.get("group_compound_objects", False)
+        group_by_source_directory = settings.get("group_by_source_directory", False)
         process_ohm_data = settings.get("process_OHM_data", False)
         if process_ohm_data:
             group_compound = False
@@ -3109,9 +3055,11 @@ def main(page: ft.Page):
             '.mp4', '.mov', '.avi', '.mkv', '.wmv', '.flv', '.webm',
             '.mp3', '.wav', '.flac', '.aac', '.ogg', '.m4a', '.wma',
             '.zip', '.tar', '.gz', '.7z', '.rar', '.bz2',
+            '.bin', '.diff', '.asc',
         }
 
         files = []
+        selected_files = []
         if process_ohm_data:
             if not current_directory or not current_directory.exists():
                 update_status("Error: Please select an inputs folder containing OHM-data first", is_error=True)
@@ -3137,6 +3085,9 @@ def main(page: ft.Page):
                 if (file_path.is_file() and file_path.suffix.lower() in asset_extensions
                         and not is_hidden_path(file_path, current_directory)):
                     files.append(str(file_path))
+        source_directory_mode = (
+            group_by_source_directory and not process_ohm_data and not selected_files
+        )
 
         if not files:
             message = "Error: No OHM-data MP3 files found to export" if process_ohm_data else "Error: No digital asset files found to export"
@@ -3206,6 +3157,17 @@ def main(page: ft.Page):
             compound_objects = []
             compound_new = 0
             compound_reused = 0
+        elif source_directory_mode:
+            compound_objects, file_to_id_map, compound_new, compound_reused = (
+                shared_group_objects_by_source_directory(
+                    objects,
+                    file_to_id_map,
+                    page,
+                    collection_id,
+                    current_directory,
+                    add_log_message=add_log_message,
+                )
+            )
         else:
             compound_objects, file_to_id_map, compound_new, compound_reused = analyze_compound_objects(
                 objects, group_compound, file_to_id_map, page, collection_id, create_multiple
@@ -3423,7 +3385,7 @@ def main(page: ft.Page):
                         result_text += f"  • Failed: {upload_fail_count}\n"
                     result_text += f"  • Azure path: {azure_path}\n"
             else:
-                result_text += f"Azure uploads: DISABLED (configure in Function 0)\n"
+                result_text += f"Azure uploads: DISABLED (configure in App Settings)\n"
             
             result_text += f"\nAuto-populated fields:\n"
             result_text += f"• objectid (unique DG identifier)\n"
@@ -3514,7 +3476,7 @@ def main(page: ft.Page):
         azure_connection_string = settings.get("azure_connection_string", "")
         
         if not azure_path or not azure_connection_string:
-            update_status("Error: Azure Blob Storage not configured. Configure in Function 0.", is_error=True)
+            update_status("Error: Azure Blob Storage not configured. Configure in App Settings.", is_error=True)
             add_log_message("[ERROR] Azure configuration required for Function 3")
             return
         
@@ -4028,8 +3990,8 @@ def main(page: ft.Page):
         
         if not core_csv_path or not core_csv_path.strip():
             update_status("Error: Core metadata CSV not configured in settings", is_error=True)
-            add_log_message("[ERROR] No core metadata CSV configured in Function 0 settings")
-            add_log_message("[INFO] Configure core_metadata_csv in Function 0 to use comparison feature")
+            add_log_message("[ERROR] No core metadata CSV configured in App Settings")
+            add_log_message("[INFO] Configure core_metadata_csv in App Settings to use comparison feature")
             return
         
         old_csv = Path(core_csv_path)
@@ -4041,7 +4003,7 @@ def main(page: ft.Page):
         if not old_csv.exists():
             update_status(f"Error: Core CSV file not found: {old_csv.name}", is_error=True)
             add_log_message(f"[ERROR] Core metadata CSV not found: {core_csv_path}")
-            add_log_message("[INFO] Update core_metadata_csv path in Function 0 settings")
+            add_log_message("[INFO] Update core_metadata_csv path in App Settings")
             return
 
         if is_protected_core_csv_name(old_csv):
@@ -4224,12 +4186,12 @@ def main(page: ft.Page):
         )
         if not gems_csv_path:
             gems_backfill_note = ft.Text(
-                "GEMS backfill off: set gems_metadata_csv in Function 0 to fill new records with GEMS metadata.",
+                "GEMS backfill off: set gems_metadata_csv in App Settings to fill new records with GEMS metadata.",
                 size=11, italic=True, color=ft.Colors.GREY_700,
             )
         elif not gems_csv_available:
             gems_backfill_note = ft.Text(
-                f"⚠️ gems_metadata_csv not found: {gems_csv_setting}. Fix it in Function 0.",
+                f"⚠️ gems_metadata_csv not found: {gems_csv_setting}. Fix it in App Settings.",
                 size=11, color=ft.Colors.RED,
             )
         else:
@@ -4661,13 +4623,13 @@ Detailed results: {output_diff.name}
                     if warn_missing_metadata:
                         if new_csv_is_gems_backfill:
                             advice = ("GEMS backfill ran, so gems_metadata_csv may not cover this batch. Close without merging, "
-                                      "point gems_metadata_csv (Function 0) at the GEMS run's collection_metadata.csv for these "
+                                      "point gems_metadata_csv in App Settings at the GEMS run's collection_metadata.csv for these "
                                       "records, then run Function 4 again.")
                         elif gems_csv_available:
                             advice = ("GEMS backfill was unchecked. If this is a GEMS batch, Close without merging and run "
                                       "Function 4 again with the GEMS backfill checkbox checked.")
                         else:
-                            advice = ("If this is a GEMS batch, Close without merging, set gems_metadata_csv in Function 0 to "
+                            advice = ("If this is a GEMS batch, Close without merging, set gems_metadata_csv in App Settings to "
                                       "the GEMS run's collection_metadata.csv, then run Function 4 again.")
                         add_log_message(f"[WARNING] {bare_added_count} of {added} new record(s) have no descriptive metadata "
                                         f"(title, date, description, etc. are all empty). {advice}")
@@ -5579,7 +5541,7 @@ Detailed results: {output_diff.name}
             ]
         else:
             headless_controls = [ft.Text(
-                "Headless DART handoff off: set headless_host and headless_project_dir in Function 0.",
+                "Headless DART handoff off: set headless_host and headless_project_dir in App Settings.",
                 size=11, italic=True, color=ft.Colors.GREY_700,
             )]
         
@@ -5690,7 +5652,6 @@ Detailed results: {output_diff.name}
     # ------------------------------------------------------------------ function management
 
     active_functions = [
-        "function_0_app_settings",
         "function_1_list_files",
         "function_2_export_csv",
         "function_3_generate_derivatives",
@@ -5700,10 +5661,10 @@ Detailed results: {output_diff.name}
 
     functions = {
         "function_0_app_settings": {
-            "label": "0: App Settings",
+            "label": "App Settings",
             "icon": "⚙️",
             "handler": on_function_0_app_settings,
-            "help_file": "FUNCTION_0_APP_SETTINGS.md"
+            "help_file": "APP_SETTINGS.md"
         },
         "function_1_list_files": {
             "label": "1: Analyze Digital Assets & Generate Object IDs",
@@ -5765,7 +5726,12 @@ Detailed results: {output_diff.name}
 
         help_dialog = ft.AlertDialog(
             modal=True,
-            title=ft.Text(f"Function {display_label}", weight=ft.FontWeight.BOLD),
+            title=ft.Text(
+                display_label
+                if function_key == "function_0_app_settings"
+                else f"Function {display_label}",
+                weight=ft.FontWeight.BOLD,
+            ),
             content=ft.Container(
                 content=ft.Column(
                     [
@@ -5814,7 +5780,7 @@ Detailed results: {output_diff.name}
         opts = []
         last_executed = storage.get_last_executed_function()
         
-        # Define workflow sequence (excluding Function 0 settings and Function 9 info)
+        # Define workflow sequence (excluding App Settings and Function 9 info)
         workflow_sequence = [
             "function_1_list_files",
             "function_2_export_csv", 
@@ -5894,7 +5860,7 @@ Detailed results: {output_diff.name}
             size=14,
             color=ft.Colors.BLACK,
         ),
-        padding=ft.padding.all(8),
+        padding=ft.padding.symmetric(horizontal=8, vertical=2),
     )
 
     log_output = ft.TextField(
@@ -5914,10 +5880,34 @@ Detailed results: {output_diff.name}
         inputs_inner_column.visible = dirs_expanded
         page.update()
 
+    def toggle_app_settings(e):
+        nonlocal app_settings_expanded
+        if (
+            not app_settings_inner_column.controls
+            or app_settings_working_dir != (output_dir_field.value or "")
+        ):
+            on_function_0_app_settings(e)
+            return
+
+        app_settings_expanded = not app_settings_expanded
+        app_settings_inner_column.visible = app_settings_expanded
+        app_settings_toggle_button.icon = (
+            ft.Icons.EXPAND_LESS
+            if app_settings_expanded
+            else ft.Icons.EXPAND_MORE
+        )
+        page.update()
+
     dirs_toggle_button = ft.IconButton(
         icon=ft.Icons.EXPAND_LESS,
         tooltip="Collapse/Expand folders section",
         on_click=toggle_dirs,
+    )
+
+    app_settings_toggle_button = ft.IconButton(
+        icon=ft.Icons.EXPAND_MORE,
+        tooltip="Expand/Collapse app settings section",
+        on_click=toggle_app_settings,
     )
 
     inputs_inner_column = ft.Column(
@@ -5949,6 +5939,12 @@ Detailed results: {output_diff.name}
             ),
         ],
         visible=True,
+    )
+
+    app_settings_inner_column = ft.Column(
+        controls=[],
+        visible=False,
+        spacing=5,
     )
 
     # ------------------------------------------------------------------ layout
@@ -5994,6 +5990,33 @@ Detailed results: {output_diff.name}
                     padding=5,
                 ),
 
+                # ---- App Settings section (collapsible)
+                ft.Container(
+                    content=ft.Column(
+                        controls=[
+                            ft.Row(
+                                controls=[
+                                    ft.Text(
+                                        "App Settings",
+                                        size=18,
+                                        weight=ft.FontWeight.BOLD,
+                                    ),
+                                    ft.TextButton(
+                                        "Help",
+                                        on_click=lambda _: show_help_dialog(
+                                            "function_0_app_settings"
+                                        ),
+                                    ),
+                                    app_settings_toggle_button,
+                                ],
+                            ),
+                            app_settings_inner_column,
+                        ],
+                        spacing=5,
+                    ),
+                    padding=5,
+                ),
+
                 ft.Divider(height=5),
 
                 # ---- Files Selection
@@ -6032,9 +6055,9 @@ Detailed results: {output_diff.name}
                 ft.Container(
                     content=ft.Column(
                         controls=[
-                            ft.Row(
+                            ft.Column(
                                 controls=[
-                                    ft.Column(
+                                    ft.Row(
                                         controls=[
                                             ft.Text(
                                                 "Functions",
@@ -6042,46 +6065,42 @@ Detailed results: {output_diff.name}
                                                 weight=ft.FontWeight.BOLD,
                                             ),
                                             ft.Text(
-                                                "Select and execute workflow functions",
+                                                "- Select and execute workflow functions",
                                                 size=12,
                                                 italic=True,
                                                 color=ft.Colors.GREY_700,
                                             ),
-                                            ft.Container(height=5),
-                                            active_function_dropdown := ft.Dropdown(
-                                                label="Select Function to Execute",
-                                                hint_text="Choose a function",
-                                                width=500,
-                                                options=[],
-                                                on_change=lambda e: execute_selected_function(
-                                                    e.control.value
-                                                ),
+                                            ft.Container(width=12),
+                                            ft.Checkbox(
+                                                label="Help Mode",
+                                                ref=help_mode_enabled,
+                                                tooltip="Enable to view help documentation for functions instead of executing them",
+                                                on_change=on_help_mode_change,
                                             ),
-                                            ft.Container(height=5),
-                                            ft.Row(
-                                                controls=[
-                                                    ft.Checkbox(
-                                                        label="Help Mode",
-                                                        ref=help_mode_enabled,
-                                                        tooltip="Enable to view help documentation for functions instead of executing them",
-                                                    ),
-                                                    ft.Container(width=20),
-                                                    ft.ElevatedButton(
-                                                        "🛑 Kill Switch",
-                                                        on_click=on_kill_switch_click,
-                                                        icon=ft.Icons.CANCEL,
-                                                        color=ft.Colors.WHITE,
-                                                        bgcolor=ft.Colors.RED_700,
-                                                        tooltip="Emergency stop - halts batch processing immediately",
-                                                    ),
-                                                ],
-                                                spacing=10,
+                                            ft.Container(width=12),
+                                            kill_switch_button := ft.ElevatedButton(
+                                                "🛑 Kill Switch",
+                                                on_click=on_kill_switch_click,
+                                                icon=ft.Icons.CANCEL,
+                                                color=ft.Colors.WHITE,
+                                                bgcolor=ft.Colors.RED_700,
+                                                tooltip="Emergency stop - halts batch processing immediately",
                                             ),
                                         ],
-                                        spacing=5,
+                                        spacing=8,
+                                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                                    ),
+                                    active_function_dropdown := ft.Dropdown(
+                                        label="Select Function to Execute",
+                                        hint_text="Choose a function",
+                                        width=500,
+                                        options=[],
+                                        on_change=lambda e: execute_selected_function(
+                                            e.control.value
+                                        ),
                                     ),
                                 ],
-                                vertical_alignment=ft.CrossAxisAlignment.START,
+                                spacing=5,
                             ),
                         ],
                         spacing=5,
@@ -6112,9 +6131,9 @@ Detailed results: {output_diff.name}
                             ),
                             status_container,
                         ],
-                        spacing=5,
+                        spacing=0,
                     ),
-                    padding=5,
+                    padding=ft.padding.symmetric(horizontal=5, vertical=1),
                 ),
 
                 ft.Divider(height=5),
@@ -6172,18 +6191,7 @@ Detailed results: {output_diff.name}
     # Validate directories on startup
     validate_directories()
     
-    # Reset automatic_four to false at the start of a new session
     working_dir = output_dir_field.value
-    if working_dir:
-        settings, _ = load_app_settings(working_dir)
-        if settings.get("automatic_four", False):
-            settings["automatic_four"] = False
-            ok, save_result = save_app_settings(working_dir, settings)
-            if ok:
-                add_log_message("[INFO] automatic_four reset to false for new session")
-                logger.info("Session startup: automatic_four reset to false")
-            else:
-                logger.warning(f"Failed to reset automatic_four: {save_result}")
     
     # Validate CSV structure file on startup if configured
     if working_dir:

@@ -15,7 +15,7 @@ This application was created by extracting the proven UI framework from OHM (Ora
 
 ### Documentation
 - **README.md** - Comprehensive guide to using and customizing DART
-- **FUNCTION_0_APP_SETTINGS.md** - Help for Function 0: App Settings
+- **APP_SETTINGS.md** - Help for App Settings
 - **FUNCTION_1_ANALYZE_ASSETS.md** - Help for Function 1: Analyze digital assets
 - **FUNCTION_2_EXPORT_CSV.md** - Help for CSV export function
 - **FUNCTION_3_GENERATE_DERIVATIVES.md** - Help for Function 3: Generate derivatives
@@ -48,19 +48,16 @@ This will:
 ### 1. Test the Example Functions
 
 The app includes multiple functions:
-- **Function 0**: App Settings (configure behavior, encryption-enabled)
-  - **Tip**: Enable `automatic_four` for automated workflow (Functions 1→2→3→4 run automatically)
+- **App Settings**: Configure behavior and encrypted settings
 - **Function 1**: Analyze Digital Assets & Generate Standard DG Identifiers
 - **Function 2**: Export Assets to CSV and Azure
-  - **Tip**: Set `overwrite_existing_azure_files = true` in Function 0 to replace existing Azure blobs when needed
+  - **Tip**: Set `overwrite_existing_azure_files = true` in App Settings to replace existing Azure blobs when needed
 - **Function 3**: Generate Derivatives for CSV and Azure
   - **Tip**: TIFF derivatives now preserve scanner/grayscale ICC intent by converting embedded profiles to sRGB before JPEG output
 - **Function 4**: Compare and Merge CSV Files
 - **Function 9**: System Information
 
-**Automated Workflow**: Set `automatic_four = true` in Function 0 to automatically run the complete workflow (Functions 1→2→3→4) with a single click. Perfect for batch processing!
-
-Enable "Help Mode" to view the documentation for each function.
+Run Functions 1 through 4 individually from the function dropdown, following the workflow order above. Use **Help Mode** for function documentation or the **Help** button in App Settings for settings guidance.
 
 ### 2. Customize for Your New App
 
