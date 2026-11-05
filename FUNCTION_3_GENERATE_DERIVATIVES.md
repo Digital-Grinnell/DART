@@ -65,6 +65,16 @@ When `process_OHM_data` is enabled, Function 3 looks for a sibling image (`.jpg`
 
 ## Workflow
 
+Wait for Function 2's completion message before starting Function 3. The
+Functions selector is disabled while a function runs, preventing overlapping
+uploads, exports, and derivative processing.
+
+Function 3 selects the most recently modified original `DART_export_*.csv`,
+not the filename that sorts last alphabetically. Derivative and GEMS-backfilled
+outputs are excluded. Check the **Processing CSV** log entry before proceeding:
+an old `DART_export_handoff_*.csv` must not outrank a newer local export merely
+because its filename contains `handoff`.
+
 1. Run **Function 2: Export Assets to CSV and Azure** to create your metadata CSV
 
 2. Configure **Azure Blob Storage** in App Settings if not already done

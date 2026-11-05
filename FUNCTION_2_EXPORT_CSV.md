@@ -47,6 +47,11 @@ a directory produces an error naming the configured path.
 
 ## Workflow
 
+Wait for the **CSV written** / export completion message before proceeding to
+Functions 3 or 4. Uploading large assets can take time; the new export is written
+only after those uploads finish. The Functions selector stays disabled while
+the current function runs to prevent processing an older export in parallel.
+
 1. Configure your CSV template in **App Settings**
    - Set `csv_structure_file` to point to your template CSV
    - The template defines which columns will be in the export

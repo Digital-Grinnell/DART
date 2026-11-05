@@ -1,4 +1,5 @@
 import csv
+import os
 import tempfile
 import unittest
 from contextlib import ExitStack
@@ -7,6 +8,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import app
+from dart_processing import derivative_source_exports
 
 
 class DesktopInputsTests(unittest.TestCase):
@@ -134,6 +136,65 @@ class DesktopInputsTests(unittest.TestCase):
         texts = [control.value for control in self.walk(page.controls)
                  if isinstance(control, app.ft.Text)]
         self.assertIn(f"Error: Cannot access Inputs Folder {self.inputs}: Access denied", texts)
+
+    def test_function_execution_rejects_overlap_and_reenables_selector_after_completion(self):
+        page = self.start_page()
+        group_objects = app.shared_group_objects_by_source_directory
+        selector = next(control for control in self.walk(page.controls)
+                        if isinstance(control, app.ft.Dropdown)
+                        and control.label == "Select Function to Execute")
+
+        def reenter(*args, **kwargs):
+            self.assertTrue(selector.disabled)
+            self.execute(page, "function_9_system_info")
+            self.assertFalse(any(isinstance(control, app.ft.AlertDialog)
+                                 and control.title.value == "Function 9: System Info"
+                                 for control in page.overlay))
+            texts = [control.value for control in self.walk(page.controls)
+                     if isinstance(control, app.ft.Text)]
+            self.assertIn(
+                "Error: A workflow function is still running. Wait for it to finish before starting another.",
+                texts,
+            )
+            return group_objects(*args, **kwargs)
+
+        with patch.object(app, "shared_group_objects_by_source_directory", side_effect=reenter):
+            self.execute(page, "function_1_list_files")
+        self.assertFalse(selector.disabled)
+        self.assertEqual("", selector.value)
+        self.execute(page, "function_9_system_info")
+        self.assertEqual("Function 9: System Info", page.overlay[-1].title.value)
+
+    def test_function_failure_releases_execution_guard(self):
+        page = self.start_page()
+        with patch.object(app, "shared_group_objects_by_source_directory",
+                          side_effect=RuntimeError("Test failure")):
+            with self.assertRaisesRegex(RuntimeError, "Test failure"):
+                self.execute(page, "function_1_list_files")
+        self.execute(page, "function_9_system_info")
+        self.assertEqual("Function 9: System Info", page.overlay[-1].title.value)
+
+
+class DerivativeExportSelectionTests(unittest.TestCase):
+    def test_newer_local_export_beats_old_handoff_and_outputs_are_excluded(self):
+        with tempfile.TemporaryDirectory() as name:
+            root = Path(name)
+            files = [
+                root / "DART_export_handoff_old.csv",
+                root / "DART_export_20261105_160000.csv",
+                root / "DART_export_with_gems_20261105_160100.csv",
+                root / "DART_export_with_derivatives_20261105_160200.csv",
+            ]
+            for index, path in enumerate(files):
+                path.write_text("original_file_name\n")
+                os.utime(path, ns=(1000000000 + index, 1000000000 + index))
+            self.assertEqual([files[1], files[0]], derivative_source_exports(root))
+            os.utime(files[0], ns=(2000000000, 2000000000))
+            self.assertEqual([files[0], files[1]], derivative_source_exports(root))
+
+    def test_no_original_exports_returns_empty(self):
+        with tempfile.TemporaryDirectory() as name:
+            self.assertEqual([], derivative_source_exports(Path(name)))
 
 
 if __name__ == "__main__":

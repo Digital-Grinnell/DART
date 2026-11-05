@@ -48,6 +48,7 @@ class FontSizeController:
         self._logger = logger if logger is not None else logging.getLogger(__name__)
         self._texts: WeakKeyDictionary[ft.Text, float] = WeakKeyDictionary()
         self._text_fields: WeakKeyDictionary[ft.TextField, float] = WeakKeyDictionary()
+        self._dropdowns: WeakKeyDictionary[ft.Dropdown, float] = WeakKeyDictionary()
         self._base_theme = deepcopy(page.theme) if page.theme else ft.Theme()
         self._base_dark_theme = deepcopy(page.dark_theme) if page.dark_theme else ft.Theme()
         saved_percent = load_percent()
@@ -113,6 +114,12 @@ class FontSizeController:
         self._text_fields[field] = text_size
         return field
 
+    def sized_dropdown(self, *, item_height: float, **kwargs) -> ft.Dropdown:
+        """Keep dropdown rows tall enough for scaled, wrapped option labels."""
+        dropdown = ft.Dropdown(item_height=item_height * self._percent / 100, **kwargs)
+        self._dropdowns[dropdown] = item_height
+        return dropdown
+
     def _scaled_theme(self, base: ft.Theme) -> ft.Theme:
         # Flet replaces theme styles rather than merging them. Supply Material 3
         # defaults for missing fields while retaining the app's custom styles.
@@ -165,6 +172,8 @@ class FontSizeController:
             text.size = base_size * self._percent / 100
         for field, base_size in list(self._text_fields.items()):
             field.text_size = base_size * self._percent / 100
+        for dropdown, base_height in list(self._dropdowns.items()):
+            dropdown.item_height = base_height * self._percent / 100
         self._label.value = f"{self._percent}%"
         self._smaller.disabled = self._percent == 75
         self._larger.disabled = self._percent == 200

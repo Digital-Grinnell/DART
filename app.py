@@ -14,6 +14,7 @@ from dart_processing import (
     build_export_rows, compare_metadata_rows, get_derivative_azure_paths, get_display_template, get_stable_path,
     select_compound_derivative_child,
     prepare_metadata_additions, require_unchanged_core_csv,
+    derivative_source_exports,
 )
 import os
 import getpass
@@ -1856,6 +1857,7 @@ def main(page: ft.Page):
     
     # Kill switch for emergency stop of batch operations
     kill_switch = False
+    workflow_lock = threading.Lock()
     
     # Setup logging in working directory if it exists
     working_dir = storage.get_ui_state("last_output_dir")
@@ -3527,11 +3529,7 @@ def main(page: ft.Page):
         # Find latest CSV export or let user select
         # Exclude derivative and GEMS-backfilled CSVs (both are outputs) to avoid processing output as input
         dart_working_dir = get_dart_working_dir(working_dir)
-        all_csv_files = sorted(dart_working_dir.glob("DART_export_*.csv"), reverse=True)
-        csv_files = [
-            f for f in all_csv_files
-            if "with_derivatives" not in f.name and not f.name.startswith(GEMS_BACKFILL_OUTPUT_PREFIX)
-        ]
+        csv_files = derivative_source_exports(dart_working_dir)
         if not csv_files:
             update_status("Error: No CSV exports found. Run Function 2 first.", is_error=True)
             return
@@ -5837,19 +5835,29 @@ Detailed results: {output_diff.name}
         if not function_key or function_key not in functions:
             return
 
-        if help_mode_enabled.current and help_mode_enabled.current.value:
-            show_help_dialog(function_key)
-        else:
-            func_info = functions[function_key]
-            handler = func_info.get("handler")
-            if handler:
-                logger.info(f"Executing {func_info['label']}")
-                handler(None)
-                # Refresh dropdown options to update workflow indicators
-                active_function_dropdown.options = get_sorted_function_options(active_functions)
-
-        active_function_dropdown.value = None
-        page.update()
+        if not workflow_lock.acquire(blocking=False):
+            update_status(
+                "Error: A workflow function is still running. Wait for it to finish before starting another.",
+                is_error=True,
+            )
+            return
+        try:
+            active_function_dropdown.disabled = True
+            page.update()
+            if help_mode_enabled.current and help_mode_enabled.current.value:
+                show_help_dialog(function_key)
+            else:
+                func_info = functions[function_key]
+                handler = func_info.get("handler")
+                if handler:
+                    logger.info(f"Executing {func_info['label']}")
+                    handler(None)
+                    active_function_dropdown.options = get_sorted_function_options(active_functions)
+        finally:
+            active_function_dropdown.value = ""
+            active_function_dropdown.disabled = False
+            workflow_lock.release()
+            page.update()
 
     def get_sorted_function_options(function_list):
         """Return dropdown options sorted by function number with workflow indicators."""
@@ -5888,7 +5896,11 @@ Detailed results: {output_diff.name}
                 opts.append(
                     ft.dropdown.Option(
                         key=func_key,
-                        text=label
+                        text=label,
+                        content=sized_text(
+                            label, size=16, max_lines=2,
+                            overflow=ft.TextOverflow.ELLIPSIS, tooltip=label,
+                        ),
                     )
                 )
         return opts
@@ -6167,15 +6179,23 @@ Detailed results: {output_diff.name}
                                         ],
                                         spacing=8,
                                         vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                                        wrap=True,
                                     ),
-                                    active_function_dropdown := ft.Dropdown(
-                                        label="Select Function to Execute",
-                                        hint_text="Choose a function",
-                                        width=500,
-                                        options=[],
-                                        on_change=lambda e: execute_selected_function(
-                                            e.control.value
-                                        ),
+                                    ft.Row(
+                                        controls=[
+                                            active_function_dropdown := font_size.sized_dropdown(
+                                                label="Select Function to Execute",
+                                                hint_text="Choose a function",
+                                                value="",
+                                                expand=True,
+                                                item_height=64,
+                                                options_fill_horizontally=True,
+                                                options=[],
+                                                on_change=lambda e: execute_selected_function(
+                                                    e.control.value
+                                                ),
+                                            ),
+                                        ],
                                     ),
                                 ],
                                 spacing=5,

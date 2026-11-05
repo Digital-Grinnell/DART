@@ -52,6 +52,9 @@ steps, clamped to **75%-200%**. **Reset** returns to **100%**. The choice is sav
 as a desktop preference and restored on the next launch; it is not a
 project App Setting. Text in the main window and newly opened dialogs follows
 the selected size, including explicitly sized headings and comparison details.
+The Functions selector fills the available width; its option labels wrap onto
+two lines and its row heights follow the font size. Hover over a truncated
+label to read its full text. After execution it returns to "Choose a function".
 
 ### 1. Test the Example Functions
 

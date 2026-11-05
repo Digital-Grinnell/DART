@@ -105,6 +105,19 @@ class FontSizeControllerTests(unittest.TestCase):
         gc.collect()
         self.assertIsNone(ref())
 
+    def test_dropdown_row_height_tracks_scale_without_accumulation(self):
+        fonts = self.controller("150")
+        dropdown = fonts.sized_dropdown(item_height=64, options=[])
+        self.assertEqual(96, dropdown.item_height)
+        self.click(fonts, "A+")
+        self.assertEqual(102.4, dropdown.item_height)
+        self.click(fonts, "Reset")
+        self.assertEqual(64, dropdown.item_height)
+        ref = weakref.ref(dropdown)
+        del dropdown
+        gc.collect()
+        self.assertIsNone(ref())
+
     def test_invalid_saved_values_warn_and_fall_back(self):
         for value in (None, True, 100.5, "invalid", "74", "201"):
             with self.subTest(value=value), self.assertLogs("font_size_control", logging.WARNING):
@@ -211,6 +224,34 @@ class DesktopFontSizeTests(unittest.TestCase):
         self.assertEqual(str(self.root), saved["ui_state"]["last_input_dir"])
         self.assertEqual("130", saved["ui_state"]["font_scale_percent"])
         self.assertEqual(1, saved["function_usage"]["App Settings"]["count"])
+
+    def test_functions_selector_fits_layout_scales_options_and_resets_after_execution(self):
+        page = self.start_page()
+        selector = self.find(page, ft.Dropdown, label="Select Function to Execute")
+        self.assertIsNone(selector.width)
+        self.assertTrue(selector.expand)
+        self.assertTrue(selector.options_fill_horizontally)
+        for _ in range(10):
+            self.click(page, "A+")
+        self.assertEqual(128, selector.item_height)
+        for option in selector.options:
+            self.assertEqual(32, option.content.size)
+            self.assertEqual(2, option.content.max_lines)
+            self.assertEqual(ft.TextOverflow.ELLIPSIS, option.content.overflow)
+            self.assertEqual(option.text, option.content.tooltip)
+        selector.value = "function_9_system_info"
+        selector.on_change(SimpleNamespace(control=selector))
+        self.assertEqual("", selector.value)
+        self.assertTrue(page.overlay[-1].open)
+        for option in selector.options:
+            self.assertEqual(32, option.content.size)
+        selector.value = "function_9_system_info"
+        selector.on_change(SimpleNamespace(control=selector))
+        self.assertEqual("", selector.value)
+        self.assertEqual(2, app.PersistentStorage().data["function_usage"]["Function 9"]["count"])
+        self.click(page, "Reset")
+        self.assertEqual(64, selector.item_height)
+        self.assertTrue(all(option.content.size == 16 for option in selector.options))
 
 
 if __name__ == "__main__":

@@ -8,6 +8,19 @@ from common_dg_utilities.dg_utils import generate_unique_id, get_mime_type
 logger = logging.getLogger(__name__)
 
 
+def derivative_source_exports(working_directory: Path) -> list[Path]:
+    """Order original exports by modification time, not their filename prefixes."""
+    return sorted(
+        (
+            path for path in working_directory.glob("DART_export_*.csv")
+            if "with_derivatives" not in path.name
+            and not path.name.startswith("DART_export_with_gems_")
+        ),
+        key=lambda path: (path.stat().st_mtime_ns, path.name),
+        reverse=True,
+    )
+
+
 def compare_metadata_rows(
     old_rows: list[dict[str, str]], new_rows: list[dict[str, str]],
 ) -> dict[str, Any]:
