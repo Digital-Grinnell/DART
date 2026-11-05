@@ -253,6 +253,25 @@ class DesktopFontSizeTests(unittest.TestCase):
         self.assertEqual(64, selector.item_height)
         self.assertTrue(all(option.content.size == 16 for option in selector.options))
 
+    def test_function_header_keeps_actions_together_and_flexes_description(self):
+        page = self.start_page()
+        rows = [control for control in self.walk(page.controls) if isinstance(control, ft.Row)]
+        header = next(row for row in rows
+                      if any(isinstance(child, ft.Text) and child.value == "Functions"
+                             for child in row.controls))
+        self.assertFalse(header.wrap)
+        description = next(child for child in header.controls
+                           if isinstance(child, ft.Text) and child.value.startswith("- Select"))
+        self.assertTrue(description.expand)
+        self.assertEqual(2, description.max_lines)
+        actions = next(child for child in header.controls if isinstance(child, ft.Row))
+        self.assertFalse(actions.wrap)
+        self.assertTrue(actions.tight)
+        self.assertEqual("Help Mode", actions.controls[0].label)
+        self.assertEqual("🛑 Kill Switch", actions.controls[1].text)
+        self.click(page, "A+")
+        self.assertFalse(header.wrap or actions.wrap)
+
 
 if __name__ == "__main__":
     unittest.main()
