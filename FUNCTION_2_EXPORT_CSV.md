@@ -40,6 +40,11 @@ Use this function when you want to:
 - **Compounds Grouped by Subdirectory**: During an Inputs Folder scan with no files selected, Function 2 creates one compound per immediate subfolder and includes supported assets from all nested descendants; root-level files remain standalone. The setting is enabled by default and can be changed in App Settings. Selecting specific files uses filename-based grouping.
 - **OHM-data mode**: When `process_OHM_data` is enabled, select the project folder containing `OHM-data` (or select `OHM-data` itself). Function 2 ignores file selections and exports only recursively discovered `.mp3` files, uploading them to Azure when configured.
 
+The displayed Inputs Folder is rechecked at export time, not cached from
+startup. If a network volume was unavailable at launch, mount it and retry
+without reselecting the folder. An unavailable folder or a path that is not
+a directory produces an error naming the configured path.
+
 ## Workflow
 
 1. Configure your CSV template in **App Settings**

@@ -2027,13 +2027,9 @@ def main(page: ft.Page):
 
     # ------------------------------------------------------------------ UI state
 
-    current_directory = None
     input_dir = storage.get_ui_state("last_input_dir")
-    if input_dir:
-        if Path(input_dir).exists():
-            current_directory = Path(input_dir)
-        else:
-            logger.warning(f"Saved input directory does not exist (may be unmounted): {input_dir}")
+    if input_dir and not Path(input_dir).exists():
+        logger.warning(f"Saved input directory does not exist (may be unmounted): {input_dir}")
 
     dirs_expanded = True
     app_settings_expanded = False
@@ -2042,16 +2038,14 @@ def main(page: ft.Page):
     # ------------------------------------------------------------------ directory selection
 
     def on_input_dir_result(e: ft.FilePickerResultEvent):
-        nonlocal current_directory
         if e.path:
             path = Path(e.path)
-            if not path.exists():
-                update_status(f"Error: Directory does not exist: {e.path}", is_error=True)
+            if not path.is_dir():
+                update_status(f"Error: Inputs Folder is unavailable or not a directory: {e.path}", is_error=True)
                 return
-            current_directory = path
-            input_dir_field.value = str(current_directory)
-            storage.set_ui_state("last_input_dir", str(current_directory))
-            update_status(f"Inputs folder set: {current_directory.name}")
+            input_dir_field.value = str(path)
+            storage.set_ui_state("last_input_dir", str(path))
+            update_status(f"Inputs folder set: {path.name}")
             page.update()
 
     def on_output_dir_result(e: ft.FilePickerResultEvent):
@@ -2169,6 +2163,22 @@ def main(page: ft.Page):
         page.update()
 
     # ------------------------------------------------------------------ function implementations
+
+    def get_inputs_folder() -> Path | None:
+        """Resolve the visible path at execution time so reconnected volumes work."""
+        value = input_dir_field.value
+        if not value:
+            update_status("Error: Please select an Inputs Folder first", is_error=True)
+            return None
+        path = Path(value)
+        try:
+            if not path.is_dir():
+                update_status(f"Error: Inputs Folder is unavailable or not a directory: {path}", is_error=True)
+                return None
+        except OSError as ex:
+            update_status(f"Error: Cannot access Inputs Folder {path}: {ex}", is_error=True)
+            return None
+        return path
 
     def on_function_0_app_settings(e):
         """Show and edit app settings in the App Settings section."""
@@ -2660,10 +2670,11 @@ def main(page: ft.Page):
 
         files = []
         selected_files = []
+        current_directory = None
         source_description = ""
         if process_ohm_data:
-            if not current_directory or not current_directory.exists():
-                update_status("Error: Please select an inputs folder containing OHM-data first", is_error=True)
+            current_directory = get_inputs_folder()
+            if current_directory is None:
                 return
 
             ohm_files, ohm_data_directory = find_ohm_data_mp3_files(current_directory)
@@ -2684,8 +2695,8 @@ def main(page: ft.Page):
             source_description = "from selected files"
         elif not process_ohm_data:
             # Fall back to scanning inputs folder
-            if not current_directory or not current_directory.exists():
-                update_status("Error: Please select files or an inputs folder first", is_error=True)
+            current_directory = get_inputs_folder()
+            if current_directory is None:
                 return
             
             add_log_message(f"[DEBUG] No files selected - scanning Inputs Folder: {current_directory}")
@@ -3070,9 +3081,10 @@ def main(page: ft.Page):
 
         files = []
         selected_files = []
+        current_directory = None
         if process_ohm_data:
-            if not current_directory or not current_directory.exists():
-                update_status("Error: Please select an inputs folder containing OHM-data first", is_error=True)
+            current_directory = get_inputs_folder()
+            if current_directory is None:
                 return
 
             ohm_files, ohm_data_directory = find_ohm_data_mp3_files(current_directory)
@@ -3086,8 +3098,8 @@ def main(page: ft.Page):
                 if file_path.is_file() and file_path.suffix.lower() in asset_extensions:
                     files.append(str(file_path))
         elif not process_ohm_data:
-            if not current_directory or not current_directory.exists():
-                update_status("Error: Please select files or an inputs folder first", is_error=True)
+            current_directory = get_inputs_folder()
+            if current_directory is None:
                 return
             
             # Recursive scan: includes per-compound subfolders (one compound per folder)

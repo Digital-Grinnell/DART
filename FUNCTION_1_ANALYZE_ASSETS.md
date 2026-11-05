@@ -38,6 +38,11 @@ Use this function to:
 - **Optional**: Working/Outputs folder (to load compound grouping setting)
 - **OHM-data mode**: When `process_OHM_data` is enabled in App Settings, select the project folder containing `OHM-data` (or select `OHM-data` itself). Function 1 ignores file selections and ordinary assets, recursively finds only `.mp3` files, and assigns each one a standard persistent DG identifier.
 
+The displayed Inputs Folder is checked again whenever a folder scan runs.
+If a saved network volume was unavailable at launch, mount it and retry;
+reselecting the same folder is not necessary. If the folder is still
+unavailable or the path is not a directory, the error names that path.
+
 ## How It Works
 1. **First checks** if files are selected in the Files Selection area
    - If files are selected, analyzes only those files using filename-based grouping
