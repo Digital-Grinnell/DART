@@ -11,15 +11,52 @@ logger = logging.getLogger(__name__)
 def compare_metadata_rows(
     old_rows: list[dict[str, str]], new_rows: list[dict[str, str]],
 ) -> dict[str, Any]:
-    """Preserve cell contents and export order instead of csvdiff's file parsing/order."""
+    """Compare shared columns, preserving full records, cell contents, and export order."""
     from csvdiff import diff_records
 
     before = [{key: value for key, value in row.items() if key != "filepath"} for row in old_rows]
     after = [{key: value for key, value in row.items() if key != "filepath"} for row in new_rows]
-    changes = diff_records(before, after, index_columns=["original_file_name"])
+    shared = (
+        {key for row in before for key in row}
+        & {key for row in after for key in row}
+    ) | {"original_file_name"}
+
+    def comparable(rows: list[dict[str, str]]) -> list[dict[str, str]]:
+        return [
+            {key: row[key] if key == "original_file_name" else row.get(key, "") for key in shared}
+            for row in rows
+        ]
+
+    changes = diff_records(comparable(before), comparable(after), index_columns=["original_file_name"])
+    old_by_name = {row["original_file_name"]: row for row in before}
+    new_by_name = {row["original_file_name"]: row for row in after}
+    changes["added"] = [new_by_name[row["original_file_name"]] for row in changes["added"]]
+    changes["removed"] = [old_by_name[row["original_file_name"]] for row in changes["removed"]]
     positions = {row["original_file_name"]: index for index, row in enumerate(after)}
     changes["added"].sort(key=lambda row: positions[row["original_file_name"]])
     return changes
+
+
+def prepare_metadata_additions(
+    core_columns: list[str], records: list[dict[str, str]],
+    export_only_columns: list[str], column_action: str | None,
+) -> tuple[list[str], list[dict[str, str]]]:
+    """Require a schema decision before projecting selected new rows onto the core."""
+    if export_only_columns and column_action not in ("keep", "extend"):
+        raise ValueError("Choose whether to keep core columns or append export-only columns.")
+    columns = list(core_columns)
+    if column_action == "extend":
+        columns.extend(column for column in export_only_columns if column not in columns)
+    unexpected = {key for row in records for key in row} - set(columns) - set(export_only_columns)
+    if unexpected:
+        raise ValueError(f"Unreviewed columns in selected records: {', '.join(sorted(unexpected))}")
+    return columns, [{column: row.get(column, "") for column in columns} for row in records]
+
+
+def require_unchanged_core_csv(path: Path, compared_bytes: bytes) -> None:
+    """Reject merges based on a comparison of an older core, even if only headers changed."""
+    if path.read_bytes() != compared_bytes:
+        raise ValueError("Core CSV changed since comparison. Run Function 4 again before merging.")
 
 
 def select_compound_derivative_child(
@@ -82,6 +119,54 @@ def get_stable_path(full_path: str) -> str:
     return full_path
 
 
+def _parse_numbered_filename(filename: str) -> tuple[str, int] | None:
+    match = re.match(r'^(.+?)[\s_\-]*(\d+)$', Path(filename).stem)
+    if match:
+        return match.group(1).strip().lower(), int(match.group(2))
+    return None
+
+
+def _create_multiple_parent(
+    numbered_items: list[dict[str, Any]],
+    file_to_id_map: dict[str, str],
+    page: Any,
+    collection_id: str,
+    folder_path: str,
+    compound_id: str,
+    text_base: str,
+    add_log_message=logger.debug,
+) -> tuple[dict[str, Any], int, int]:
+    """Assign a directory-scoped numbered group to its persistent multiple parent."""
+    numbered_items = sorted(numbered_items, key=lambda item: item["number"])
+    multiple_key = f"{get_stable_path(folder_path)}::MULTIPLE::{text_base}"
+    reused = multiple_key in file_to_id_map
+    if reused:
+        multiple_id = file_to_id_map[multiple_key]
+        add_log_message(f"[DEBUG] Reusing multiple ID {multiple_id} for {folder_path} | {text_base}")
+    else:
+        multiple_id = generate_unique_id(page, collection_id)
+        file_to_id_map[multiple_key] = multiple_id
+        add_log_message(f"[DEBUG] Created multiple {multiple_id} for {folder_path} | {text_base}")
+
+    first = numbered_items[0]
+    parent = {
+        "objectid": multiple_id,
+        "parentid": compound_id,
+        "text_base": text_base,
+        "display_text_base": first["raw_stem"][:len(text_base)],
+        "child_count": len(numbered_items),
+        "folder_path": folder_path,
+        "zero_pad_width": len(str(max(item["number"] for item in numbered_items))),
+        "type": "multiple",
+        "first_child_filename": first["obj"]["filename"],
+    }
+    for item in numbered_items:
+        item["obj"]["parentid"] = multiple_id
+        item["obj"]["type"] = "child"
+        item["obj"]["sequence_number"] = item["number"]
+    return parent, int(not reused), int(reused)
+
+
 def analyze_compound_objects(objects, group_compound, file_to_id_map, page, collection_id="", create_multiple=True, add_log_message=logger.debug):
     """
     Analyze objects for compound grouping patterns and assign parent/child relationships.
@@ -140,10 +225,9 @@ def analyze_compound_objects(objects, group_compound, file_to_id_map, page, coll
 
         # Extract prefix and trailing sequence number
         # Pattern: everything before the LAST number is the prefix, last number is sequence
-        match = re.match(r'^(.+?)[\s_\-]*(\d+)$', stem)
-        if match:
-            prefix = match.group(1).strip().lower()  # Normalize: lowercase, strip whitespace
-            number = int(match.group(2))
+        sequence = _parse_numbered_filename(obj['filename'])
+        if sequence:
+            prefix, number = sequence
             numbered_prefixes.add(prefix)
             parsed_files.append({
                 'obj': obj,
@@ -394,45 +478,17 @@ def analyze_compound_objects(objects, group_compound, file_to_id_map, page, coll
             numbered_items.sort(key=lambda x: x['number'])
             unnumbered_items.sort(key=lambda x: x['filename'])
 
-            first_raw_stem = (numbered_items + unnumbered_items)[0]['raw_stem']
-            prefix_length = len(text_base)
-            if len(first_raw_stem) >= prefix_length:
-                display_text_base = first_raw_stem[:prefix_length]
-            else:
-                display_text_base = first_raw_stem
-
             if create_multiple and len(numbered_items) >= 2:
                 # A numeric sequence of 2+ files gets its own 'multiple' parent
                 # nested under the compound; unnumbered files in the same group
                 # become direct children of the compound (siblings of 'multiple').
-                multiple_key = f"{stable_folder}::MULTIPLE::{text_base}"
-                if multiple_key in file_to_id_map:
-                    multiple_id = file_to_id_map[multiple_key]
-                    compound_reused_mappings += 1
-                    logger.info(f"[DEBUG] Reused multiple: {multiple_id} | Folder: {folder_path} | Base: '{text_base}'")
-                else:
-                    multiple_id = generate_unique_id(page, collection_id)
-                    file_to_id_map[multiple_key] = multiple_id
-                    compound_new_mappings += 1
-                    logger.info(f"[DEBUG] New multiple: {multiple_id} | Folder: {folder_path} | Base: '{text_base}'")
-
-                compound_objects.append({
-                    "objectid": multiple_id,
-                    "parentid": compound_id,
-                    "text_base": text_base,
-                    "display_text_base": display_text_base,
-                    "child_count": len(numbered_items),
-                    "folder_path": folder_path,
-                    "zero_pad_width": zero_pad_width,
-                    "type": "multiple",
-                    "first_child_filename": numbered_items[0]['filename']
-                })
-
-                for parsed_item in numbered_items:
-                    child_obj = parsed_item['obj']
-                    child_obj["parentid"] = multiple_id
-                    child_obj["type"] = "child"
-                    child_obj["sequence_number"] = parsed_item.get('number')
+                multiple, new, reused = _create_multiple_parent(
+                    numbered_items, file_to_id_map, page, collection_id,
+                    folder_path, compound_id, text_base, add_log_message,
+                )
+                compound_objects.append(multiple)
+                compound_new_mappings += new
+                compound_reused_mappings += reused
 
                 for parsed_item in unnumbered_items:
                     child_obj = parsed_item['obj']
@@ -463,8 +519,10 @@ def group_objects_by_source_directory(
     collection_id: str,
     source_directory_root: str | Path,
     add_log_message=logger.debug,
+    *,
+    create_multiple: bool = True,
 ) -> tuple[list[dict[str, Any]], dict[str, str], int, int]:
-    """Make each immediate input subdirectory one compound, including nested files."""
+    """Group by immediate subdirectory, with optional directory-scoped numbered multiples."""
     root = Path(source_directory_root)
     directory_groups: dict[Path, list[dict[str, Any]]] = {}
     standalone_objects = []
@@ -520,8 +578,37 @@ def group_objects_by_source_directory(
             child["type"] = "child"
             child["sequence_number"] = None
 
+        numbered_groups: dict[tuple[str, str], list[dict[str, Any]]] = {}
+        for child in children:
+            sequence = _parse_numbered_filename(child["filename"])
+            if sequence is None:
+                continue
+            prefix, number = sequence
+            if len(prefix) < 3:
+                continue
+            child["sequence_number"] = number
+            folder_path = str(Path(child["filepath"]).parent)
+            numbered_groups.setdefault((folder_path, prefix), []).append({
+                "obj": child,
+                "number": number,
+                "raw_stem": Path(child["filename"]).stem,
+            })
+
+        if create_multiple:
+            for (folder_path, prefix), numbered_items in sorted(numbered_groups.items()):
+                if len(numbered_items) < 2:
+                    continue
+                multiple, new, reused = _create_multiple_parent(
+                    numbered_items, file_to_id_map, page, collection_id,
+                    folder_path, compound_id, prefix, add_log_message,
+                )
+                compound_objects.append(multiple)
+                compound_new_mappings += new
+                compound_reused_mappings += reused
+
     add_log_message(
-        f"[DEBUG] Source-directory analysis complete: {len(compound_objects)} compounds created, "
+        f"[DEBUG] Source-directory analysis complete: {len(directory_groups)} compounds, "
+        f"{len(compound_objects) - len(directory_groups)} multiples, "
         f"{len(standalone_objects)} root-level standalone files"
     )
     return compound_objects, file_to_id_map, compound_new_mappings, compound_reused_mappings

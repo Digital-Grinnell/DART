@@ -50,9 +50,9 @@ Use this function to:
    - If `collection-id` is set in App Settings, the generated format becomes `<collection-id>_dg_<epoch_time>`
    - IDs are reused if the file was previously processed
 4. **Creates compound objects** (if grouping enabled)
-   - Source-directory mode groups by the immediate subfolder name and ignores filename conventions
+   - Source-directory mode groups by the immediate subfolder name; numbered filename groups within each actual directory can become nested `multiple` children when `create_multiple_objects` is enabled. Root-level files remain standalone
    - Otherwise, groups files by text similarity in filenames; numbers are used for sequencing, not grouping
-   - Source-directory compounds use the directory name as their suggested title; filename-based mode creates one untitled compound per folder, with numeric sequences nested as `multiple` children
+   - Source-directory compounds use the directory name as their suggested title; filename-based mode creates one untitled compound per folder. Both modes support numeric sequences nested as `multiple` children, or flat children with sequence numbers when `create_multiple_objects` is disabled
    - Each compound/multiple gets its own permanent identifier using the same legacy or prefixed format
    - Child files track their parent via `parentid` field
 
@@ -64,9 +64,9 @@ Function 2 creates one standalone metadata record for each OHM MP3. OHM mode doe
 
 ## Compound Object Grouping
 
-For a step-by-step desktop procedure, including the limits of automatic
-filename-based grouping and the absence of manual member assignment, see
-[Creating Compound Objects in Desktop DART](DESKTOP_COMPOUND_OBJECTS.md).
+For a step-by-step desktop guide to organizing standalone assets, compounds,
+and numbered `multiple` objects, including settings and directory examples, see
+[Organizing Digital Assets for DART](DIGITAL_ASSET_ORGANIZATION.md).
 
 ### What Are Compound Objects?
 A **compound object** is a logical grouping of related digital assets. The compound itself doesn't represent a single file, but rather the folder containing multiple child assets that belong together.
@@ -138,7 +138,7 @@ When **Compounds Grouped by Subdirectory** is off and `group_compound_objects` i
    - Compound ID is reused if the same folder is processed again
    - The compound ID becomes the `parentid` for its direct children (non-sequence groups and any `multiple` objects)
 
-6. **Multiple Object Creation (numeric sequences)**: For each group within the folder that contains 2+ numbered files:
+6. **Multiple Object Creation (Numeric Sequences)**: For each group within the folder that contains 2+ numbered files:
    - A `multiple` object is created and nested under the folder's compound (`parentid` = compound's objectid)
    - All numbered files in that sequence become children of this `multiple` object, not the compound directly
    - Unnumbered files in the same group become direct children of the compound - siblings of the `multiple` object, not its children

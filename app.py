@@ -5,6 +5,7 @@ logging, function management, and help documentation based on OHM's proven UI.
 """
 
 import flet as ft
+from font_size_control import FontSizeController
 from functools import partial
 import dart_handoff
 from dart_processing import (
@@ -12,6 +13,7 @@ from dart_processing import (
     group_objects_by_source_directory as shared_group_objects_by_source_directory,
     build_export_rows, compare_metadata_rows, get_derivative_azure_paths, get_display_template, get_stable_path,
     select_compound_derivative_child,
+    prepare_metadata_additions, require_unchanged_core_csv,
 )
 import os
 import getpass
@@ -1844,6 +1846,13 @@ def main(page: ft.Page):
 
     storage = PersistentStorage()
     logger.info("DART application started")
+    font_size = FontSizeController(
+        page,
+        load_percent=lambda: storage.get_ui_state("font_scale_percent", "100"),
+        save_percent=lambda value: storage.set_ui_state("font_scale_percent", value),
+        logger=logger,
+    )
+    sized_text = font_size.sized_text
     
     # Kill switch for emergency stop of batch operations
     kill_switch = False
@@ -1887,7 +1896,7 @@ def main(page: ft.Page):
             # Create a row with message and clickable "check log" link
             status_container.content = ft.Row(
                 controls=[
-                    ft.Text(
+                    sized_text(
                         message,
                         color=color,
                         size=14,
@@ -1903,7 +1912,7 @@ def main(page: ft.Page):
             )
         else:
             # Simple text status
-            status_container.content = ft.Text(
+            status_container.content = sized_text(
                 message,
                 color=color,
                 size=14,
@@ -1954,9 +1963,9 @@ def main(page: ft.Page):
             
             log_dialog = ft.AlertDialog(
                 modal=True,
-                title=ft.Text(f"Full Log File: {Path(log_filename).name}", weight=ft.FontWeight.BOLD),
+                title=sized_text(f"Full Log File: {Path(log_filename).name}", weight=ft.FontWeight.BOLD),
                 content=ft.Container(
-                    content=ft.TextField(
+                    content=font_size.sized_text_field(
                         value=log_content,
                         multiline=True,
                         read_only=True,
@@ -2213,7 +2222,7 @@ def main(page: ft.Page):
         create_multiple_objects_field = ft.Checkbox(
             label="Nest Numbered Sequences Under 'Multiple' Objects",
             value=settings.get("create_multiple_objects", True),
-            tooltip="Turn off for flat Alma/GEMS-style compounds",
+            tooltip="Nest matching numbered files within each compound, including subdirectory-based compounds. Turn off for flat Alma/GEMS-style compounds.",
         )
         process_ohm_data_field = ft.Checkbox(
             label="Process OHM-Data Objects",
@@ -2240,7 +2249,7 @@ def main(page: ft.Page):
             read_only=False,
         )
         
-        core_csv_validation_text = ft.Text(
+        core_csv_validation_text = sized_text(
             "",
             size=11,
             color=ft.Colors.GREY_700,
@@ -2292,7 +2301,7 @@ def main(page: ft.Page):
             hint_text="Optional: GEMS run's collection_metadata.csv; Function 4 fills empty export fields from it",
             width=500,
         )
-        gems_csv_validation_text = ft.Text("", size=11, color=ft.Colors.GREY_700, visible=False)
+        gems_csv_validation_text = sized_text("", size=11, color=ft.Colors.GREY_700, visible=False)
         
         def show_gems_csv_validation(path_value: str):
             valid, msg = validate_gems_metadata_csv(path_value)
@@ -2341,7 +2350,7 @@ def main(page: ft.Page):
             width=500,
         )
         
-        azure_path_validation_text = ft.Text(
+        azure_path_validation_text = sized_text(
             "",
             size=11,
             color=ft.Colors.GREY_700,
@@ -2379,7 +2388,7 @@ def main(page: ft.Page):
             width=500,
         )
 
-        settings_path_text = ft.Text(
+        settings_path_text = sized_text(
             f"Settings file: {settings_path}",
             size=12,
             color=ft.Colors.GREY_700,
@@ -2503,21 +2512,21 @@ def main(page: ft.Page):
             ft.Container(
                 content=ft.Column(
                     controls=[
-                        ft.Text(
+                        sized_text(
                             f"DART Version: {APP_VERSION}",
                             size=11,
                             color=ft.Colors.BLUE_700,
                             weight=ft.FontWeight.BOLD,
                         ),
                         ft.Container(height=4),
-                        ft.Text(
+                        sized_text(
                             "Edit app settings and save them to the working folder.",
                             size=13,
                         ),
                         settings_path_text,
                         ft.Container(height=8),
                         ft.Container(
-                            content=ft.Text(
+                            content=sized_text(
                                 "⚠️ Before creating a NEW collection, consult "
                                 "'Creating a New Collection (Overlay Model).md' in the "
                                 "DG-with-CB-and-Pagefind repo's docs/DG-documents folder.",
@@ -2539,7 +2548,7 @@ def main(page: ft.Page):
                         use_working_folder_field,
                         overwrite_existing_azure_files_field,
                         ft.Container(height=8),
-                        ft.Text(
+                        sized_text(
                             "Core Metadata CSV:",
                             size=12,
                             weight=ft.FontWeight.BOLD,
@@ -2553,7 +2562,7 @@ def main(page: ft.Page):
                         ),
                         core_csv_validation_text,
                         ft.Container(height=8),
-                        ft.Text(
+                        sized_text(
                             "GEMS Metadata CSV (optional):",
                             size=12,
                             weight=ft.FontWeight.BOLD,
@@ -2568,7 +2577,7 @@ def main(page: ft.Page):
                         ),
                         gems_csv_validation_text,
                         ft.Container(height=8),
-                        ft.Text(
+                        sized_text(
                             "Azure Storage:",
                             size=12,
                             weight=ft.FontWeight.BOLD,
@@ -2576,14 +2585,14 @@ def main(page: ft.Page):
                         azure_storage_field,
                         azure_path_validation_text,
                         ft.Container(height=8),
-                        ft.Text(
+                        sized_text(
                             "Azure Connection String (encrypted):",
                             size=12,
                             weight=ft.FontWeight.BOLD,
                         ),
                         azure_connection_field,
                         ft.Container(height=8),
-                        ft.Text(
+                        sized_text(
                             "Headless DART Handoff (optional; used by Function 4):",
                             size=12,
                             weight=ft.FontWeight.BOLD,
@@ -2687,9 +2696,9 @@ def main(page: ft.Page):
                         and not is_hidden_path(file_path, current_directory)):
                     files.append(str(file_path))  # Store full path
             source_description = f"in {current_directory.name}"
-        source_directory_mode = (
+        source_directory_root = current_directory if (
             group_by_source_directory and not process_ohm_data and not selected_files
-        )
+        ) else None
 
         # DEBUG: Log files found
         add_log_message(f"[DEBUG] Found {len(files)} asset files matching extensions")
@@ -2772,15 +2781,16 @@ def main(page: ft.Page):
             compound_objects = []
             compound_new = 0
             compound_reused = 0
-        elif source_directory_mode:
+        elif source_directory_root is not None:
             compound_objects, file_to_id_map, compound_new, compound_reused = (
                 shared_group_objects_by_source_directory(
                     objects,
                     file_to_id_map,
                     page,
                     collection_id,
-                    current_directory,
+                    source_directory_root,
                     add_log_message=add_log_message,
+                    create_multiple=create_multiple,
                 )
             )
         else:
@@ -2820,9 +2830,9 @@ def main(page: ft.Page):
             
             error_dialog = ft.AlertDialog(
                 modal=True,
-                title=ft.Text("Error: Duplicate Object IDs", weight=ft.FontWeight.BOLD, color=ft.Colors.RED),
+                title=sized_text("Error: Duplicate Object IDs", weight=ft.FontWeight.BOLD, color=ft.Colors.RED),
                 content=ft.Container(
-                    content=ft.Text("\n".join(dup_details), selectable=True),
+                    content=sized_text("\n".join(dup_details), selectable=True),
                     width=700,
                     height=400,
                 ),
@@ -2954,9 +2964,9 @@ def main(page: ft.Page):
 
         dialog = ft.AlertDialog(
             modal=True,
-            title=ft.Text("Function 1: Analyze Digital Assets", weight=ft.FontWeight.BOLD),
+            title=sized_text("Function 1: Analyze Digital Assets", weight=ft.FontWeight.BOLD),
             content=ft.Container(
-                content=ft.Text(result_text, selectable=True),
+                content=sized_text(result_text, selectable=True),
                 width=700,
                 height=500,
             ),
@@ -3085,9 +3095,9 @@ def main(page: ft.Page):
                 if (file_path.is_file() and file_path.suffix.lower() in asset_extensions
                         and not is_hidden_path(file_path, current_directory)):
                     files.append(str(file_path))
-        source_directory_mode = (
+        source_directory_root = current_directory if (
             group_by_source_directory and not process_ohm_data and not selected_files
-        )
+        ) else None
 
         if not files:
             message = "Error: No OHM-data MP3 files found to export" if process_ohm_data else "Error: No digital asset files found to export"
@@ -3157,15 +3167,16 @@ def main(page: ft.Page):
             compound_objects = []
             compound_new = 0
             compound_reused = 0
-        elif source_directory_mode:
+        elif source_directory_root is not None:
             compound_objects, file_to_id_map, compound_new, compound_reused = (
                 shared_group_objects_by_source_directory(
                     objects,
                     file_to_id_map,
                     page,
                     collection_id,
-                    current_directory,
+                    source_directory_root,
                     add_log_message=add_log_message,
+                    create_multiple=create_multiple,
                 )
             )
         else:
@@ -3426,9 +3437,9 @@ def main(page: ft.Page):
 
             dialog = ft.AlertDialog(
                 modal=True,
-                title=ft.Text("Function 2: Export to CSV", weight=ft.FontWeight.BOLD),
+                title=sized_text("Function 2: Export to CSV", weight=ft.FontWeight.BOLD),
                 content=ft.Container(
-                    content=ft.Text(result_text, selectable=True),
+                    content=sized_text(result_text, selectable=True),
                     width=600,
                     height=500,
                 ),
@@ -3900,9 +3911,9 @@ def main(page: ft.Page):
                     
                     log_dialog = ft.AlertDialog(
                         modal=True,
-                        title=ft.Text(f"Log File: {Path(log_filename).name}", weight=ft.FontWeight.BOLD),
+                        title=sized_text(f"Log File: {Path(log_filename).name}", weight=ft.FontWeight.BOLD),
                         content=ft.Container(
-                            content=ft.TextField(
+                            content=font_size.sized_text_field(
                                 value=log_content,
                                 multiline=True,
                                 read_only=True,
@@ -3924,36 +3935,36 @@ def main(page: ft.Page):
             
             # Build result content with clickable log link
             result_content = ft.Column([
-                ft.Text("✅ Derivatives Generated and Uploaded", weight=ft.FontWeight.BOLD, size=16),
-                ft.Text(""),
-                ft.Text(f"CSV Rows: {total_rows} total"),
-                ft.Text(f"  • {processed_count} image files processed"),
+                sized_text("✅ Derivatives Generated and Uploaded", weight=ft.FontWeight.BOLD, size=16),
+                sized_text(""),
+                sized_text(f"CSV Rows: {total_rows} total"),
+                sized_text(f"  • {processed_count} image files processed"),
                 ft.Row([
-                    ft.Text(f"  • {skipped_count} rows skipped "),
+                    sized_text(f"  • {skipped_count} rows skipped "),
                     ft.TextButton(
                         "see log for details",
                         on_click=show_log,
                         style=ft.ButtonStyle(padding=0),
                     ),
                 ], spacing=0),
-                ft.Text(""),
-                ft.Text(f"Small images (800x800):"),
-                ft.Text(f"  • Success: {small_success}"),
-                ft.Text(f"  • Failed: {small_fail}"),
-                ft.Text(""),
-                ft.Text(f"Thumbnails (400x400):"),
-                ft.Text(f"  • Success: {thumb_success}"),
-                ft.Text(f"  • Failed: {thumb_fail}"),
-                ft.Text(""),
-                ft.Text(f"Updated CSV: {output_csv.name}"),
-                ft.Text(f"Location: {working_dir}"),
-                ft.Text(""),
-                ft.Text(f"Columns added: image_small, image_thumb"),
+                sized_text(""),
+                sized_text(f"Small images (800x800):"),
+                sized_text(f"  • Success: {small_success}"),
+                sized_text(f"  • Failed: {small_fail}"),
+                sized_text(""),
+                sized_text(f"Thumbnails (400x400):"),
+                sized_text(f"  • Success: {thumb_success}"),
+                sized_text(f"  • Failed: {thumb_fail}"),
+                sized_text(""),
+                sized_text(f"Updated CSV: {output_csv.name}"),
+                sized_text(f"Location: {working_dir}"),
+                sized_text(""),
+                sized_text(f"Columns added: image_small, image_thumb"),
             ], scroll=ft.ScrollMode.AUTO, tight=True)
             
             dialog = ft.AlertDialog(
                 modal=True,
-                title=ft.Text("Function 3: Generate Derivatives", weight=ft.FontWeight.BOLD),
+                title=sized_text("Function 3: Generate Derivatives", weight=ft.FontWeight.BOLD),
                 content=ft.Container(
                     content=result_content,
                     width=600,
@@ -4047,7 +4058,7 @@ def main(page: ft.Page):
                 lambda: dart_handoff.push_core_snapshot(headless_host, headless_project_dir, str(old_csv)), done)
 
         def open_headless_handoff_dialog(ev=None):
-            handoff_status = ft.Text(f"Contacting {headless_host}...", size=12, selectable=True)
+            handoff_status = sized_text(f"Contacting {headless_host}...", size=12, selectable=True)
             package_list = ft.Column([], spacing=6, scroll=ft.ScrollMode.AUTO, expand=True)
 
             def close_handoff_dialog(evt):
@@ -4056,11 +4067,11 @@ def main(page: ft.Page):
 
             handoff_dialog = ft.AlertDialog(
                 modal=True,
-                title=ft.Text("📥 Pull From Headless DART", weight=ft.FontWeight.BOLD),
+                title=sized_text("📥 Pull From Headless DART", weight=ft.FontWeight.BOLD),
                 content=ft.Container(
                     content=ft.Column([
-                        ft.Text(f"Server project: {headless_host}:{headless_project_dir}", size=12, selectable=True),
-                        ft.Text("Packages are checksum-verified, then copied into this project's "
+                        sized_text(f"Server project: {headless_host}:{headless_project_dir}", size=12, selectable=True),
+                        sized_text("Packages are checksum-verified, then copied into this project's "
                                 ".DART-working-directory for normal Function 4 review and merge.",
                                 size=11, italic=True, color=ft.Colors.GREY_700),
                         handoff_status,
@@ -4122,7 +4133,7 @@ def main(page: ft.Page):
                         lines.extend(f"⚠️ {warning}" for warning in manifest.get("warnings", []))
                         package_list.controls.append(ft.Container(
                             content=ft.Column([
-                                ft.Text("\n".join(lines), size=12, selectable=True),
+                                sized_text("\n".join(lines), size=12, selectable=True),
                                 ft.ElevatedButton(
                                     "Pulled ✓ (Pull Again)" if local_csv.exists() else "Pull For Review",
                                     on_click=lambda e, job_id=manifest["job_id"]: pull(job_id),
@@ -4185,17 +4196,17 @@ def main(page: ft.Page):
             disabled=not gems_csv_available,
         )
         if not gems_csv_path:
-            gems_backfill_note = ft.Text(
+            gems_backfill_note = sized_text(
                 "GEMS backfill off: set gems_metadata_csv in App Settings to fill new records with GEMS metadata.",
                 size=11, italic=True, color=ft.Colors.GREY_700,
             )
         elif not gems_csv_available:
-            gems_backfill_note = ft.Text(
+            gems_backfill_note = sized_text(
                 f"⚠️ gems_metadata_csv not found: {gems_csv_setting}. Fix it in App Settings.",
                 size=11, color=ft.Colors.RED,
             )
         else:
-            gems_backfill_note = ft.Text(
+            gems_backfill_note = sized_text(
                 "Fills only empty cells; DART IDs, structure, and Azure URLs are never taken from GEMS.",
                 size=11, italic=True, color=ft.Colors.GREY_700,
             )
@@ -4214,12 +4225,12 @@ def main(page: ft.Page):
             disabled=not gems_objects_mode,
         )
         if gems_objects_mode:
-            gems_retire_note = ft.Text(
+            gems_retire_note = sized_text(
                 "Only folders whose files were all exported, merged, and error-free are moved; others stay for a re-run.",
                 size=11, italic=True, color=ft.Colors.GREY_700,
             )
         else:
-            gems_retire_note = ft.Text(
+            gems_retire_note = sized_text(
                 f"Object retirement off: requires Functions 2–3 run on a GEMS '{GEMS_OBJECTS_DIR_NAME}' inputs folder with no files selected.",
                 size=11, italic=True, color=ft.Colors.GREY_700,
             )
@@ -4265,15 +4276,15 @@ def main(page: ft.Page):
             held_lines = [f"  • {name}: {reason}" for name, reason in sorted(held.items())]
             retire_dialog = ft.AlertDialog(
                 modal=True,
-                title=ft.Text("📦 GEMS Object Folders", weight=ft.FontWeight.BOLD),
+                title=sized_text("📦 GEMS Object Folders", weight=ft.FontWeight.BOLD),
                 content=ft.Container(
                     content=ft.Column([
-                        ft.Text(f"Moved to {GEMS_OBJECTS_DIR_NAME}/{GEMS_COMPLETE_DIR_NAME}: {len(moved)}",
+                        sized_text(f"Moved to {GEMS_OBJECTS_DIR_NAME}/{GEMS_COMPLETE_DIR_NAME}: {len(moved)}",
                                 color=ft.Colors.GREEN_700, weight=ft.FontWeight.BOLD),
-                        ft.Text(f"Kept in {GEMS_OBJECTS_DIR_NAME}/ for a re-run: {len(held)}",
+                        sized_text(f"Kept in {GEMS_OBJECTS_DIR_NAME}/ for a re-run: {len(held)}",
                                 color=ft.Colors.ORANGE_800 if held else ft.Colors.GREY_700,
                                 weight=ft.FontWeight.BOLD),
-                        *[ft.Text(line, size=11, selectable=True) for line in held_lines[:200]],
+                        *[sized_text(line, size=11, selectable=True) for line in held_lines[:200]],
                     ], spacing=4, scroll=ft.ScrollMode.AUTO),
                     width=650,
                     height=min(400, 120 + 18 * len(held_lines)),
@@ -4305,9 +4316,9 @@ def main(page: ft.Page):
                     
                     log_dialog = ft.AlertDialog(
                         modal=True,
-                        title=ft.Text(f"Log File: {Path(log_filename).name}", weight=ft.FontWeight.BOLD),
+                        title=sized_text(f"Log File: {Path(log_filename).name}", weight=ft.FontWeight.BOLD),
                         content=ft.Container(
-                            content=ft.TextField(
+                            content=font_size.sized_text_field(
                                 value=log_content,
                                 multiline=True,
                                 read_only=True,
@@ -4396,7 +4407,7 @@ def main(page: ft.Page):
                                 'match': '📦'
                             }.get(parent_status, '📦')
                             
-                            preview_rows.append(ft.Text(
+                            preview_rows.append(sized_text(
                                 f"{parent_icon} {parent_filename} ({parent_objectid}) [COMPOUND PARENT]",
                                 size=11,
                                 weight=ft.FontWeight.BOLD,
@@ -4429,7 +4440,7 @@ def main(page: ft.Page):
                                     if changed_fields:
                                         preview_text += f" - {changed_fields}"
                                     
-                                    preview_rows.append(ft.Text(preview_text, size=11))
+                                    preview_rows.append(sized_text(preview_text, size=11))
                                     items_shown += 1
                 else:
                     # Standalone record (not a compound child)
@@ -4454,27 +4465,27 @@ def main(page: ft.Page):
                     if changed_fields:
                         preview_text += f" - {changed_fields}"
                     
-                    preview_rows.append(ft.Text(preview_text, size=11))
+                    preview_rows.append(sized_text(preview_text, size=11))
                     items_shown += 1
             
             if not preview_rows:
-                preview_rows.append(ft.Text("All records match!", size=11, italic=True))
+                preview_rows.append(sized_text("All records match!", size=11, italic=True))
             
             # Build result content
             result_content = ft.Column([
-                ft.Text("✅ CSV Comparison Complete", weight=ft.FontWeight.BOLD, size=16),
-                ft.Text(""),
-                ft.Text(f"Compared Files:", weight=ft.FontWeight.BOLD),
-                ft.Text(f"  Old/Core: {result['old_csv_name']}", size=12),
-                ft.Text(f"  New: {result['new_csv_name']}", size=12),
-                ft.Text(""),
-                ft.Text(f"Total Records: {result['total_rows']}", weight=ft.FontWeight.BOLD),
-                ft.Text(f"  • {result['match_count']} matches (identical)", color=ft.Colors.GREEN),
-                ft.Text(f"  • {result['new_count']} new records", color=ft.Colors.BLUE),
-                ft.Text(f"  • {result['changed_count']} changed records", color=ft.Colors.ORANGE),
-                ft.Text(f"  • {result['missing_count']} missing in new", color=ft.Colors.RED),
-                ft.Text(""),
-                ft.Text("Preview (first 10 changes):", weight=ft.FontWeight.BOLD, size=12),
+                sized_text("✅ CSV Comparison Complete", weight=ft.FontWeight.BOLD, size=16),
+                sized_text(""),
+                sized_text(f"Compared Files:", weight=ft.FontWeight.BOLD),
+                sized_text(f"  Old/Core: {result['old_csv_name']}", size=12),
+                sized_text(f"  New: {result['new_csv_name']}", size=12),
+                sized_text(""),
+                sized_text(f"Total Records: {result['total_rows']}", weight=ft.FontWeight.BOLD),
+                sized_text(f"  • {result['match_count']} matches (identical)", color=ft.Colors.GREEN),
+                sized_text(f"  • {result['new_count']} new records", color=ft.Colors.BLUE),
+                sized_text(f"  • {result['changed_count']} changed records", color=ft.Colors.ORANGE),
+                sized_text(f"  • {result['missing_count']} missing in new", color=ft.Colors.RED),
+                sized_text(""),
+                sized_text("Preview (first 10 changes):", weight=ft.FontWeight.BOLD, size=12),
                 ft.Container(
                     content=ft.Column(preview_rows, spacing=2, scroll=ft.ScrollMode.AUTO),
                     border=ft.border.all(1, ft.Colors.GREY_400),
@@ -4482,20 +4493,20 @@ def main(page: ft.Page):
                     padding=8,
                     height=200,
                 ),
-                ft.Text(""),
-                ft.Text("Output Files:", weight=ft.FontWeight.BOLD),
-                ft.Text(f"  • {result['output_all'].name}", size=11),
-                ft.Text(f"  • {result['output_changes'].name}", size=11),
-                ft.Text(f"  • {result['output_summary'].name}", size=11),
+                sized_text(""),
+                sized_text("Output Files:", weight=ft.FontWeight.BOLD),
+                sized_text(f"  • {result['output_all'].name}", size=11),
+                sized_text(f"  • {result['output_changes'].name}", size=11),
+                sized_text(f"  • {result['output_summary'].name}", size=11),
                 ft.Row([
-                    ft.Text("  • "),
+                    sized_text("  • "),
                     ft.TextButton("See log for details", on_click=show_log),
                 ], spacing=0),
             ], spacing=4, scroll=ft.ScrollMode.AUTO)
             
             result_dialog = ft.AlertDialog(
                 modal=True,
-                title=ft.Text("📊 Function 4: CSV Comparison Results"),
+                title=sized_text("📊 Function 4: CSV Comparison Results"),
                 content=ft.Container(
                     content=result_content,
                     width=600,
@@ -4553,7 +4564,8 @@ def main(page: ft.Page):
                     # Strip 'filepath' column from both CSVs before comparison
                     # (filepath is internal DART data, not CollectionBuilder metadata)
                     # Read and filter old CSV
-                    with open(old_csv, 'r', encoding='utf-8', newline='') as f:
+                    compared_core_bytes = old_csv.read_bytes()
+                    with io.StringIO(compared_core_bytes.decode('utf-8'), newline='') as f:
                         reader = csv.DictReader(f)
                         old_fieldnames = [col for col in reader.fieldnames if col != 'filepath']
                         old_rows = list(reader)
@@ -4565,6 +4577,24 @@ def main(page: ft.Page):
                         new_fieldnames = [col for col in reader.fieldnames if col != 'filepath']
                         new_rows = list(reader)
                     new_fieldnames, new_rows = normalize_csv_filename_columns(new_fieldnames, new_rows)
+                    core_only_columns = [col for col in old_fieldnames if col not in new_fieldnames]
+                    export_only_columns = [col for col in new_fieldnames if col not in old_fieldnames]
+                    schema_notes = []
+                    if core_only_columns:
+                        schema_notes.append(
+                            "Core-only columns preserved (blank on new records): "
+                            + ", ".join(core_only_columns)
+                        )
+                    if export_only_columns:
+                        schema_notes.append(
+                            "Export-only columns require a merge decision: " + ", ".join(export_only_columns)
+                        )
+                        schema_notes.append(
+                            "Only shared columns are compared. Export-only values on existing records "
+                            "are not imported; align the headers and compare again to review those values."
+                        )
+                    for note in schema_notes:
+                        add_log_message(f"[WARN] {note}")
                     
                     add_log_message("[DEBUG] Stripped 'filepath' column from both CSVs for comparison")
                     
@@ -4596,6 +4626,9 @@ def main(page: ft.Page):
 
 Core CSV: {old_csv.name}
 New CSV: {Path(selected_new_csv).name}
+
+Column handling:
+{chr(10).join(schema_notes) or 'Both files have the same metadata columns.'}
 
 Results:
   • {added} new records (in new file only)
@@ -4635,13 +4668,13 @@ Detailed results: {output_diff.name}
                                         f"(title, date, description, etc. are all empty). {advice}")
                         missing_metadata_banner = ft.Container(
                             content=ft.Row([
-                                ft.Text("⚠️", size=20),
+                                sized_text("⚠️", size=20),
                                 ft.Column([
-                                    ft.Text("NEW RECORDS HAVE NO METADATA", weight=ft.FontWeight.BOLD, color=ft.Colors.ORANGE_900, size=13),
-                                    ft.Text(f"{bare_added_count} of {added} new record(s) contain only DART-generated fields "
+                                    sized_text("NEW RECORDS HAVE NO METADATA", weight=ft.FontWeight.BOLD, color=ft.Colors.ORANGE_900, size=13),
+                                    sized_text(f"{bare_added_count} of {added} new record(s) contain only DART-generated fields "
                                             f"(IDs, filenames, Azure URLs) — title, date, description, etc. are all empty.",
                                             size=11, color=ft.Colors.ORANGE_800),
-                                    ft.Text(advice, size=11, italic=True),
+                                    sized_text(advice, size=11, italic=True),
                                 ], spacing=2, expand=True),
                             ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.START),
                             bgcolor=ft.Colors.ORANGE_100,
@@ -4656,19 +4689,19 @@ Detailed results: {output_diff.name}
                             return []
                         s = gems_backfill_stats
                         controls = [
-                            ft.Text("GEMS Backfill:", weight=ft.FontWeight.BOLD),
-                            ft.Text(f"  • {s['matched_rows']} of {s['dart_rows']} export rows matched GEMS "
+                            sized_text("GEMS Backfill:", weight=ft.FontWeight.BOLD),
+                            sized_text(f"  • {s['matched_rows']} of {s['dart_rows']} export rows matched GEMS "
                                     f"({len(s['matched_via_children'])} parent(s) via children)", size=11),
-                            ft.Text(f"  • {s['fields_filled']} empty fields filled across {s['rows_filled']} rows", size=11),
+                            sized_text(f"  • {s['fields_filled']} empty fields filled across {s['rows_filled']} rows", size=11),
                         ]
                         if s["unmatched_dart_rows"]:
                             preview = ", ".join(s["unmatched_dart_rows"][:5]) + (" …" if len(s["unmatched_dart_rows"]) > 5 else "")
-                            controls.append(ft.Text(f"  ⚠️ {len(s['unmatched_dart_rows'])} row(s) had no GEMS match: {preview}",
+                            controls.append(sized_text(f"  ⚠️ {len(s['unmatched_dart_rows'])} row(s) had no GEMS match: {preview}",
                                                     size=11, color=ft.Colors.ORANGE_800, selectable=True))
                         if s["gems_duplicate_names"]:
-                            controls.append(ft.Text(f"  ⚠️ {len(s['gems_duplicate_names'])} duplicate GEMS filename(s) skipped",
+                            controls.append(sized_text(f"  ⚠️ {len(s['gems_duplicate_names'])} duplicate GEMS filename(s) skipped",
                                                     size=11, color=ft.Colors.ORANGE_800))
-                        controls.append(ft.Text(""))
+                        controls.append(sized_text(""))
                         return controls
                     
                     def close_csvdiff_dialog(e):
@@ -4684,7 +4717,10 @@ Detailed results: {output_diff.name}
                             selections = {'added': {}, 'changed': {}}
                             
                             # Build color-coded view
-                            view_rows = []
+                            view_rows = [
+                                sized_text(note, size=11, color=ft.Colors.ORANGE_800, selectable=True)
+                                for note in schema_notes
+                            ]
                             
                             # Create field order based on new CSV columns (for consistent display)
                             # Remove filename key columns since they are identifiers, not merge targets.
@@ -4703,12 +4739,12 @@ Detailed results: {output_diff.name}
                             # Checkbox behavior explanation
                             view_rows.append(ft.Container(
                                 content=ft.Row([
-                                    ft.Text("ℹ️", size=18),
+                                    sized_text("ℹ️", size=18),
                                     ft.Column([
-                                        ft.Text("How Checkboxes Work", weight=ft.FontWeight.BOLD, size=12, color=ft.Colors.BLUE_900),
-                                        ft.Text("• CHECKED: Merge this change into the core CSV (accept the new value)", size=10),
-                                        ft.Text("• UNCHECKED: Skip this change (keep the existing core CSV value)", size=10),
-                                        ft.Text("• Most changes are checked by default, except data loss fields (highlighted in orange)", size=10, italic=True),
+                                        sized_text("How Checkboxes Work", weight=ft.FontWeight.BOLD, size=12, color=ft.Colors.BLUE_900),
+                                        sized_text("• CHECKED: Merge this change into the core CSV (accept the new value)", size=10),
+                                        sized_text("• UNCHECKED: Skip this change (keep the existing core CSV value)", size=10),
+                                        sized_text("• Most changes are checked by default, except data loss fields (highlighted in orange)", size=10, italic=True),
                                     ], spacing=2),
                                 ], spacing=8),
                                 bgcolor=ft.Colors.BLUE_50,
@@ -4722,11 +4758,11 @@ Detailed results: {output_diff.name}
                             if data_loss_count > 0:
                                 view_rows.append(ft.Container(
                                     content=ft.Row([
-                                        ft.Text("⚠️", size=20),
+                                        sized_text("⚠️", size=20),
                                         ft.Column([
-                                            ft.Text("DATA LOSS WARNING", weight=ft.FontWeight.BOLD, color=ft.Colors.ORANGE_900, size=14),
-                                            ft.Text(f"{data_loss_count} field(s) being replaced with empty values (highlighted in orange below)", size=11, color=ft.Colors.ORANGE_800),
-                                            ft.Text("These fields are UNCHECKED by default to prevent accidental data loss - review carefully before enabling", size=10, italic=True),
+                                            sized_text("DATA LOSS WARNING", weight=ft.FontWeight.BOLD, color=ft.Colors.ORANGE_900, size=14),
+                                            sized_text(f"{data_loss_count} field(s) being replaced with empty values (highlighted in orange below)", size=11, color=ft.Colors.ORANGE_800),
+                                            sized_text("These fields are UNCHECKED by default to prevent accidental data loss - review carefully before enabling", size=10, italic=True),
                                         ], spacing=2),
                                     ], spacing=8),
                                     bgcolor=ft.Colors.ORANGE_100,
@@ -4735,12 +4771,12 @@ Detailed results: {output_diff.name}
                                     padding=10,
                                 ))
                                 view_rows.append(ft.Divider(height=2, color=ft.Colors.ORANGE_400))
-                                view_rows.append(ft.Text(""))
+                                view_rows.append(sized_text(""))
                             
                             # Added records (Blue) with checkboxes
                             if added > 0 and warn_missing_metadata:
                                 view_rows.append(ft.Container(
-                                    content=ft.Text(
+                                    content=sized_text(
                                         f"⚠️ {bare_added_count} of {added} new record(s) have no descriptive metadata. "
                                         "For a GEMS batch, close this view and see the advice in the results dialog before merging.",
                                         size=12, weight=ft.FontWeight.BOLD, color=ft.Colors.ORANGE_900),
@@ -4751,7 +4787,7 @@ Detailed results: {output_diff.name}
                                     margin=ft.margin.only(bottom=10),
                                 ))
                             if added > 0:
-                                view_rows.append(ft.Text(f"✨ NEW RECORDS ({added})", weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE, size=14))
+                                view_rows.append(sized_text(f"✨ NEW RECORDS ({added})", weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE, size=14))
                                 view_rows.append(ft.Divider(height=1))
                                 
                                 for idx, record in enumerate(diff_result.get('added', [])):
@@ -4766,7 +4802,7 @@ Detailed results: {output_diff.name}
                                         record_header += f" - {title}"
                                     
                                     # Record header with larger text
-                                    view_rows.append(ft.Text(record_header, weight=ft.FontWeight.BOLD, size=14, color=ft.Colors.BLUE_800))
+                                    view_rows.append(sized_text(record_header, weight=ft.FontWeight.BOLD, size=14, color=ft.Colors.BLUE_800))
                                     view_rows.append(ft.Divider(height=1, color=ft.Colors.BLUE_200))
                                     
                                     # Checkbox for adding this record
@@ -4781,12 +4817,12 @@ Detailed results: {output_diff.name}
                                     ))
                                     view_rows.append(ft.Container(height=8))
                                 
-                                view_rows.append(ft.Text(""))
+                                view_rows.append(sized_text(""))
                             
                             # Removed records (Gray) - READ ONLY, no checkbox
                             if removed > 0:
-                                view_rows.append(ft.Text(f"⚠️ MISSING IN NEW ({removed}) - READ ONLY", weight=ft.FontWeight.BOLD, color=ft.Colors.GREY_700, size=14))
-                                view_rows.append(ft.Text("These records are in core but not in new CSV (not merged)", size=10, italic=True))
+                                view_rows.append(sized_text(f"⚠️ MISSING IN NEW ({removed}) - READ ONLY", weight=ft.FontWeight.BOLD, color=ft.Colors.GREY_700, size=14))
+                                view_rows.append(sized_text("These records are in core but not in new CSV (not merged)", size=10, italic=True))
                                 view_rows.append(ft.Divider(height=1))
                                 
                                 for idx, record in enumerate(diff_result.get('removed', [])[:20]):  # Show first 20
@@ -4801,21 +4837,21 @@ Detailed results: {output_diff.name}
                                         record_text += f" - {title}"
                                     
                                     view_rows.append(ft.Container(
-                                        content=ft.Text(record_text, size=11, color=ft.Colors.GREY_700),
+                                        content=sized_text(record_text, size=11, color=ft.Colors.GREY_700),
                                         bgcolor=ft.Colors.GREY_200,
                                         padding=4,
                                         border_radius=2,
                                     ))
                                 
                                 if removed > 20:
-                                    view_rows.append(ft.Text(f"... and {removed - 20} more", size=10, italic=True))
-                                view_rows.append(ft.Text(""))
+                                    view_rows.append(sized_text(f"... and {removed - 20} more", size=10, italic=True))
+                                view_rows.append(sized_text(""))
                             
                             # Changed records (Red/Green) with field-level checkboxes
                             # Group compound families together
                             if changed > 0:
-                                view_rows.append(ft.Text(f"📝 CHANGED RECORDS ({changed})", weight=ft.FontWeight.BOLD, color=ft.Colors.ORANGE, size=14))
-                                view_rows.append(ft.Text("Each field can be individually selected. Compound families grouped with parent blanket toggles.", size=10, italic=True))
+                                view_rows.append(sized_text(f"📝 CHANGED RECORDS ({changed})", weight=ft.FontWeight.BOLD, color=ft.Colors.ORANGE, size=14))
+                                view_rows.append(sized_text("Each field can be individually selected. Compound families grouped with parent blanket toggles.", size=10, italic=True))
                                 view_rows.append(ft.Divider(height=1))
                                 
                                 # Build parent-child map for compound objects
@@ -4884,7 +4920,7 @@ Detailed results: {output_diff.name}
                                         compound_container = ft.Column([], spacing=6)
                                         
                                         # Parent header
-                                        compound_container.controls.append(ft.Text(
+                                        compound_container.controls.append(sized_text(
                                             f"📦 COMPOUND OBJECT: {key} ({record_objectid})",
                                             weight=ft.FontWeight.BOLD,
                                             size=14,
@@ -4905,7 +4941,7 @@ Detailed results: {output_diff.name}
                                         # Create blanket toggles for parent
                                         blanket_toggles = {}  # field_name -> blanket_checkbox
                                         parent_blanket_container = ft.Column([
-                                            ft.Text("Parent Blanket Controls (affect all children):", 
+                                            sized_text("Parent Blanket Controls (affect all children):",
                                                    weight=ft.FontWeight.BOLD, size=10, color=ft.Colors.PURPLE_900)
                                         ], spacing=2)
                                         
@@ -4964,9 +5000,9 @@ Detailed results: {output_diff.name}
                                                 parent_blanket_container.controls.append(ft.Container(
                                                     content=ft.Row([
                                                         blanket_checkbox,
-                                                        ft.Text("⚠️", size=10),
-                                                        ft.Text(f"{field_name}:", size=9, weight=ft.FontWeight.BOLD, width=90),
-                                                        ft.Text("(controls parent + children)", size=9, italic=True, color=ft.Colors.GREY_600),
+                                                        sized_text("⚠️", size=10),
+                                                        sized_text(f"{field_name}:", size=9, weight=ft.FontWeight.BOLD, width=90),
+                                                        sized_text("(controls parent + children)", size=9, italic=True, color=ft.Colors.GREY_600),
                                                     ], spacing=4, wrap=True),
                                                     padding=4,
                                                     bgcolor=ft.Colors.ORANGE_50,
@@ -4976,8 +5012,8 @@ Detailed results: {output_diff.name}
                                                 parent_blanket_container.controls.append(ft.Container(
                                                     content=ft.Row([
                                                         blanket_checkbox,
-                                                        ft.Text(f"{field_name}:", size=9, weight=ft.FontWeight.BOLD, width=90),
-                                                        ft.Text("(controls parent + children)", size=9, italic=True, color=ft.Colors.GREY_600),
+                                                        sized_text(f"{field_name}:", size=9, weight=ft.FontWeight.BOLD, width=90),
+                                                        sized_text("(controls parent + children)", size=9, italic=True, color=ft.Colors.GREY_600),
                                                     ], spacing=4),
                                                     padding=2,
                                                 ))
@@ -4992,7 +5028,7 @@ Detailed results: {output_diff.name}
                                         
                                         # Show parent's own changes
                                         parent_change_container = ft.Column([
-                                            ft.Text(f"📄 Parent: {key}", weight=ft.FontWeight.BOLD, size=13),
+                                            sized_text(f"📄 Parent: {key}", weight=ft.FontWeight.BOLD, size=13),
                                             ft.Divider(height=1, color=ft.Colors.PURPLE_200)
                                         ], spacing=2)
                                         
@@ -5010,17 +5046,17 @@ Detailed results: {output_diff.name}
                                                 parent_change_container.controls.append(ft.Container(
                                                     content=ft.Row([
                                                         field_checkbox,
-                                                        ft.Text("⚠️", size=12),
-                                                        ft.Text(f"{field_name}:", size=10, weight=ft.FontWeight.BOLD, width=100),
+                                                        sized_text("⚠️", size=12),
+                                                        sized_text(f"{field_name}:", size=10, weight=ft.FontWeight.BOLD, width=100),
                                                         ft.Container(
-                                                            content=ft.Text(old_val, size=10),
+                                                            content=sized_text(old_val, size=10),
                                                             bgcolor=ft.Colors.RED_50,
                                                             padding=2,
                                                             border_radius=2,
                                                         ),
-                                                        ft.Text("←⃠", size=12, color=ft.Colors.ORANGE),
+                                                        sized_text("←⃠", size=12, color=ft.Colors.ORANGE),
                                                         ft.Container(
-                                                            content=ft.Text('(empty)', size=10, italic=True, color=ft.Colors.ORANGE_900),
+                                                            content=sized_text('(empty)', size=10, italic=True, color=ft.Colors.ORANGE_900),
                                                             bgcolor=ft.Colors.ORANGE_100,
                                                             padding=2,
                                                             border_radius=2,
@@ -5035,16 +5071,16 @@ Detailed results: {output_diff.name}
                                                 parent_change_container.controls.append(ft.Container(
                                                     content=ft.Row([
                                                         field_checkbox,
-                                                        ft.Text(f"{field_name}:", size=10, weight=ft.FontWeight.BOLD, width=130),
+                                                        sized_text(f"{field_name}:", size=10, weight=ft.FontWeight.BOLD, width=130),
                                                         ft.Container(
-                                                            content=ft.Text(old_val if old_val else '(empty)', size=10),
+                                                            content=sized_text(old_val if old_val else '(empty)', size=10),
                                                             bgcolor=ft.Colors.RED_50,
                                                             padding=2,
                                                             border_radius=2,
                                                         ),
-                                                        ft.Text("←", size=10),
+                                                        sized_text("←", size=10),
                                                         ft.Container(
-                                                            content=ft.Text(new_val if new_val else '(empty)', size=10),
+                                                            content=sized_text(new_val if new_val else '(empty)', size=10),
                                                             bgcolor=ft.Colors.GREEN_50,
                                                             padding=2,
                                                             border_radius=2,
@@ -5057,7 +5093,7 @@ Detailed results: {output_diff.name}
                                         
                                         # Show children
                                         children_container = ft.Column([
-                                            ft.Text(f"Children ({len(children_indices)}):", weight=ft.FontWeight.BOLD, size=10, color=ft.Colors.PURPLE_700)
+                                            sized_text(f"Children ({len(children_indices)}):", weight=ft.FontWeight.BOLD, size=10, color=ft.Colors.PURPLE_700)
                                         ], spacing=4)
                                         
                                         for child_idx in children_indices:
@@ -5070,7 +5106,7 @@ Detailed results: {output_diff.name}
                                             child_fields = child_change.get('fields', {})
                                             
                                             child_change_container = ft.Column([
-                                                ft.Text(f"  ↳ {child_key}", weight=ft.FontWeight.BOLD, size=12),
+                                                sized_text(f"  ↳ {child_key}", weight=ft.FontWeight.BOLD, size=12),
                                                 ft.Divider(height=1, color=ft.Colors.PURPLE_100)
                                             ], spacing=2)
                                             
@@ -5104,17 +5140,17 @@ Detailed results: {output_diff.name}
                                                     child_change_container.controls.append(ft.Container(
                                                         content=ft.Row([
                                                             child_checkbox,
-                                                            ft.Text("⚠️", size=12),
-                                                            ft.Text(f"{field_name}:", size=9, width=90),
+                                                            sized_text("⚠️", size=12),
+                                                            sized_text(f"{field_name}:", size=9, width=90),
                                                             ft.Container(
-                                                                content=ft.Text(old_val, size=9),
+                                                                content=sized_text(old_val, size=9),
                                                                 bgcolor=ft.Colors.RED_50,
                                                                 padding=2,
                                                                 border_radius=2,
                                                             ),
-                                                            ft.Text("←⃠", size=10, color=ft.Colors.ORANGE),
+                                                            sized_text("←⃠", size=10, color=ft.Colors.ORANGE),
                                                             ft.Container(
-                                                                content=ft.Text('(empty)', size=9, italic=True),
+                                                                content=sized_text('(empty)', size=9, italic=True),
                                                                 bgcolor=ft.Colors.ORANGE_100,
                                                                 padding=2,
                                                                 border_radius=2,
@@ -5128,16 +5164,16 @@ Detailed results: {output_diff.name}
                                                     child_change_container.controls.append(ft.Container(
                                                         content=ft.Row([
                                                             child_checkbox,
-                                                            ft.Text(f"{field_name}:", size=9, width=90),
+                                                            sized_text(f"{field_name}:", size=9, width=90),
                                                             ft.Container(
-                                                                content=ft.Text(old_val if old_val else '(empty)', size=9),
+                                                                content=sized_text(old_val if old_val else '(empty)', size=9),
                                                                 bgcolor=ft.Colors.RED_50,
                                                                 padding=2,
                                                                 border_radius=2,
                                                             ),
-                                                            ft.Text("←", size=9),
+                                                            sized_text("←", size=9),
                                                             ft.Container(
-                                                                content=ft.Text(new_val if new_val else '(empty)', size=9),
+                                                                content=sized_text(new_val if new_val else '(empty)', size=9),
                                                                 bgcolor=ft.Colors.GREEN_50,
                                                                 padding=2,
                                                                 border_radius=2,
@@ -5164,7 +5200,7 @@ Detailed results: {output_diff.name}
                                             border_radius=6,
                                             border=ft.border.all(2, ft.Colors.PURPLE_400),
                                         ))
-                                        view_rows.append(ft.Text(""))
+                                        view_rows.append(sized_text(""))
                                         
                                         processed_change_indices.add(idx)
                                         
@@ -5186,7 +5222,7 @@ Detailed results: {output_diff.name}
                                         )
                                         
                                         change_container = ft.Column([
-                                            ft.Text(f"📄 {key} ({len(fields)} fields changed)", 
+                                            sized_text(f"📄 {key} ({len(fields)} fields changed)",
                                                    weight=ft.FontWeight.BOLD, size=14),
                                             ft.Divider(height=1, color=ft.Colors.ORANGE_200)
                                         ], spacing=4)
@@ -5219,17 +5255,17 @@ Detailed results: {output_diff.name}
                                                 change_container.controls.append(ft.Container(
                                                     content=ft.Row([
                                                         field_checkbox,
-                                                        ft.Text("⚠️", size=12),
-                                                        ft.Text(f"{field_name}:", size=10, weight=ft.FontWeight.BOLD, width=100),
+                                                        sized_text("⚠️", size=12),
+                                                        sized_text(f"{field_name}:", size=10, weight=ft.FontWeight.BOLD, width=100),
                                                         ft.Container(
-                                                            content=ft.Text(old_val, size=10),
+                                                            content=sized_text(old_val, size=10),
                                                             bgcolor=ft.Colors.RED_50,
                                                             padding=2,
                                                             border_radius=2,
                                                         ),
-                                                        ft.Text("←⃠", size=12, color=ft.Colors.ORANGE),
+                                                        sized_text("←⃠", size=12, color=ft.Colors.ORANGE),
                                                         ft.Container(
-                                                            content=ft.Text('(empty)', size=10, italic=True, color=ft.Colors.ORANGE_900),
+                                                            content=sized_text('(empty)', size=10, italic=True, color=ft.Colors.ORANGE_900),
                                                             bgcolor=ft.Colors.ORANGE_100,
                                                             padding=2,
                                                             border_radius=2,
@@ -5244,16 +5280,16 @@ Detailed results: {output_diff.name}
                                                 change_container.controls.append(ft.Container(
                                                     content=ft.Row([
                                                         field_checkbox,
-                                                        ft.Text(f"{field_name}:", size=10, weight=ft.FontWeight.BOLD, width=130),
+                                                        sized_text(f"{field_name}:", size=10, weight=ft.FontWeight.BOLD, width=130),
                                                         ft.Container(
-                                                            content=ft.Text(old_val if old_val else '(empty)', size=10),
+                                                            content=sized_text(old_val if old_val else '(empty)', size=10),
                                                             bgcolor=ft.Colors.RED_50,
                                                             padding=2,
                                                             border_radius=2,
                                                         ),
-                                                        ft.Text("←", size=10),
+                                                        sized_text("←", size=10),
                                                         ft.Container(
-                                                            content=ft.Text(new_val if new_val else '(empty)', size=10),
+                                                            content=sized_text(new_val if new_val else '(empty)', size=10),
                                                             bgcolor=ft.Colors.GREEN_50,
                                                             padding=2,
                                                             border_radius=2,
@@ -5269,7 +5305,7 @@ Detailed results: {output_diff.name}
                                             border_radius=4,
                                             border=ft.border.all(1, ft.Colors.ORANGE_300 if has_data_loss else ft.Colors.GREY_300),
                                         ))
-                                        view_rows.append(ft.Text(""))
+                                        view_rows.append(sized_text(""))
                                         
                                         processed_change_indices.add(idx)
                             
@@ -5303,7 +5339,20 @@ Detailed results: {output_diff.name}
                                         return
                                     
                                     # Confirm merge
+                                    column_action = ft.Dropdown(
+                                        label="Export-only columns",
+                                        options=[
+                                            ft.dropdown.Option("keep", "Keep core columns; skip export-only data"),
+                                            ft.dropdown.Option("extend", "Append export-only columns for selected new records"),
+                                        ],
+                                        visible=bool(export_only_columns),
+                                    )
+
                                     def confirm_merge(ev):
+                                        if export_only_columns and column_action.value not in ("keep", "extend"):
+                                            update_status("Choose how to handle export-only columns before merging.", is_error=True)
+                                            add_log_message("[ERROR] Merge requires an explicit export-only column decision.")
+                                            return
                                         confirm_dialog.open = False
                                         page.update()
                                         
@@ -5315,6 +5364,7 @@ Detailed results: {output_diff.name}
                                             import csv
                                             from datetime import datetime
                                             import shutil
+                                            require_unchanged_core_csv(old_csv, compared_core_bytes)
                                             
                                             # Create backup of core CSV in DART working subdirectory
                                             backup_path = dart_working_dir / f"{old_csv.name}.backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -5322,7 +5372,7 @@ Detailed results: {output_diff.name}
                                             add_log_message(f"[INFO] Created backup: {backup_path.name}")
                                             
                                             # Read core CSV
-                                            with open(old_csv, 'r', encoding='utf-8', newline='') as f:
+                                            with io.StringIO(compared_core_bytes.decode('utf-8'), newline='') as f:
                                                 reader = csv.DictReader(f)
                                                 fieldnames = reader.fieldnames
                                                 core_rows = list(reader)
@@ -5337,11 +5387,20 @@ Detailed results: {output_diff.name}
                                             
                                             # Apply selected additions
                                             added_records = diff_result.get('added', [])
-                                            for idx in sorted(selected_added):
-                                                if idx < len(added_records):
-                                                    new_record = added_records[idx]
-                                                    core_rows.append(new_record)
-                                                    add_log_message(f"[INFO] Added: {get_csv_filename_value(new_record) or 'Unknown'}")
+                                            fieldnames, additions = prepare_metadata_additions(
+                                                fieldnames,
+                                                [added_records[idx] for idx in sorted(selected_added)],
+                                                export_only_columns,
+                                                column_action.value,
+                                            )
+                                            if export_only_columns:
+                                                add_log_message(
+                                                    f"[INFO] Export-only column decision: {column_action.value}; "
+                                                    + ", ".join(export_only_columns)
+                                                )
+                                            for new_record in additions:
+                                                core_rows.append(new_record)
+                                                add_log_message(f"[INFO] Added: {get_csv_filename_value(new_record) or 'Unknown'}")
                                             
                                             # Apply selected field changes
                                             changed_records = diff_result.get('changed', [])
@@ -5376,6 +5435,7 @@ Detailed results: {output_diff.name}
                                                     writer.writerows(core_rows)
                                                 
                                                 # Atomic replace: rename temp file to target (overwrites on all platforms)
+                                                require_unchanged_core_csv(old_csv, compared_core_bytes)
                                                 os.replace(temp_path, old_csv)
                                                 add_log_message(f"[INFO] Successfully overwrote {old_csv.name}")
                                             except Exception as write_error:
@@ -5412,17 +5472,19 @@ Detailed results: {output_diff.name}
                                     
                                     confirm_dialog = ft.AlertDialog(
                                         modal=True,
-                                        title=ft.Text("⚠️ Confirm Merge", weight=ft.FontWeight.BOLD),
+                                        title=sized_text("⚠️ Confirm Merge", weight=ft.FontWeight.BOLD),
                                         content=ft.Column([
-                                            ft.Text(f"You are about to merge into the core CSV:", size=12),
-                                            ft.Text(f"  • {len(selected_added)} new records", color=ft.Colors.BLUE),
-                                            ft.Text(f"  • {len(selected_field_changes)} field changes across {unique_records} records", color=ft.Colors.ORANGE),
-                                            ft.Text(""),
-                                            ft.Text(f"Core CSV: {old_csv.name}", size=11, weight=ft.FontWeight.BOLD),
-                                            ft.Text(""),
-                                            ft.Text("A backup will be created automatically.", size=10, italic=True),
-                                            ft.Text(""),
-                                            ft.Text("This action cannot be undone (except by restoring backup).", size=10, color=ft.Colors.RED),
+                                            sized_text(f"You are about to merge into the core CSV:", size=12),
+                                            sized_text(f"  • {len(selected_added)} new records", color=ft.Colors.BLUE),
+                                            sized_text(f"  • {len(selected_field_changes)} field changes across {unique_records} records", color=ft.Colors.ORANGE),
+                                            sized_text(""),
+                                            sized_text(f"Core CSV: {old_csv.name}", size=11, weight=ft.FontWeight.BOLD),
+                                            *[sized_text(note, size=11, selectable=True) for note in schema_notes],
+                                            column_action,
+                                            sized_text(""),
+                                            sized_text("A backup will be created automatically.", size=10, italic=True),
+                                            sized_text(""),
+                                            sized_text("This action cannot be undone (except by restoring backup).", size=10, color=ft.Colors.RED),
                                         ], spacing=4, tight=True),
                                         actions=[
                                             ft.TextButton("Cancel", on_click=cancel_merge),
@@ -5440,7 +5502,7 @@ Detailed results: {output_diff.name}
                             
                             color_view_dialog = ft.AlertDialog(
                                 modal=True,
-                                title=ft.Text("🎨 Interactive Comparison & Merge", weight=ft.FontWeight.BOLD),
+                                title=sized_text("🎨 Interactive Comparison & Merge", weight=ft.FontWeight.BOLD),
                                 content=ft.Container(
                                     content=ft.Column(view_rows, spacing=2, scroll=ft.ScrollMode.ALWAYS),
                                     width=900,
@@ -5462,21 +5524,23 @@ Detailed results: {output_diff.name}
                     
                     csvdiff_dialog = ft.AlertDialog(
                         modal=True,
-                        title=ft.Text("📊 csvdiff Comparison Results"),
+                        title=sized_text("📊 csvdiff Comparison Results"),
                         content=ft.Container(
-                            content=ft.Column(([missing_metadata_banner, ft.Text("")] if missing_metadata_banner else []) + [
-                                ft.Text(f"Core CSV: {old_csv.name}", size=11),
-                                ft.Text(f"New CSV: {Path(selected_new_csv).name}", size=11),
-                                ft.Text(""),
-                                ft.Text("Results:", weight=ft.FontWeight.BOLD),
-                                ft.Text(f"  • {added} new records", color=ft.Colors.BLUE),
-                                ft.Text(f"  • {changed} changed records", color=ft.Colors.ORANGE),
-                                ft.Text(f"  • {removed} missing in new", color=ft.Colors.RED),
-                                ft.Text(""),
+                            content=ft.Column(([missing_metadata_banner, sized_text("")] if missing_metadata_banner else []) + [
+                                sized_text(f"Core CSV: {old_csv.name}", size=11),
+                                sized_text(f"New CSV: {Path(selected_new_csv).name}", size=11),
+                                *[sized_text(note, size=11, color=ft.Colors.ORANGE_800, selectable=True)
+                                  for note in schema_notes],
+                                sized_text(""),
+                                sized_text("Results:", weight=ft.FontWeight.BOLD),
+                                sized_text(f"  • {added} new records", color=ft.Colors.BLUE),
+                                sized_text(f"  • {changed} changed records", color=ft.Colors.ORANGE),
+                                sized_text(f"  • {removed} missing in new", color=ft.Colors.RED),
+                                sized_text(""),
                             ] + (gems_backfill_summary_controls()) + [
-                                ft.Text("Output Files:", weight=ft.FontWeight.BOLD),
-                                ft.Text(f"  • {output_diff.name} (detailed JSON)", size=11),
-                                ft.Text(f"  • {output_summary.name} (summary)", size=11),
+                                sized_text("Output Files:", weight=ft.FontWeight.BOLD),
+                                sized_text(f"  • {output_diff.name} (detailed JSON)", size=11),
+                                sized_text(f"  • {output_summary.name} (summary)", size=11),
                             ], spacing=4, scroll=ft.ScrollMode.AUTO),
                             width=600,
                             height=(300 + (120 if missing_metadata_banner else 0)
@@ -5531,7 +5595,7 @@ Detailed results: {output_diff.name}
 
         if headless_configured:
             headless_controls = [
-                ft.Text(f"Headless DART: {headless_host}:{headless_project_dir}", size=11, color=ft.Colors.GREY_700),
+                sized_text(f"Headless DART: {headless_host}:{headless_project_dir}", size=11, color=ft.Colors.GREY_700),
                 ft.Row([
                     ft.ElevatedButton("Pull From Headless DART...", icon=ft.Icons.DOWNLOAD,
                                       on_click=pull_from_headless_click),
@@ -5540,7 +5604,7 @@ Detailed results: {output_diff.name}
                 ]),
             ]
         else:
-            headless_controls = [ft.Text(
+            headless_controls = [sized_text(
                 "Headless DART handoff off: set headless_host and headless_project_dir in App Settings.",
                 size=11, italic=True, color=ft.Colors.GREY_700,
             )]
@@ -5572,18 +5636,18 @@ Detailed results: {output_diff.name}
         
         select_dialog = ft.AlertDialog(
             modal=True,
-            title=ft.Text("📊 Select New CSV to Compare", weight=ft.FontWeight.BOLD),
+            title=sized_text("📊 Select New CSV to Compare", weight=ft.FontWeight.BOLD),
             content=ft.Container(
                 content=ft.Column([
-                    ft.Text(
+                    sized_text(
                         f"Core metadata CSV (from settings):\n  {old_csv.name}",
                         size=12,
                         weight=ft.FontWeight.BOLD,
                         color=ft.Colors.BLUE_700
                     ),
                     ft.Divider(),
-                    ft.Text("Select the new CSV file to compare against core:", size=13),
-                    ft.Text("⭐ Newest file is recommended (highlighted)", size=11, italic=True),
+                    sized_text("Select the new CSV file to compare against core:", size=13),
+                    sized_text("⭐ Newest file is recommended (highlighted)", size=11, italic=True),
                     ft.Container(height=8),
                     ft.Column(csv_choices, spacing=2, scroll=ft.ScrollMode.AUTO, expand=True),
                     ft.Divider(),
@@ -5633,9 +5697,9 @@ Detailed results: {output_diff.name}
 
         dialog = ft.AlertDialog(
             modal=True,
-            title=ft.Text("Function 9: System Info"),
+            title=sized_text("Function 9: System Info"),
             content=ft.Container(
-                content=ft.Text(result_text, selectable=True),
+                content=sized_text(result_text, selectable=True),
                 width=600,
                 height=300,
             ),
@@ -5726,7 +5790,7 @@ Detailed results: {output_diff.name}
 
         help_dialog = ft.AlertDialog(
             modal=True,
-            title=ft.Text(
+            title=sized_text(
                 display_label
                 if function_key == "function_0_app_settings"
                 else f"Function {display_label}",
@@ -5855,7 +5919,7 @@ Detailed results: {output_diff.name}
 
     # Container for status - can hold either simple text or row with clickable link
     status_container = ft.Container(
-        content=ft.Text(
+        content=sized_text(
             "Ready",
             size=14,
             color=ft.Colors.BLACK,
@@ -5954,19 +6018,21 @@ Detailed results: {output_diff.name}
             controls=[
                 # ---- Title
                 ft.Row([
-                    ft.Text("🎯", size=32),
-                    ft.Text(
+                    sized_text("🎯", size=32),
+                    sized_text(
                         f"DART — Digital Asset Routing and Transformation — v{APP_VERSION}",
                         size=24,
                         weight=ft.FontWeight.BOLD,
+                        expand=True,
                     ),
                 ], spacing=10),
-                ft.Text(
+                sized_text(
                     "Process digital assets to create CollectionBuilder metadata in-sync with the objects and their derivatives.",
                     size=13,
                     color=ft.Colors.GREY_700,
                     italic=True,
                 ),
+                font_size.controls,
                 ft.Divider(height=5),
 
                 # ---- Folders section (collapsible)
@@ -5975,7 +6041,7 @@ Detailed results: {output_diff.name}
                         controls=[
                             ft.Row(
                                 controls=[
-                                    ft.Text(
+                                    sized_text(
                                         "Folders",
                                         size=18,
                                         weight=ft.FontWeight.BOLD,
@@ -5996,7 +6062,7 @@ Detailed results: {output_diff.name}
                         controls=[
                             ft.Row(
                                 controls=[
-                                    ft.Text(
+                                    sized_text(
                                         "App Settings",
                                         size=18,
                                         weight=ft.FontWeight.BOLD,
@@ -6023,7 +6089,7 @@ Detailed results: {output_diff.name}
                 ft.Container(
                     content=ft.Column(
                         controls=[
-                            ft.Text(
+                            sized_text(
                                 "Files Selection",
                                 size=18,
                                 weight=ft.FontWeight.BOLD,
@@ -6059,12 +6125,12 @@ Detailed results: {output_diff.name}
                                 controls=[
                                     ft.Row(
                                         controls=[
-                                            ft.Text(
+                                            sized_text(
                                                 "Functions",
                                                 size=18,
                                                 weight=ft.FontWeight.BOLD,
                                             ),
-                                            ft.Text(
+                                            sized_text(
                                                 "- Select and execute workflow functions",
                                                 size=12,
                                                 italic=True,
@@ -6116,7 +6182,7 @@ Detailed results: {output_diff.name}
                         controls=[
                             ft.Row(
                                 controls=[
-                                    ft.Text(
+                                    sized_text(
                                         "Status",
                                         size=18,
                                         weight=ft.FontWeight.BOLD,
@@ -6144,7 +6210,7 @@ Detailed results: {output_diff.name}
                         controls=[
                             ft.Row(
                                 controls=[
-                                    ft.Text(
+                                    sized_text(
                                         "Log Output",
                                         size=18,
                                         weight=ft.FontWeight.BOLD,

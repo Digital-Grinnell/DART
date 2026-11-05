@@ -60,6 +60,16 @@ Use this function when you want to:
 
 ## What Gets Exported
 
+Export uses the same grouping settings as Function 1. With **Compounds Grouped
+by Subdirectory** enabled, each immediate Inputs Folder subfolder defines one
+compound, including all its descendant assets. **Nest Numbered Sequences Under
+'Multiple' Objects** controls whether matching groups of two or more numbered
+files within each actual directory become `multiple` children of that compound.
+Files directly in the Inputs Folder remain standalone. With nesting off, files
+attach directly to the compound; existing file and compound IDs are reused.
+See [Organizing Digital Assets for DART](DIGITAL_ASSET_ORGANIZATION.md) for
+settings and example hierarchies.
+
 The function automatically populates these CollectionBuilder fields from your assets:
 
 - **objectid**: Unique DG identifier (format: `dg_<epoch>` or `<collection-id>_dg_<epoch>` when `collection-id` is configured in App Settings)
@@ -68,8 +78,9 @@ The function automatically populates these CollectionBuilder fields from your as
   - Example: `_photo_001.jpg` for a compound parent (no physical file, just an index)
   - The underscore prefix differentiates compound parents from actual files
 - **parentid**: Parent object ID for child objects (if column exists and compound grouping enabled)
-  - Blank for standalone objects and compound parents
-  - Set to parent's objectid for child objects in a compound
+  - Blank for standalone objects and top-level compound parents
+  - Set to the compound's objectid for direct file children and nested `multiple` parents
+  - Set to the `multiple` object's objectid for its numbered file children
 - **display_template**: CollectionBuilder layout type (if column exists in template)
   - `image` for .jpg, .jpeg, .png, .gif, .tif, .tiff, .bmp, .webp
   - `video` for .mp4, .mov, .avi, .mkv, .wmv, .flv, .webm
@@ -166,7 +177,7 @@ DART uses a three-folder structure in Azure:
 
 Function 2 currently uploads only to `/objs/`. Future functions will generate and upload derivatives to `/smalls/` and `/thumbs/`.
 
-### If Azure is Not Configured
+### If Azure Is Not Configured
 
 If Azure settings are not configured in App Settings:
 - CSV export still works normally
@@ -193,7 +204,7 @@ Function 2 supports an **emergency stop** feature for long-running Azure upload 
 4. A warning message appears: "⚠️ Kill switch activated - stopping after current file"
 5. CSV file is created with all files processed up to that point
 
-### What Happens When Kill Switch is Activated
+### What Happens When Kill Switch Is Activated
 
 - Current file upload completes (cannot be interrupted mid-upload)
 - All remaining files are skipped

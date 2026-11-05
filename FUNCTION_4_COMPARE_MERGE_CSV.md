@@ -102,6 +102,29 @@ This applies to newly generated comparisons. Previously saved comparison JSON
 may already contain normalized newlines and sorted additions; create a new
 comparison before merging to obtain the corrected behavior.
 
+## Handling Different CSV Columns
+
+The core and export do not need identical headers. Names such as
+`WARNING - DO NOT PUBLISH` and `iiif_manifest` are valid; no setting or
+column renaming is needed.
+
+- **Shared columns:** Compared normally, with individual field checkboxes.
+- **Core-only columns:** Existing values are preserved. New records get empty
+  cells in these columns; a missing export column is not treated as a deletion.
+- **Export-only columns:** Listed in the results, review, text summary, and log.
+  The merge confirmation requires an explicit choice: **Keep core columns**
+  skips their data, or **Append export-only columns for selected new records**
+  appends those headers in export order and retains their values on selected
+  additions. Existing core rows get blank cells in appended columns.
+  Export-only values on existing records are not compared or imported.
+  To review those values, add the desired headers to the core and run a fresh
+  comparison. The original export is never modified by this choice.
+
+The merge is blocked if the core's contents changed after comparison, including
+header edits. Run Function 4 again against the edited core before merging.
+DART checks before creating the merge backup and again before replacing the
+core with the prepared output.
+
 ## When to Use
 Use this function when you want to:
 - Compare a new DART_export CSV against your core/master metadata file
@@ -184,7 +207,7 @@ Function 4 uses the csvdiff Python library for comparison:
 
 8. After a successful merge of a GEMS batch, completed object folders are moved to `objects/.complete` (see "Retiring Completed GEMS Object Folders" below)
 
-## GEMS Backfill (optional, v6.6+)
+## GEMS Backfill (Optional, v6.6+)
 
 GEMS gathers the descriptive metadata (title, date, description, subjects, rights, …) into its own `collection_metadata.csv`. A DART export holds only DART's fields (`objectid`, `parentid`, Azure URLs, derivatives). After the first batch, your core CSV holds published records for the earlier batches, but **not** the GEMS rows for the batch you're processing. Without a backfill, Function 4 adds that batch as records with no GEMS metadata.
 
@@ -246,8 +269,8 @@ DART automatically:
 - Uses `original_file_name` as the unique identifier for matching records between files
 - Detects all shared columns between both files (excludes `original_file_name` and `filepath`)
 - Performs **case-sensitive** comparison of all values
-- Normalizes whitespace (strips leading/trailing spaces)
-- Treats empty strings and missing values (NaN) as equivalent
+- Preserves cell contents exactly, including whitespace and embedded line endings
+- Treats a column absent from one file as outside the field comparison, not as an empty replacement
 - Validates that `original_file_name` is unique in both files
 - For display purposes: Uses `original_file_name` to identify records
   - Note: Compound parent objects now have underscore-prefixed filenames (e.g., `_photo_001.jpg`) rather than blank
@@ -359,6 +382,11 @@ Core metadata CSV is configured in settings
 - **"Missing original_file_name column"**: Both files must have this column
 - **"Duplicate original_file_name values"**: Fix duplicates before comparison
 - **"Error comparing CSVs"**: Check log for csvdiff or data format issues
+- **Different headers, including `WARNING - DO NOT PUBLISH` or `iiif_manifest`**:
+  Supported automatically. See "Handling Different CSV Columns" above for
+  preservation rules and the required export-only column decision.
+- **"Core CSV changed since comparison"**: Close the old review and run
+  Function 4 again. Do not merge a comparison made before editing the core.
 - **Only "new" and "missing" records, 0 "changed", and the new records have no titles or descriptions**: The core CSV doesn't contain this batch's GEMS rows, for example because it holds an earlier batch. Close the dialog without merging. Set `gems_metadata_csv` in App Settings to the GEMS run's `collection_metadata.csv`, then run Function 4 again with the GEMS backfill checkbox checked. See "GEMS Backfill" above.
 - **⚠️ "NEW RECORDS HAVE NO METADATA" banner** (v6.6+): At least half of the new records have values only in DART-generated columns (`objectid`, `parentid`, `display_template`, `original_file_name`, `filepath`, `originating_system_id`, `object_location`, `image_small`, `image_thumb`, `type`, `format`). Title, date, description and every other metadata column are empty. The banner appears in the results dialog and the review/merge view, and is also written to the log and status bar. It's only a warning, and merging is still allowed. Its advice depends on the situation:
   - No `gems_metadata_csv` is set: set it and run Function 4 again.
@@ -371,15 +399,15 @@ Function 4 implements CSV comparison using csvdiff:
 
 1. Load both CSV files and validate structure
 2. Strip `filepath` column from both CSVs (internal DART data)
-3. Write temporary filtered CSV files for comparison
-4. Normalize `original_file_name` (strip whitespace)
+3. Identify shared, core-only, and export-only columns
+4. Normalize the filename column alias and trim filename keys; preserve other cell contents
 5. Validate uniqueness of `original_file_name` in both files
-6. Run csvdiff with `original_file_name` as the key column
+6. Run csvdiff on shared columns with `original_file_name` as the key, retaining complete added and removed records
 7. Parse JSON output to identify added, removed, and changed records
 8. Generate text summary with counts
 9. Display interactive merge viewer for selective application
-10. Create timestamped backup before merge
-11. Apply only checked changes to core CSV
+10. Require a decision for export-only columns and verify the core is unchanged
+11. Create a timestamped backup, apply only checked record/field changes and the chosen column policy, then recheck the core before atomic replacement
 
 ## Integration with Other Functions
 
@@ -418,11 +446,9 @@ Function 4 implements CSV comparison using csvdiff:
 - Selection dialog shows modification times for all CSV files
 - Core CSV is labeled in the list if it's also in working directory
 - Comparison is always **case-sensitive** (per user requirements)
-- Whitespace is normalized automatically (stripped from values)
-- Empty cells and NaN are treated as equivalent
+- Cell contents, including whitespace and embedded line endings, are preserved
 - All shared columns are compared (no manual selection needed)
 - Output files are timestamped to avoid overwrite
-- Empty cells and NaN are treated as equivalent
 - All shared columns are compared (no manual selection needed)
 - Output files are timestamped to avoid overwrites
 - The newest CSV is always auto-selected as "new"

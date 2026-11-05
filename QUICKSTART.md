@@ -45,6 +45,14 @@ This will:
 
 ## Next Steps
 
+### Adjust the Font Size
+
+Use **A-** and **A+** below the app title to change the font size in 10-percentage-point
+steps, clamped to **75%-200%**. **Reset** returns to **100%**. The choice is saved
+as a desktop preference and restored on the next launch; it is not a
+project App Setting. Text in the main window and newly opened dialogs follows
+the selected size, including explicitly sized headings and comparison details.
+
 ### 1. Test the Example Functions
 
 The app includes multiple functions:

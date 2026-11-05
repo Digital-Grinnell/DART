@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import ast
 import hashlib
 import io
 import json
@@ -641,11 +640,13 @@ class ManagedTests(unittest.TestCase):
 
     def test_input_folder_guidance_refreshes_on_startup_project_switch_and_load_error(self):
         page = MagicMock()
+        page.theme = None
+        page.dark_theme = None
         page.overlay = []
         preferences = MagicMock()
-        preferences.get_ui_state.side_effect = lambda key: {
+        preferences.get_ui_state.side_effect = lambda key, default="": {
             "last_output_dir": str(self.work), "last_input_dir": str(self.source),
-        }.get(key, "")
+        }.get(key, default)
         preferences.get_last_executed_function.return_value = ""
         settings = dict(app.DEFAULT_APP_SETTINGS, headless_host="sysadmin@dg-landing",
                         headless_project_dir="/data/dart/data/projects/collection")
@@ -877,6 +878,117 @@ class HandoffTests(unittest.TestCase):
 
 @unittest.skipUnless(os.name == "posix", "Managed headless Linux storage requires POSIX")
 class PureTests(unittest.TestCase):
+    def test_source_directory_example_with_two_compounds_and_six_singles(self):
+        root = Path("/assets")
+        paths = (
+            [f"theatre-program/theatre_{number:03}.jpg" for number in range(1, 5)]
+            + [f"botanical-album/botanical_{number:03}.jpg" for number in range(1, 6)]
+            + ["sundial.jpg", "waterfall.tif", "bicycle.png", "manuscript.pdf",
+               "interview.mp3", "observatory.mp4"]
+        )
+        for nesting, parent_count, total in ((False, 2, 17), (True, 4, 19)):
+            with self.subTest(nesting=nesting):
+                objects = [
+                    dict(objectid=f"file-{index}", filepath=str(root / path), filename=Path(path).name)
+                    for index, path in enumerate(paths)
+                ]
+                with patch("dart_processing.generate_unique_id",
+                           side_effect=[f"parent-{i}" for i in range(parent_count)]):
+                    parents, _, new, reused = dart_processing.group_objects_by_source_directory(
+                        objects, {}, None, "collection", root, create_multiple=nesting,
+                        add_log_message=lambda _: None,
+                    )
+                self.assertEqual((parent_count, 0), (new, reused))
+                compounds = [p for p in parents if p["type"] == "compound"]
+                self.assertEqual([5, 4], [p["child_count"] for p in compounds])
+                self.assertEqual(6, sum(o["type"] == "single" for o in objects))
+                for compound in compounds:
+                    direct = [o for o in objects if o["parentid"] == compound["objectid"]]
+                    multiples = [p for p in parents if p.get("parentid") == compound["objectid"]]
+                    if nesting:
+                        self.assertEqual([], direct)
+                        self.assertEqual(1, len(multiples))
+                        self.assertEqual(compound["child_count"], multiples[0]["child_count"])
+                    else:
+                        self.assertEqual(compound["child_count"], len(direct))
+                _, rows = dart_processing.build_export_rows(
+                    ["objectid", "original_file_name", "parentid", "type"], objects, parents,
+                )
+                self.assertEqual(total, len(rows))
+
+    def test_source_directory_numbered_sequences_and_export(self):
+        root = Path("/assets")
+        paths = [
+            "exhibition/gallery_010.jpg", "exhibition/gallery_002.jpg",
+            "exhibition/gallery_cover.pdf", "exhibition/unrelated.pdf",
+            "exhibition/nested/gallery_001.jpg", "exhibition/nested/gallery_003.jpg",
+            "exhibition/other/gallery_001.jpg",
+            "exhibition/ab_001.jpg", "exhibition/ab_002.jpg",
+            "gallery_001.jpg", "gallery_002.jpg",
+        ]
+        objects = [
+            dict(objectid=f"file-{index}", filepath=str(root / path), filename=Path(path).name)
+            for index, path in enumerate(paths)
+        ]
+        with patch("dart_processing.generate_unique_id", side_effect=["compound", "sequence", "nested-sequence"]):
+            parents, mappings, new, reused = dart_processing.group_objects_by_source_directory(
+                objects, {}, None, "collection", root, add_log_message=lambda _: None
+            )
+        self.assertEqual(["compound", "multiple", "multiple"], [p["type"] for p in parents])
+        self.assertEqual((3, 0), (new, reused))
+        self.assertEqual("exhibition", parents[0]["display_text_base"])
+        self.assertEqual(["compound", "compound"], [p["parentid"] for p in parents[1:]])
+        self.assertEqual([2, 2], [p["child_count"] for p in parents[1:]])
+        self.assertEqual("gallery_002.jpg", parents[1]["first_child_filename"])
+        self.assertEqual(["sequence", "sequence"], [o["parentid"] for o in objects[:2]])
+        self.assertEqual([10, 2], [o["sequence_number"] for o in objects[:2]])
+        self.assertEqual(["compound", "compound"], [o["parentid"] for o in objects[2:4]])
+        self.assertEqual(["nested-sequence", "nested-sequence"], [o["parentid"] for o in objects[4:6]])
+        self.assertEqual("compound", objects[6]["parentid"])
+        self.assertEqual(["compound", "compound"], [o["parentid"] for o in objects[7:9]])
+        self.assertEqual([None, None], [o["parentid"] for o in objects[9:]])
+        self.assertEqual(["single", "single"], [o["type"] for o in objects[9:]])
+        original_ids = [o["objectid"] for o in objects]
+
+        with patch("dart_processing.generate_unique_id") as generate_id:
+            again, _, new, reused = dart_processing.group_objects_by_source_directory(
+                objects, mappings, None, "collection", root, add_log_message=lambda _: None
+            )
+        generate_id.assert_not_called()
+        self.assertEqual(parents, again)
+        self.assertEqual((0, 3), (new, reused))
+
+        _, rows = dart_processing.build_export_rows(
+            ["objectid", "original_file_name", "parentid", "type", "display_template"],
+            objects, parents,
+        )
+        self.assertEqual(len(objects) + 3, len(rows))
+        by_id = {row["objectid"]: row for row in rows}
+        self.assertEqual("compound", by_id["sequence"]["parentid"])
+        self.assertEqual("sequence", by_id["file-0"]["parentid"])
+        self.assertEqual("multiple", by_id["sequence"]["type"])
+        self.assertEqual("compound_object", by_id["sequence"]["display_template"])
+
+        with patch("dart_processing.generate_unique_id") as generate_id:
+            flat, _, new, reused = dart_processing.group_objects_by_source_directory(
+                objects, mappings, None, "collection", root,
+                create_multiple=False, add_log_message=lambda _: None,
+            )
+        generate_id.assert_not_called()
+        self.assertEqual(["compound"], [p["type"] for p in flat])
+        self.assertEqual((0, 1), (new, reused))
+        self.assertTrue(all(o["parentid"] == "compound" for o in objects[:9]))
+        self.assertEqual([10, 2], [o["sequence_number"] for o in objects[:2]])
+        self.assertEqual(original_ids, [o["objectid"] for o in objects])
+        with patch("dart_processing.generate_unique_id") as generate_id:
+            restored, _, new, reused = dart_processing.group_objects_by_source_directory(
+                objects, mappings, None, "collection", root,
+                create_multiple=True, add_log_message=lambda _: None,
+            )
+        generate_id.assert_not_called()
+        self.assertEqual(parents, restored)
+        self.assertEqual((0, 3), (new, reused))
+
     def test_source_directory_grouping_includes_descendants_and_reuses_compound_ids(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -985,15 +1097,43 @@ class PureTests(unittest.TestCase):
             self.assertEqual(0, result.returncode, result.stderr)
             self.assertFalse((Path(home) / "DART-data").exists())
 
-    def test_shared_compound_algorithm_matches_original_desktop_algorithm(self):
-        # Compare ASTs to the pre-extraction baseline, not a hand-written approximation.
-        after = ast.parse(Path(dart_processing.__file__).read_text()).body
-        after = next(node for node in after if isinstance(node, ast.FunctionDef) and node.name == "analyze_compound_objects")
-        # Python 3.13 omits empty AST fields by default; keep them so the fingerprint is version-independent.
-        options = {"show_empty": True} if sys.version_info >= (3, 13) else {}
-        fingerprint = hashlib.sha256(ast.dump(ast.Module(body=after.body[1:], type_ignores=[]), **options).encode()).hexdigest()
-        # Original processing body at 95d07cd, excluding docstring indentation.
-        self.assertEqual("7db6f8ccce5312ebd99c3bdf08acf1012233e0587607901b9536c08398bf5dd0", fingerprint)
+    def test_shared_compound_algorithm_preserves_filename_grouping(self):
+        names = ["Gallery_010.jpg", "Gallery_002.jpg", "Gallery_cover.pdf",
+                 "artifact_obverse.jpg", "artifact_reverse.jpg"]
+        objects = [
+            dict(objectid=f"file-{index}", filename=name, filepath=f"/assets/{name}")
+            for index, name in enumerate(names)
+        ]
+        with patch("dart_processing.generate_unique_id", side_effect=["compound", "multiple"]):
+            parents, mappings, new, reused = dart_processing.analyze_compound_objects(
+                objects, True, {}, None, "collection", add_log_message=lambda _: None
+            )
+        self.assertEqual((2, 0), (new, reused))
+        self.assertEqual(["compound", "multiple"], [p["type"] for p in parents])
+        self.assertEqual(["multiple", "multiple", "compound", "compound", "compound"],
+                         [o["parentid"] for o in objects])
+        self.assertEqual([10, 2, None, None, None], [o["sequence_number"] for o in objects])
+        self.assertEqual("Gallery", parents[1]["display_text_base"])
+        self.assertEqual("Gallery_002.jpg", parents[1]["first_child_filename"])
+        self.assertEqual(2, parents[1]["zero_pad_width"])
+        self.assertEqual("multiple", mappings["/assets::MULTIPLE::gallery"])
+        with patch("dart_processing.generate_unique_id") as generate_id:
+            again, _, new, reused = dart_processing.analyze_compound_objects(
+                objects, True, mappings, None, "collection", add_log_message=lambda _: None
+            )
+        generate_id.assert_not_called()
+        self.assertEqual(parents, again)
+        self.assertEqual((0, 2), (new, reused))
+        with patch("dart_processing.generate_unique_id") as generate_id:
+            flat, _, new, reused = dart_processing.analyze_compound_objects(
+                objects, True, mappings, None, "collection", create_multiple=False,
+                add_log_message=lambda _: None,
+            )
+        generate_id.assert_not_called()
+        self.assertEqual(["compound"], [p["type"] for p in flat])
+        self.assertEqual((0, 1), (new, reused))
+        self.assertTrue(all(o["parentid"] == "compound" for o in objects))
+        self.assertEqual([10, 2, None, None, None], [o["sequence_number"] for o in objects])
 
     def test_shared_export_rows_preserve_legacy_and_ohm_shapes(self):
         columns, rows = dart_processing.build_export_rows(

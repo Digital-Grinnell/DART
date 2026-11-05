@@ -21,6 +21,13 @@ By default, **Compounds Grouped by Subdirectory** is enabled in App Settings. Du
 
 **When Compounds Grouped by Subdirectory is enabled:** DART ignores filenames for membership; the immediate source subfolder identifies one compound object. Files directly in the selected Inputs Folder remain standalone.
 
+Within each subdirectory-defined compound, **Nest Numbered Sequences Under
+'Multiple' Objects** controls whether matching numbered files become children
+of a generated `multiple` parent. Sequence matching is limited to each actual
+directory, including nested directories; unnumbered files remain direct compound
+children. Turn sequence nesting off for a flat compound. See
+[Organizing Digital Assets for DART](DIGITAL_ASSET_ORGANIZATION.md) for examples.
+
 **When only Group Compound Objects is enabled:** DART analyzes filename patterns and groups related files (e.g., "Wit 001.jpg", "Wit 002.jpg", "Wit Poster.jpg") into a single compound object with one parent ID and multiple children.
 
 **When both settings are disabled:** Every file becomes a standalone object with its own unique identifier.
@@ -39,13 +46,13 @@ The app first looks for files with trailing sequence numbers and extracts their 
 - `100 Nights-15.jpg` → learns prefix **"100 nights"**
 - `AnnaChristie-F14-23.pdf` → learns prefix **"annachristie-f14"**
 
-### Pass 2: Match Related Files Against Numbered Prefixes
+### Pass 2: Match Related Files against Numbered Prefixes
 For files without trailing numbers, the app checks if they **start with** any known prefix:
 - `Wit Poster.jpg` starts with "wit" → **matched!**
 - `100 Nights - Cover.pdf` starts with "100 nights" → **matched!**
 - `AnnaChristie-F14-Program.pdf` starts with "annachristie-f14" → **matched!**
 
-### Pass 3: Find Common Patterns Among Remaining Files
+### Pass 3: Find Common Patterns among Remaining Files
 For files that didn't match any numbered prefix, the app looks for common base patterns:
 - `Traditions and Encounters - Poster.pdf` → extracts base **"traditions and encounters"**
 - `Traditions and Encounters_Program.pdf` → extracts base **"traditions and encounters"**
@@ -262,7 +269,7 @@ exhibit_2013_poster.jpg
 
 ## Troubleshooting
 
-### Problem: Files aren't grouping that should be related
+### Problem: Files Aren't Grouping That Should Be Related
 
 **Check:**
 1. ✅ Do you have at least one numbered file to establish the base prefix?
@@ -280,7 +287,7 @@ exhibit_2013_poster.jpg
 
 ---
 
-### Problem: Files are grouping that shouldn't be related
+### Problem: Files Are Grouping That Shouldn't Be Related
 
 **Check:**
 1. Do the files accidentally start with the same text?
@@ -293,7 +300,7 @@ exhibit_2013_poster.jpg
 
 ---
 
-### Problem: Compound shows wrong number of children
+### Problem: Compound Shows Wrong Number of Children
 
 **Check:**
 1. Are there hidden files or system files being included?
@@ -306,7 +313,7 @@ exhibit_2013_poster.jpg
 
 ---
 
-### Problem: Sequence numbers look wrong
+### Problem: Sequence Numbers Look Wrong
 
 DART automatically detects and zero-pads sequence numbers based on the maximum value:
 - Range 1-9: 1 digit (no padding needed)
