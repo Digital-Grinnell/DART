@@ -90,7 +90,7 @@ The function automatically populates these CollectionBuilder fields from your as
 - **parentid**: Parent object ID for child objects (if column exists and compound grouping enabled)
   - Blank for standalone objects and top-level compound parents
   - Set to the compound's objectid for direct file children and nested `multiple` parents
-  - Set to the `multiple` object's objectid for its numbered file children
+  - Set to the `multiple` object's objectid for its numbered image children; numbered non-image files point directly to the compound
 - **display_template**: CollectionBuilder layout type (if column exists in template)
   - `image` for .jpg, .jpeg, .png, .gif, .tif, .tiff, .bmp, .webp
   - `video` for .mp4, .mov, .avi, .mkv, .wmv, .flv, .webm

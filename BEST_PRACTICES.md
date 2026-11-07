@@ -22,13 +22,20 @@ By default, **Compounds Grouped by Subdirectory** is enabled in App Settings. Du
 **When Compounds Grouped by Subdirectory is enabled:** DART ignores filenames for membership; the immediate source subfolder identifies one compound object. Files directly in the selected Inputs Folder remain standalone.
 
 Within each subdirectory-defined compound, **Nest Numbered Sequences Under
-'Multiple' Objects** controls whether matching numbered files become children
-of a generated `multiple` parent. Sequence matching is limited to each actual
-directory, including nested directories; unnumbered files remain direct compound
-children. Turn sequence nesting off for a flat compound. See
+'Multiple' Objects** controls whether groups of at least two numbered image
+files become children of a generated `multiple` parent. MULTIPLE objects contain
+image children only; numbered non-image files, such as audio or PDF files,
+remain direct compound children. Sequence matching is limited to each actual
+directory, including nested directories. Turn sequence nesting off for a flat
+compound. See
 [Organizing Digital Assets for DART](DIGITAL_ASSET_ORGANIZATION.md) for examples.
 
-**When only Group Compound Objects is enabled:** DART analyzes filename patterns and groups related files (e.g., "Wit 001.jpg", "Wit 002.jpg", "Wit Poster.jpg") into a single compound object with one parent ID and multiple children.
+**When only Group Compound Objects is enabled:** DART analyzes filename
+patterns and groups related files (e.g., "Wit 001.jpg", "Wit 002.jpg", "Wit
+Poster.jpg") into a folder-level compound. With sequence nesting enabled, the
+two numbered images can be children of a `multiple` parent; the unnumbered
+poster remains a direct child of the compound. Numbered non-image files also
+remain direct compound children.
 
 **When both settings are disabled:** Every file becomes a standalone object with its own unique identifier.
 
@@ -38,7 +45,9 @@ children. Turn sequence nesting off for a flat compound. See
 
 When **Compounds Grouped by Subdirectory** is off and **Group Compound Objects** is
 enabled, DART's filename-based grouping uses a **three-pass intelligent
-algorithm**:
+algorithm**. Grouping is limited to each actual directory. All detected filename
+groups in the same directory share one top-level compound; separate filename
+bases do not create separate compounds.
 
 ### Pass 1: Learn Patterns from Numbered Files
 The app first looks for files with trailing sequence numbers and extracts their base prefix:
@@ -79,7 +88,9 @@ Wit 002.jpg
 Wit Poster.jpg
 Wit Program.pdf
 ```
-All start with "Wit" → groups perfectly!
+All start with "Wit" → groups into a compound. If sequence nesting is enabled,
+the two numbered images are children of a `multiple` parent; the poster and
+program are direct children of the compound.
 
 **Good:**
 ```
@@ -107,6 +118,8 @@ Project Alpha 02.jpg
 Project Alpha - Poster.pdf
 Project Alpha - Program.pdf
 ```
+The numbered images can be nested under `multiple`; the PDF files remain direct
+children of the compound.
 
 #### 3. **Number Sequences at the End**
 Put sequence numbers at the **end** of filenames:
@@ -175,7 +188,9 @@ Wit Program.pdf
 **Result:** ✅ All grouped in one compound
 - The numbered files establish "wit" as the prefix
 - Poster and Program match that prefix
-- 100 files in compound: 98 numbered + Poster + Program
+- 102 asset files in the compound: 100 numbered images plus Poster and Program
+- With sequence nesting enabled, the images are children of a `multiple` parent;
+  Poster and Program are direct compound children
 
 ---
 
@@ -201,7 +216,8 @@ Traditions and Encounters 01.pdf  ← Establishes base prefix in Pass 1
 Traditions and Encounters - Poster.pdf
 Traditions and Encounters_Program.pdf
 ```
-Result: ✅ All three grouped (Pass 1 establishes pattern)
+Result: ✅ All three grouped in a compound (Pass 1 establishes the pattern).
+Because the numbered file is a PDF, no `multiple` object is created.
 
 ---
 
@@ -217,11 +233,13 @@ Project B 02.jpg
 Project B Poster.pdf
 ```
 
-**Result:** ✅ Two compounds
-- Compound 1: "project a" (3 files)
-- Compound 2: "project b" (3 files)
-
-Each project's files properly grouped separately!
+**Result:** ✅ One compound for the folder, with two distinct filename groups
+- The Project A and Project B files share the same top-level compound.
+- With sequence nesting enabled, each project's two numbered images get their
+  own sibling `multiple` parent under that compound.
+- Each poster remains a direct child of the compound.
+- To create separate top-level compounds, put each project in its own directory
+  and use filename-based grouping.
 
 ---
 
@@ -240,6 +258,8 @@ Each project's files properly grouped separately!
 - Prefix: "100 nights"
 - Sequence: 1-20
 - Zero-padded display: [01], [02], ... [20]
+- With sequence nesting enabled, the numbered image files can be children of a
+  `multiple` parent
 
 ---
 
@@ -272,7 +292,8 @@ exhibit_2013_poster.jpg
 ### Problem: Files Aren't Grouping That Should Be Related
 
 **Check:**
-1. ✅ Do you have at least one numbered file to establish the base prefix?
+1. ✅ Do the filenames establish a shared base? A numbered file can help
+   establish it; two numbered image files are required for a `multiple`.
 2. ✅ Do all related files start with the exact same text (case-insensitive)?
 3. ✅ Is the common prefix at least 3 characters long?
 4. ✅ Are separators consistent across all files?
@@ -280,7 +301,9 @@ exhibit_2013_poster.jpg
 **Note:** DART automatically handles trailing separators and double spaces, so "Project -  Poster" and "Project_Program" will correctly group together.
 
 **Solutions:**
-- Add a numbered file (even just `ProjectName 01.pdf`)
+- Add a numbered file (even just `ProjectName 01.pdf`) to help establish a
+  filename-group prefix. A numbered PDF can join a compound but does not create
+  a `multiple`.
 - Rename files to have consistent base prefix
 - Ensure common prefix is 3+ characters
 - Standardize separators (all spaces, all underscores, or all hyphens)
@@ -374,7 +397,7 @@ If you have many related groups, consider organizing by folder:
 
 Each folder's files are analyzed separately, reducing potential conflicts.
 
-### Sequential Gaps Are OK
+### Sequence Gaps Are OK
 DART tolerates missing sequence numbers:
 ```
 photo_001.jpg
@@ -382,7 +405,8 @@ photo_002.jpg
 photo_005.jpg  ← Missing 003, 004
 photo_006.jpg
 ```
-Still recognized as sequential (avg gap ≤ 2, max gap ≤ 5).
+Still grouped as a numbered image sequence. DART reports whether numbering is
+regular, but gaps do not prevent `multiple` creation.
 
 ### Multiple File Types
 You can mix different file types in one compound:
@@ -392,7 +416,8 @@ scan_002.tif
 scan_003.jpg     ← Different extension
 scan_catalog.pdf ← Different extension
 ```
-As long as they share the common prefix, they'll group together.
+The numbered images can be nested together under a `multiple` parent. The PDF
+remains a direct child of their compound.
 
 ### Controlling Child Object Order
 Don't use trailing numbers (like "000") to try to influence the display order of supplementary files:
@@ -423,6 +448,8 @@ After DART generates the CSV file with all your objects, you can easily adjust t
 2. **Numbers at the end** - Sequence numbers should be the last element
 3. **At least 3 characters** - Common prefix must be 3+ chars
 4. **Clear separators** - Space, underscore, or hyphen between elements
-5. **One numbered file minimum** - Establishes the pattern for matching
+5. **Use numbers deliberately** - A numbered file can help establish a
+   filename-group prefix; only groups with at least two numbered images can
+   form a `multiple`
 
 Follow these guidelines and DART will intelligently group your files with minimal manual intervention!

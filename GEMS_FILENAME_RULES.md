@@ -12,7 +12,7 @@ GEMS never assigns DART identifiers and never creates parent/compound rows. Its 
 1. **Function 1** scans a folder of asset files and analyzes filename patterns.
 2. Files sharing a filename **base** are grouped into compound objects:
    - Exactly **one untitled compound parent per folder**.
-   - A nested **`multiple`** sub-object for each group containing 2+ numbered files.
+   - A nested **`multiple`** sub-object for each group containing 2+ numbered image files; numbered non-image files stay direct compound children.
    - Unnumbered parts (Poster, Program, Cover) attach directly to the compound parent.
 3. DART assigns durable IDs (`<collection-id>_dg_<epoch>`) to every object, parent, and child.
 4. **Function 2** exports a CollectionBuilder CSV with `objectid`, `parentid`, `original_file_name`, `display_template`, etc.
@@ -117,7 +117,7 @@ group_compound_objects = true
 create_multiple_objects = false
 ```
 
-Grouping is folder-scoped (v6.5+), so each subfolder stands on its own: a subfolder with several files becomes one compound, and a single-file subfolder stays standalone. With `create_multiple_objects = false`, numbered sequences attach **directly to the compound** as flat children (sequence numbers are still recorded for ordering) instead of being nested under a `multiple` sub-object. Leave `create_multiple_objects` at `true` (the default) for new-content workflows, where the `multiple` layer is a legitimate grouping.
+Grouping is folder-scoped (v6.5+), so each subfolder stands on its own: a subfolder with several files becomes one compound, and a single-file subfolder stays standalone. With `create_multiple_objects = false`, numbered sequences attach **directly to the compound** as flat children (sequence numbers are still recorded for ordering) instead of being nested under a `multiple` sub-object. MULTIPLE objects contain image children only; numbered non-image files remain direct compound children. Leave `create_multiple_objects` at `true` (the default) for new-content workflows, where the `multiple` layer is a legitimate grouping for numbered image sequences.
 
 ### 3. Resulting structure
 

@@ -7,6 +7,10 @@ from common_dg_utilities.dg_utils import generate_unique_id, get_mime_type
 
 logger = logging.getLogger(__name__)
 
+IMAGE_EXTENSIONS = frozenset({
+    ".jpg", ".jpeg", ".png", ".gif", ".tif", ".tiff", ".bmp", ".webp",
+})
+
 
 def derivative_source_exports(working_directory: Path) -> list[Path]:
     """Order original exports by modification time, not their filename prefixes."""
@@ -139,6 +143,10 @@ def _parse_numbered_filename(filename: str) -> tuple[str, int] | None:
     return None
 
 
+def _is_image_object(obj: dict[str, Any]) -> bool:
+    return Path(obj["filename"]).suffix.lower() in IMAGE_EXTENSIONS
+
+
 def _create_multiple_parent(
     numbered_items: list[dict[str, Any]],
     file_to_id_map: dict[str, str],
@@ -150,6 +158,9 @@ def _create_multiple_parent(
     add_log_message=logger.debug,
 ) -> tuple[dict[str, Any], int, int]:
     """Assign a directory-scoped numbered group to its persistent multiple parent."""
+    if any(not _is_image_object(item["obj"]) for item in numbered_items):
+        raise ValueError("Multiple objects can contain image files only")
+
     numbered_items = sorted(numbered_items, key=lambda item: item["number"])
     multiple_key = f"{get_stable_path(folder_path)}::MULTIPLE::{text_base}"
     reused = multiple_key in file_to_id_map
@@ -196,15 +207,15 @@ def analyze_compound_objects(objects, group_compound, file_to_id_map, page, coll
         page: Flet page object for ID generation
         collection_id: Required collection identifier prefix for newly generated IDs
         create_multiple: When True (default), each numeric sequence of 2+ numbered
-            files is nested under its own 'multiple' sub-object. When False, numbered
-            files attach directly to the folder's compound (flat Alma/GEMS-style
-            compounds); sequence numbers are still recorded for ordering.
+            image files is nested under its own 'multiple' sub-object. Non-image
+            files remain direct compound children. When False, numbered files attach
+            directly to the folder's compound; sequence numbers are still recorded.
 
     Returns:
         tuple: (compound_objects, file_to_id_map, new_mappings, reused_mappings)
             - compound_objects: One untitled 'compound' entry per folder, plus a
               nested 'multiple' entry (type='multiple', parentid=compound's objectid)
-              for each numeric sequence (2+ numbered files) found in that folder
+                for each numeric sequence of 2+ image files found in that folder
             - file_to_id_map: Updated mapping dict (with new compound IDs)
             - new_mappings: Count of new compound IDs created
             - reused_mappings: Count of existing compound IDs reused
@@ -437,8 +448,8 @@ def analyze_compound_objects(objects, group_compound, file_to_id_map, page, coll
         }
 
     # Bucket groups (2+ files) by folder so each folder gets ONE top-level
-    # compound; sequence groups (2+ numbered files) become nested 'multiple'
-    # children, and non-sequence groups attach directly to the compound.
+    # compound; sequences with 2+ numbered image files become nested 'multiple'
+    # children, and other files attach directly to the compound.
     # Groups are folder-scoped by construction, so the bucket key is the group's folder.
     folder_buckets = {}
     for (pf_folder, text_base), group_data in groups.items():
@@ -488,26 +499,31 @@ def analyze_compound_objects(objects, group_compound, file_to_id_map, page, coll
             parsed_items = group_data['items']
             numbered_items = [item for item in parsed_items if item.get('number') is not None]
             unnumbered_items = [item for item in parsed_items if item.get('number') is None]
+            image_numbered_items = [
+                item for item in numbered_items if _is_image_object(item["obj"])
+            ]
+            non_image_numbered_items = [
+                item for item in numbered_items if not _is_image_object(item["obj"])
+            ]
             numbered_items.sort(key=lambda x: x['number'])
             unnumbered_items.sort(key=lambda x: x['filename'])
 
-            if create_multiple and len(numbered_items) >= 2:
-                # A numeric sequence of 2+ files gets its own 'multiple' parent
-                # nested under the compound; unnumbered files in the same group
-                # become direct children of the compound (siblings of 'multiple').
+            if create_multiple and len(image_numbered_items) >= 2:
+                # Only image sequences become 'multiple' parents. Other files in
+                # the same filename group remain direct children of the compound.
                 multiple, new, reused = _create_multiple_parent(
-                    numbered_items, file_to_id_map, page, collection_id,
+                    image_numbered_items, file_to_id_map, page, collection_id,
                     folder_path, compound_id, text_base, add_log_message,
                 )
                 compound_objects.append(multiple)
                 compound_new_mappings += new
                 compound_reused_mappings += reused
 
-                for parsed_item in unnumbered_items:
+                for parsed_item in non_image_numbered_items + unnumbered_items:
                     child_obj = parsed_item['obj']
                     child_obj["parentid"] = compound_id
                     child_obj["type"] = "child"
-                    child_obj["sequence_number"] = None
+                    child_obj["sequence_number"] = parsed_item.get('number')
             else:
                 # Not a sequence (or 'multiple' creation disabled) - all items
                 # in this group are direct compound children
@@ -609,10 +625,13 @@ def group_objects_by_source_directory(
 
         if create_multiple:
             for (folder_path, prefix), numbered_items in sorted(numbered_groups.items()):
-                if len(numbered_items) < 2:
+                image_numbered_items = [
+                    item for item in numbered_items if _is_image_object(item["obj"])
+                ]
+                if len(image_numbered_items) < 2:
                     continue
                 multiple, new, reused = _create_multiple_parent(
-                    numbered_items, file_to_id_map, page, collection_id,
+                    image_numbered_items, file_to_id_map, page, collection_id,
                     folder_path, compound_id, prefix, add_log_message,
                 )
                 compound_objects.append(multiple)

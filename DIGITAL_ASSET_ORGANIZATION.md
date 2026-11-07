@@ -11,7 +11,7 @@ previously analyzed files can affect persistent identifier mappings.
 |---|---|---|
 | Standalone (`single`) | One supported asset file, such as a photograph, PDF, or recording | No parent |
 | Compound (`compound`) | A generated parent representing related assets | Contains file children and optional `multiple` objects |
-| Multiple (`multiple`) | A generated parent for two or more numbered files sharing a recognized filename base | Nested under a compound; the numbered files are its children |
+| Multiple (`multiple`) | A generated parent for two or more numbered image files sharing a recognized filename base | Nested under a compound; only image files are its children |
 | File child (`child`) | An asset file belonging to a compound or a `multiple` | References its parent through `parentid` |
 
 Compound and `multiple` parents are metadata objects, not extra files you must
@@ -32,16 +32,18 @@ object membership.
 |---|---|---|
 | Standalone files only | **Compounds Grouped by Subdirectory** off; **Group Compound Objects** off | Every supported file stays standalone, even in subfolders |
 | Flat compounds alongside standalone files | **Compounds Grouped by Subdirectory** on (the default); **Nest Numbered Sequences Under 'Multiple' Objects** off | One immediate subfolder per compound; standalone files directly in the Inputs Folder |
-| Subdirectory compounds containing `multiple` parents | **Compounds Grouped by Subdirectory** on; **Nest Numbered Sequences Under 'Multiple' Objects** on | One immediate subfolder per compound; matching numbered files in each actual directory form a `multiple` |
+| Subdirectory compounds containing `multiple` parents | **Compounds Grouped by Subdirectory** on; **Nest Numbered Sequences Under 'Multiple' Objects** on | One immediate subfolder per compound; matching numbered image files in each actual directory form a `multiple` |
 | Filename-based compounds, without `multiple` parents | **Compounds Grouped by Subdirectory** off; **Group Compound Objects** on; **Nest Numbered Sequences Under 'Multiple' Objects** off | One folder per compound, with related filename bases |
-| Filename-based compounds containing `multiple` parents | **Compounds Grouped by Subdirectory** off; **Group Compound Objects** on; **Nest Numbered Sequences Under 'Multiple' Objects** on | One folder per compound; each numbered filename base defines a possible `multiple` |
+| Filename-based compounds containing `multiple` parents | **Compounds Grouped by Subdirectory** off; **Group Compound Objects** on; **Nest Numbered Sequences Under 'Multiple' Objects** on | One folder per compound; each numbered image filename base defines a possible `multiple` |
 
 The corresponding setting keys are `group_by_source_directory`,
 `group_compound_objects`, and `create_multiple_objects`. The last setting
 defaults to `true` and applies in both grouping modes. Subdirectory grouping
 defines the top-level compound by folder, then applies numbered-filename rules
-within that compound. With nesting off, numbered files remain direct compound
-children and retain their sequence numbers.
+within that compound. Only numbered image files can be nested in `multiple`;
+numbered non-image files stay direct compound children. With nesting off,
+numbered files remain direct compound children and retain their sequence
+numbers.
 
 Enabling subdirectory grouping also enables and locks **Group Compound Objects**
 in App Settings. To disable all grouping, turn off subdirectory grouping first.
@@ -173,8 +175,11 @@ patterns, they may remain standalone.
 
 With compound grouping on and `create_multiple_objects` set to `true`, DART
 creates one `multiple` parent for each recognized filename group containing at
-least two numbered files. This applies both inside subdirectory-defined
-compounds and in filename-based grouping:
+least two numbered image files. MULTIPLE objects contain image children only.
+Numbered non-image files, including audio sequences, remain direct children of
+the compound; when a filename group mixes image and non-image files, only its
+numbered images can be nested under MULTIPLE. This applies both inside
+subdirectory-defined compounds and in filename-based grouping:
 
 - Put all members of a sequence in the **same actual directory**.
 - Use a consistent filename base of at least three characters.
@@ -183,21 +188,23 @@ compounds and in filename-based grouping:
   Prefer a consistent separator and zero-padding for predictable file sorting.
 - Related unnumbered files such as `gallery_cover.pdf` remain direct children
   of the compound, not children of the `multiple`.
-- One numbered file plus an unnumbered related file can form a compound, but
-  does not create a `multiple`. At least two numbered files are required.
+- One numbered image file plus an unnumbered related file can form a compound,
+  but does not create a `multiple`. At least two numbered image files are
+  required.
   In subdirectory mode, every supported file beneath an immediate subfolder
   belongs to that compound even without a matching filename.
 - Separate numbered bases in one directory create separate `multiple` objects
   under the **same** directory-level compound.
-- Numbered children are sorted numerically. Gaps do not prevent `multiple`
-  creation; DART's sequential/irregular diagnostic is not a membership gate.
+- Numbered image children inside MULTIPLE are sorted numerically. Gaps do not
+  prevent `multiple` creation; DART's sequential/irregular diagnostic is not a
+  membership gate.
 
 Set `create_multiple_objects` to `false` to attach numbered files directly to
 the compound instead. In filename-based mode their sequence numbers are still
 recorded. This setting alone does not enable grouping and never creates a
 standalone, top-level `multiple`.
 
-### Example: One Compound with Two Multiples and Two Standalone Assets
+### Example: One Compound with One Multiple and Two Standalone Assets
 
 Use these settings to make the immediate `exhibition/` subfolder the compound:
 
@@ -238,25 +245,25 @@ Analyzed Objects
 |   |   +-- gallery_002.jpg
 |   |   +-- gallery_003.jpg
 |   +-- gallery_cover.pdf
-|   +-- MULTIPLE (lecture)
-|   |   +-- lecture_001.mp3
-|   |   +-- lecture_002.mp3
+|   +-- lecture_001.mp3
+|   +-- lecture_002.mp3
 |   +-- lecture_transcript.pdf
 |
 +-- sundial.jpg                    <-- Standalone
 +-- waterfall.tif                  <-- Standalone
 ```
 
-**Expected result:** nine asset files plus three generated parents (one compound
-and two `multiple` objects), for 12 total objects. The compound has four direct
-children: the two `multiple` parents, the cover PDF, and the transcript PDF.
-The `multiple` parents contain three and two file children respectively.
+**Expected result:** nine asset files plus two generated parents (one compound
+and one `multiple` object), for 11 total objects. The compound has five direct
+children: the `gallery` multiple, the cover PDF, both lecture MP3 files, and the
+transcript PDF. The `multiple` parent contains the three gallery image files;
+the numbered audio files stay direct compound children.
 
 Turning **Nest Numbered Sequences Under 'Multiple' Objects** off would instead
 produce one flat compound with seven direct file children, plus the same two
 standalone assets (10 total objects). With subdirectory grouping off and
 **Group Compound Objects** on, these filenames also produce the illustrated
-two-`multiple` hierarchy, but the directory-level compound is untitled.
+one-`multiple` hierarchy, but the directory-level compound is untitled.
 Unmatched files inside that directory would remain standalone in filename-based
 mode, rather than automatically joining the compound.
 

@@ -55,9 +55,9 @@ unavailable or the path is not a directory, the error names that path.
    - If `collection-id` is set in App Settings, the generated format becomes `<collection-id>_dg_<epoch_time>`
    - IDs are reused if the file was previously processed
 4. **Creates compound objects** (if grouping enabled)
-   - Source-directory mode groups by the immediate subfolder name; numbered filename groups within each actual directory can become nested `multiple` children when `create_multiple_objects` is enabled. Root-level files remain standalone
+   - Source-directory mode groups by the immediate subfolder name; numbered image groups within each actual directory can become nested `multiple` children when `create_multiple_objects` is enabled. Numbered non-image files remain direct compound children. Root-level files remain standalone
    - Otherwise, groups files by text similarity in filenames; numbers are used for sequencing, not grouping
-   - Source-directory compounds use the directory name as their suggested title; filename-based mode creates one untitled compound per folder. Both modes support numeric sequences nested as `multiple` children, or flat children with sequence numbers when `create_multiple_objects` is disabled
+   - Source-directory compounds use the directory name as their suggested title; filename-based mode creates one untitled compound per folder. Both modes support numbered image sequences nested as `multiple` children, or flat children with sequence numbers when `create_multiple_objects` is disabled
    - Each compound/multiple gets its own permanent identifier using the same legacy or prefixed format
    - Child files track their parent via `parentid` field
 
@@ -143,17 +143,18 @@ When **Compounds Grouped by Subdirectory** is off and `group_compound_objects` i
    - Compound ID is reused if the same folder is processed again
    - The compound ID becomes the `parentid` for its direct children (non-sequence groups and any `multiple` objects)
 
-6. **Multiple Object Creation (Numeric Sequences)**: For each group within the folder that contains 2+ numbered files:
+6. **Multiple Object Creation (Numeric Sequences)**: For each group within the folder that contains 2+ numbered image files:
    - A `multiple` object is created and nested under the folder's compound (`parentid` = compound's objectid)
-   - All numbered files in that sequence become children of this `multiple` object, not the compound directly
+   - The numbered image files in that sequence become children of this `multiple` object, not the compound directly
+   - Numbered non-image files, including audio sequences, remain direct children of the compound, even when they share the same filename base
    - Unnumbered files in the same group become direct children of the compound - siblings of the `multiple` object, not its children
-   - Groups that are NOT a numeric sequence (all-unnumbered, or only 1 numbered file) skip the `multiple` wrapper entirely - their files attach directly to the compound
+   - A group without 2+ numbered image files skips the `multiple` wrapper; its files remain direct compound children when a compound is formed
    - The `multiple` ID is reused if the same group (folder + group base) is processed again, just like compound IDs
    - Set `create_multiple_objects` to `false` in App Settings (v6.1+) to skip this wrapper entirely: numbered files then attach directly to the compound, keeping their sequence numbers for ordering. Intended for Alma/GEMS-style migrations, where each compound is a flat object and `multiple` has no counterpart - see `GEMS_FILENAME_RULES.md`
 
 7. **Child Tracking**: Each child asset:
    - Has its own unique permanent identifier (objectid)
-   - Has a `parentid` field pointing to its immediate parent (the compound, or the `multiple` object for sequenced files)
+   - Has a `parentid` field pointing to its immediate parent (the compound, or the `multiple` object for numbered image files)
    - Retains its file path and other metadata
 
 8. **Standalone Objects**: Files that don't match any group:
@@ -187,7 +188,7 @@ When **Compounds Grouped by Subdirectory** is off and `group_compound_objects` i
 # Child objects (have files)
 {
   "objectid": "dg_1736712346",
-  "parentid": "dg_1736712400",  # Points to the multiple object (or the compound if unnumbered)
+  "parentid": "dg_1736712400",  # Points to the multiple object, or the compound if direct
   "type": "child",
   "filepath": "/Users/username/assets/photo_001.jpg",
   "filename": "photo_001.jpg"
@@ -199,7 +200,7 @@ Compound IDs are tracked using a key format: `{folder_path}::COMPOUND` (one per 
 
 Example: `/Users/username/assets::COMPOUND`
 
-Multiple IDs (created only for groups with 2+ numbered files) use a key format that still includes the group's base: `{folder_path}::MULTIPLE::{text_base}`
+Multiple IDs (created only for groups with 2+ numbered image files) use a key format that still includes the group's base: `{folder_path}::MULTIPLE::{text_base}`
 
 Example: `/Users/username/assets::MULTIPLE::photo`
 
@@ -313,10 +314,10 @@ Total: 2 compound objects, 6 file objects
 In this example:
 - 2 compound objects created, one per folder (/assets and /documents) - each untitled since a compound represents the whole folder, not a single group
 - Each compound shows its associated folder path
-- Since each folder's group has 2+ numbered files, a `multiple` object is nested under that folder's compound, and the numbered files become its children instead of the compound's direct children
+- Since each folder's group has 2+ numbered image files, a `multiple` object is nested under that folder's compound, and the numbered images become its children instead of the compound's direct children. Numbered non-image files remain direct compound children
 - If a folder had multiple distinct sequences (e.g. "photo" and "scan" both in /assets), they would share the SAME compound, each as its own sibling `multiple` object
 - 1 standalone object (poster.pdf doesn't match any group)
-- Each compound has its own ID; each `multiple` object's parentid points to its folder's compound, and sequenced children's parentid points to the `multiple` object
+- Each compound has its own ID; each `multiple` object's parentid points to its folder's compound, and numbered image children's parentid points to the `multiple` object
 
 ## Notes
 - Only files with recognized digital asset extensions are analyzed
@@ -325,7 +326,7 @@ In this example:
 - When compound grouping is ENABLED, files are analyzed for text-based grouping
 - One untitled compound object is created per folder with detected groups; distinct groups in that folder share that compound
 - Compound IDs persist: same folder always produces the same compound ID
-- Groups with 2+ numbered files get their own nested `multiple` object (sibling to other groups in the same folder); its ID persists the same way, keyed by folder + group base
-- Non-sequence groups (all-unnumbered, or only 1 numbered file) attach directly to the compound, without a `multiple` wrapper
-- Children track their immediate parent via the `parentid` field (the `multiple` object for sequenced files, or the compound otherwise)
+- Groups with 2+ numbered image files get their own nested `multiple` object (sibling to other groups in the same folder); its ID persists the same way, keyed by folder + group base
+- Numbered non-image files and groups without 2+ numbered image files attach directly to the compound, without a `multiple` wrapper
+- Children track their immediate parent via the `parentid` field (the `multiple` object for numbered image children, or the compound otherwise)
 - Results are displayed in the dialog but not automatically saved (use other functions to export)

@@ -989,6 +989,62 @@ class PureTests(unittest.TestCase):
         self.assertEqual(parents, restored)
         self.assertEqual((0, 3), (new, reused))
 
+    def test_multiple_objects_only_contain_images(self):
+        root = Path("/assets")
+        paths = [
+            "exhibition/gallery_001.jpg", "exhibition/gallery_002.png",
+            "exhibition/lecture_001.mp3", "exhibition/lecture_002.mp3",
+            "exhibition/mixed_001.tif", "exhibition/mixed_002.mp3",
+        ]
+
+        for grouping in ("source_directory", "filename"):
+            with self.subTest(grouping=grouping):
+                objects = [
+                    dict(objectid=f"file-{index}", filepath=str(root / path),
+                         filename=Path(path).name)
+                    for index, path in enumerate(paths)
+                ]
+                with patch("dart_processing.generate_unique_id",
+                           side_effect=["compound", "gallery-multiple"]):
+                    if grouping == "source_directory":
+                        parents, _, new, reused = dart_processing.group_objects_by_source_directory(
+                            objects, {}, None, "collection", root,
+                            add_log_message=lambda _: None,
+                        )
+                    else:
+                        parents, _, new, reused = dart_processing.analyze_compound_objects(
+                            objects, True, {}, None, "collection",
+                            add_log_message=lambda _: None,
+                        )
+
+                multiples = [parent for parent in parents if parent["type"] == "multiple"]
+                self.assertEqual((2, 0), (new, reused))
+                self.assertEqual(1, len(multiples))
+                self.assertEqual("gallery", multiples[0]["text_base"])
+                multiple_children = [
+                    obj for obj in objects if obj["parentid"] == multiples[0]["objectid"]
+                ]
+                self.assertEqual(["gallery_001.jpg", "gallery_002.png"],
+                                 [obj["filename"] for obj in multiple_children])
+                self.assertEqual(
+                    {"lecture_001.mp3", "lecture_002.mp3", "mixed_001.tif", "mixed_002.mp3"},
+                    {
+                        obj["filename"] for obj in objects
+                        if obj["parentid"] == "compound"
+                    },
+                )
+
+        with self.assertRaisesRegex(ValueError, "image files only"):
+            dart_processing._create_multiple_parent(
+                [
+                    {"obj": {"filename": "lecture_001.mp3"}, "number": 1,
+                     "raw_stem": "lecture_001"},
+                    {"obj": {"filename": "lecture_002.mp3"}, "number": 2,
+                     "raw_stem": "lecture_002"},
+                ],
+                {}, None, "collection", "/assets", "compound", "lecture",
+            )
+
     def test_source_directory_grouping_includes_descendants_and_reuses_compound_ids(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
